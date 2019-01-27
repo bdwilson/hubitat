@@ -281,5 +281,7 @@ private getProxyAddress() {
 private getNotifyAddress() {
   // only support single hub.
   def hub = location.hubs[0] 
+  log.debug "Hubitat IP: ${hub.getDataValue("localIP")}"
+  log.debug "Hubitat LAN Port: ${hub.getDataValue("localSrvPortTCP")}"
   return hub.getDataValue("localIP") + ":" + hub.getDataValue("localSrvPortTCP")
 }

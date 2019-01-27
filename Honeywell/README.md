@@ -12,7 +12,11 @@ info on this here:
 https://github.com/redloro/smartthings#envisalink-vista-tpi-plugin--alarmdecoder-ad2usb.
 If you're moving from SmartThings to Hubitat then you already have this. You
 may need to update your config.json to point to the IP address of your Hubitat
-device, however the Honeywell Security app *should* do this for you. 
+device, however the Honeywell Security app *should* do this for you, but I have
+had better luck copying config.json to a backup file with ST notify IP, then
+editing the file with the correct IP/Port of your Hubitat. If you don't know
+the IP/Port, it will be in the debug logs once you install and attempt to do a
+discovery.
 
 2) You need the MAC address of the device that is running your Node Proxy
 server. This is a new requirement that wasn't needed for SmartThings. You can
@@ -35,11 +39,11 @@ but I only have 1 so I can't test it.
 # Installation
 
 1) Install the 3 zone drivers and 1 Partition driver into Drivers Code (click
-on each, view raw file, copy and paste, save)
-2) Install the Honewell Security into the Apps section (click
-on each, view raw file, copy and paste, save)
+on each, view raw file, copy and paste, save into Hubitat web gui)
+2) Install the Honewell Security into the Apps Code section (click
+on each, view raw file, copy and paste, save into Hubitat web gui)
 3) Go to Apps and + Add User App. 
-4) Click on the App once it's installed to configure it
+4) Click on the App once it's installed to configure it.
 5) Copy data from your SmartThings installation. You can look in the
 config.json file for the password for your proxy and password for your panel.
 You will need the MAC address of the server that your Node Proxy device is
