@@ -11,12 +11,13 @@ talking to a Envisalink 3/4 device.
 info on this here:
 https://github.com/redloro/smartthings#envisalink-vista-tpi-plugin--alarmdecoder-ad2usb.
 If you're moving from SmartThings to Hubitat then you already have this. You
-may need to update your config.json to point to the IP address of your Hubitat
+will need to update your config.json to point to the IP address/port of your Hubitat
 device, however the Honeywell Security app *should* do this for you, but I have
 had better luck copying config.json to a backup file with ST notify IP, then
 editing the file with the correct IP/Port of your Hubitat. If you don't know
 the IP/Port, it will be in the debug logs once you install and attempt to do a
-discovery.
+discovery. Unfortunately, the node proxy will not notify two different devices
+at once.
 
 2) You need the MAC address of the device that is running your Node Proxy
 server. This is a new requirement that wasn't needed for SmartThings. You can
