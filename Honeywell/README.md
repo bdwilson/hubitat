@@ -58,3 +58,8 @@ running on.
 3) I realize native interfaces to Envisalink TPI for Vista/Ademco would be
 better; but the node-proxy setup has been working so well with SmartThings, why reinvent the
 wheel.
+
+# Questions/Comments
+Bug me on Twitter at [@brianwilson](http://twitter.com/brianwilson) or email me
+[here](http://cronological.com/comment.php?ref=bubba) or on the [Hubitat
+community](https://community.hubitat.com/)/@brianwilson
