@@ -63,4 +63,6 @@ wheel.
 # Questions/Comments
 Bug me on Twitter at [@brianwilson](http://twitter.com/brianwilson) or email me
 [here](http://cronological.com/comment.php?ref=bubba) or on the [Hubitat
-community](https://community.hubitat.com/)/@brianwilson
+community](https://community.hubitat.com/)/@brianwilson.
+
+
