@@ -21,11 +21,13 @@ Installation
 --------------------
 1. Go to Drivers Code and create a new device using [virtual-mobile-presence.groovy](https://github.com/ajpri/STApps/blob/master/devicetypes/ajpri/virtual-mobile-presence.src/virtual-mobile-presence.groovy).
 2. Go to Devices and create a new virtual device '''name it whatever the location name will be called in
-GeoHopper with a - and a USER after it'''.  Network Device ID can be '''VIRTUAL_PRESENCE_1'''. Type will be
+GeoHopper with a - and a USER after it'''. Mine are called "Virtual Presence -
+Brian" and "Virtual Presence - OtherUser".  Network Device ID can be
+'''VIRTUAL_PRESENCE_1''' for the first. Type will be
 the type you configured in step 1.  Make sure Location and/or Hub is selected
-and select create. For intance, mine is named "Virtual Presence - Brian" and my
-Geohopper location is named "Virtual Presence". You can create multiple
-virtual devices and give them different names after the "-" then you can
+and select create. For this example, mine is named "Virtual Presence - Brian" and my
+Geohopper location in #8 below is named "Virtual Presence". You can create multiple
+virtual devices and give them different names after the " - " then you can
 reference them after the location below in #5 and use that new webhook in #8.
 3. Go to Apps Code and
 create a new App from code geohopper-presence.groovy. Save it. Click Oauth.
