@@ -38,9 +38,7 @@ or https://cloud.hubitat.com/api/xxx-xxx-xx-xxx/apps/xx/location/[your user]?acc
 aeb-b15e-xxxxxxxxx.  For the example in #2 above, [your user] is Brian.  
 6. Now paste this URL into your browser and make sure you get the following
 response:
-<code>
-{"error":true,"type":"SmartAppException","message":"Yep, this is the right URL."}
-</code>
+<code>{"error":true,"type":"SmartAppException","message":"Yep, this is the right URL."} </code>
 7. Install GeoHopper app and your iBeacon.  In the app, go to Settings->Web
 Service and configure a new web service using the URL above and 
 select "Post". You can
