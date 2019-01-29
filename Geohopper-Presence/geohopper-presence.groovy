@@ -15,9 +15,9 @@
  */
 definition(
     name: "Geohopper Multi-User API Presence App",
-    namespace: "bw",
+    namespace: "brianwilson-hubitat",
     author: "Brian Wilson",
-    description: "Geohopper API Presence App",
+    description: "Geohopper Multi-User API Presence App",
     category: "My Apps",
     iconUrl: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience.png",
     iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
