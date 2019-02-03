@@ -132,7 +132,6 @@ def bypass() {
 
 def parse(description) {
 	parent.ifDebug('Honeywell Partition: ' + msg)
-	log.debug "description ${description}"
 	// send parent app any LAN communications sent to the Partition. 
 	parent.lanResponseHandler(description)
 }
