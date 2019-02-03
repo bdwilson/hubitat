@@ -115,7 +115,7 @@ def updated() {
     }
 	state.installed = true
     runIn(5, discoverChildDevices)
-	log.debug "Running discover."
+	ifDebug("Running discover")
     settings.enableDiscovery = false
   }
 }
@@ -128,14 +128,14 @@ def lanResponseHandler(evt) {
   def map = parseLanMessage(evt)
   def jsonMap = parseLanMessage(evt).json
   
-  log.debug "map: ${map}"
-  log.debug "My Body: ${map.body}"
-  log.debug "My Headers: ${map.headers}"
+  ifDebug("map: ${map}")
+  ifDebug("My Body: ${map.body}")
+  ifDebug("My Headers: ${map.headers}")
 
    //def parsedEvent = parseLanMessage(fromChildDev).json
   def type = jsonMap?.type
-  log.debug "type of update: ${type}"
-  log.debug "header?: ${map.headers.'stnp-plugin'}"
+  ifDebug("type of update: ${type}")
+  ifDebug("header?: ${map.headers.'stnp-plugin'}")
   //verify that this message is for this plugin
   if (map.headers.'stnp-plugin' != settings.pluginType) {
       return
@@ -148,11 +148,11 @@ private sendCommandPlugin(path) {
 }
 
 private sendCommand(path) {
-  log.debug "Honeywell Security send command: ${path}"
+  ifDebug("send command: ${path}")
 
   if (settings.proxyAddress.length() == 0 ||
     settings.proxyPort.length() == 0) {
-    log.error "SmartThings Node Proxy configuration not set!"
+    ifDebug("SmartThings Node Proxy configuration not set!")
     return
   }
 
@@ -171,7 +171,7 @@ private sendCommand(path) {
 }
 
 private processEvent(evt) {
-  log.debug "Running Process Event ${evt}"
+  ifDebug("Running Process Event ${evt}")
   if (evt.type == "discover") {
     addChildDevices(evt.partitions, evt.zones)
   }
@@ -200,11 +200,11 @@ private addChildDevices(partitions, zones) {
   zones.each {
     def deviceId = 'honeywell|zone'+it.zone
 	def hub = location.hubs[0]
-    log.debug "Adding Child Device (zone): ${deviceId}"
+    ifDebug("Adding Child Device (zone): ${deviceId}")
     if (!getChildDevice(deviceId)) {
       it.type = it.type.capitalize()
       addChildDevice("brianwilson-hubitat", "Honeywell Zone "+it.type, deviceId, hub.id, ["name": it.name, label: it.name, completedSetup: true])
-		log.debug "Added zone device: ${deviceId} ${hub.id} ${hub.name}"
+		ifDebug("Added zone device: ${deviceId} ${hub.id} ${hub.name}")
     }
   }
 }
@@ -218,7 +218,7 @@ def discoverChildDevices() {
 }
 
 private updateZoneDevices(zonenum,zonestatus) {
-  log.debug "updateZoneDevices: ${zonenum} is ${zonestatus}"
+  ifDebug("updateZoneDevices: ${zonenum} is ${zonestatus}")
   def zonedevice = getChildDevice("honeywell|zone${zonenum}")
   if (zonedevice) {
     zonedevice.zone("${zonestatus}")
@@ -229,9 +229,9 @@ private updatePartitions(partitionnum, partitionstatus, panelalpha) {
   // since our main partition is based on MAC address of the SmartThings Node Proxy
   // we already know which partition to update. Again, only supports single partition.
   def DNI=macAddr.replace(":","").toUpperCase()
-  log.debug "updatePartitions: ${DNI} is ${partitionstatus}"
+  ifDebug("updatePartitions: ${DNI} is ${partitionstatus}")
   def partitionDevice = getChildDevice(DNI)
-  log.debug "Partition Device: ${partitionDevice}"
+  ifDebug("Partition Device: ${partitionDevice}")
   if (partitionDevice) {
     partitionDevice.partition("${partitionstatus}", "${panelalpha}")
   }
@@ -246,6 +246,7 @@ def alarmHandler(evt) {
     return
   }
 
+  ifDebug("Received HSM event: ${evt.value}")
   state.alarmSystemStatus = evt.value
   if (evt.value == "armedHome") {
     sendCommandPlugin('/armStay')
@@ -268,17 +269,18 @@ private updateAlarmSystemStatus(partitionstatus) {
 
   def lastAlarmSystemStatus = state.alarmSystemStatus
   if (partitionstatus == "armedstay" || partitionstatus == "armedinstant") {
-    state.alarmSystemStatus = "stay"
+    state.alarmSystemStatus = "armedHome"
   }
   if (partitionstatus == "armedaway" || partitionstatus == "armedmax") {
-    state.alarmSystemStatus = "away"
+    state.alarmSystemStatus = "armedAway"
   }
   if (partitionstatus == "ready") {
-    state.alarmSystemStatus = "off"
+    state.alarmSystemStatus = "disarm"
   }
 
   if (lastAlarmSystemStatus != state.alarmSystemStatus) {
-    sendLocationEvent(name: "alarmSystemStatus", value: state.alarmSystemStatus)
+	ifDebug("Sending HSM Event: ${state.alarmedSystemStatus}")
+    sendLocationEvent(name: "hsmSetArm", value: state.alarmSystemStatus)
   }
 }
 
@@ -289,8 +291,8 @@ private getProxyAddress() {
 private getNotifyAddress() {
   // only support single hub.
   def hub = location.hubs[0] 
-  log.debug "Hubitat IP: ${hub.getDataValue("localIP")}"
-  log.debug "Hubitat LAN Port: ${hub.getDataValue("localSrvPortTCP")}"
+  ifDebug("Hubitat IP: ${hub.getDataValue("localIP")}")
+  ifDebug("Hubitat LAN Port: ${hub.getDataValue("localSrvPortTCP")}")
   return hub.getDataValue("localIP") + ":" + hub.getDataValue("localSrvPortTCP")
 }
 
