@@ -185,18 +185,6 @@ private processEvent(evt) {
 }
 
 private addChildDevices(partitions, zones) {
-  // since we already created the partition above so we could have comms to Hubitat,
-  // skip it here. 
-  //partitions.each {
-    //def deviceId = 'honeywell|partition'+it.partition
-	//def hub = location.hubs[0]
-	//log.debug "Adding Child Device (partition): ${deviceId}"
-    //if (!getChildDevice(deviceId)) {
-      //addChildDevice("redloro-smartthings", "Honeywell Partition", deviceId, hub.id, ["name": "Honeywell Security", label: "Honeywell Security", completedSetup: true])
-      //log.debug "Added partition device: ${deviceId} $hub"
-    //}
-  //}
-
   zones.each {
     def deviceId = 'honeywell|zone'+it.zone
 	def hub = location.hubs[0]
@@ -263,7 +251,7 @@ def alarmHandler(evt) {
 }
 
 private updateAlarmSystemStatus(partitionstatus) {
-  if (!settings.enableSHM || partitionstatus == "arming") {
+  if (!settings.enableHSM || partitionstatus == "arming") {
     return
   }
 
