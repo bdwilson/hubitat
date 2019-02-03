@@ -56,19 +56,20 @@ def page1() {
       }
     }
 
-    section("Smart Home Monitor") {
-      input "enableSHM", "bool", title: "Integrate with Smart Home Monitor", required: true, defaultValue: true
+    section("Hubitat Safety Monitor") {
+      input "enableHSM", "bool", title: "Integrate with Hubitat Safety Monitor", required: true, defaultValue: true
     }
   }
 }
 
 def installed() {
+  unsubscribe()
   subscribeToEvents()
 }
 
 def subscribeToEvents() {
   subscribe(location, null, lanResponseHandler, [filterEvents:false])
-  subscribe(location, "alarmSystemStatus", alarmHandler)
+  subscribe(location, "hsmStatus", alarmHandler)
 }
 
 def uninstalled() {
@@ -76,6 +77,7 @@ def uninstalled() {
 }
 
 def updated() {
+  unsubscribe()
   subscribeToEvents()
   if (settings.enableDiscovery) {
     //remove child devices as we will reload
@@ -233,7 +235,7 @@ private updatePartitions(partitionnum, partitionstatus, panelalpha) {
 }
 
 def alarmHandler(evt) {
-  if (!settings.enableSHM) {
+  if (!settings.enableHSM) {
     return
   }
 
@@ -242,13 +244,16 @@ def alarmHandler(evt) {
   }
 
   state.alarmSystemStatus = evt.value
-  if (evt.value == "stay") {
+  if (evt.value == "armedHome") {
     sendCommandPlugin('/armStay')
   }
-  if (evt.value == "away") {
+  if (evt.value == "armedNight") {
+    sendCommandPlugin('/armStay')
+  }
+  if (evt.value == "armedAway") {
     sendCommandPlugin('/armAway')
   }
-  if (evt.value == "off") {
+  if (evt.value == "disarmed") {
     sendCommandPlugin('/disarm')
   }
 }
