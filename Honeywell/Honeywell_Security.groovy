@@ -128,14 +128,14 @@ def lanResponseHandler(evt) {
   def map = parseLanMessage(evt)
   def jsonMap = parseLanMessage(evt).json
   
-  ifDebug("map: ${map}")
-  ifDebug("My Body: ${map.body}")
-  ifDebug("My Headers: ${map.headers}")
+  //ifDebug("map: ${map}")
+  //ifDebug("My Body: ${map.body}")
+  //ifDebug("My Headers: ${map.headers}")
 
    //def parsedEvent = parseLanMessage(fromChildDev).json
   def type = jsonMap?.type
-  ifDebug("type of update: ${type}")
-  ifDebug("header?: ${map.headers.'stnp-plugin'}")
+  //ifDebug("type of update: ${type}")
+  //ifDebug("header?: ${map.headers.'stnp-plugin'}")
   //verify that this message is for this plugin
   if (map.headers.'stnp-plugin' != settings.pluginType) {
       return
