@@ -279,7 +279,7 @@ private updateAlarmSystemStatus(partitionstatus) {
   }
 
   if (lastAlarmSystemStatus != state.alarmSystemStatus) {
-	ifDebug("Sending HSM Event: ${state.alarmedSystemStatus}")
+	ifDebug("Sending HSM Event to hsmSetArm: ${state.alarmedSystemStatus} (partition status: ${partitionstatus})")
     sendLocationEvent(name: "hsmSetArm", value: state.alarmSystemStatus)
   }
 }
