@@ -59,6 +59,9 @@ def page1() {
     section("Hubitat Safety Monitor") {
       input "enableHSM", "bool", title: "Integrate with Hubitat Safety Monitor", required: true, defaultValue: true
     }
+    section("") {
+       input "isDebug", "bool", title: "Enable Debug Logging", required: false, multiple: false, defaultValue: false, submitOnChange: true
+    }
   }
 }
 
@@ -289,4 +292,8 @@ private getNotifyAddress() {
   log.debug "Hubitat IP: ${hub.getDataValue("localIP")}"
   log.debug "Hubitat LAN Port: ${hub.getDataValue("localSrvPortTCP")}"
   return hub.getDataValue("localIP") + ":" + hub.getDataValue("localSrvPortTCP")
+}
+
+private ifDebug(msg) {  
+    if (msg && state.isDebug)  log.debug 'Honeywell Security: ' + msg  
 }
