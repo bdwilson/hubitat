@@ -66,8 +66,7 @@ def page1() {
 }
 
 def installed() {
-  unsubscribe()
-  subscribeToEvents()
+	updated()
 }
 
 def subscribeToEvents() {
@@ -87,6 +86,7 @@ def updated() {
     removeChildDevices()
   }
 
+  state.alarmSystemStatus
 
   //subscribe to callback/notifications from STNP
   sendCommand('/subscribe/'+getNotifyAddress())
@@ -267,7 +267,7 @@ private updateAlarmSystemStatus(partitionstatus) {
   }
 
   if (lastAlarmSystemStatus != state.alarmSystemStatus) {
-	ifDebug("Sending HSM Event to hsmSetArm: ${state.alarmedSystemStatus} (partition status: ${partitionstatus})")
+	ifDebug("Sending HSM Event to hsmSetArm: ${state.alarmSystemStatus} (partition status: ${partitionstatus})")
     sendLocationEvent(name: "hsmSetArm", value: state.alarmSystemStatus)
   }
 }
