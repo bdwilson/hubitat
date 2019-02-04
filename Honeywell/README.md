@@ -54,15 +54,14 @@ running on.
 
 # To Do.
 
-1) I have no idea if SHM works, or Hubitat's version works. 
-2) No idea how to make buttons for partition. This might just work?
-3) I realize native interfaces to Envisalink TPI for Vista/Ademco would be
-better; but the node-proxy setup has been working so well with SmartThings, why reinvent the
+1) ~~I have no idea if SHM works, or Hubitat's version.~~ Has been updated for 2-way integration with HSM. 
+2) ~~No idea how to make buttons for partition. This might just work?~~ Not necessary with Hubitat.  
+3) I realize native interfaces to Envisalink TPI for Vista/Ademco would be better; but the node-proxy setup has been working so well with SmartThings, why reinvent the
 wheel.
 
 # Questions/Comments
 Bug me on Twitter at [@brianwilson](http://twitter.com/brianwilson) or email me
 [here](http://cronological.com/comment.php?ref=bubba) or on the [Hubitat
-community](https://community.hubitat.com/)/@brianwilson.
+community](https://community.hubitat.com/t/release-envisalink-app-driver-for-vista-ademco-honeywell-alarm-via-smartthings-nodeproxy/9726)/@brianwilson.
 
 
