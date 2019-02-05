@@ -11,6 +11,8 @@
  *  Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
  *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
  *  for the specific language governing permissions and limitations under the License.
+ * 
+ *  Version: 1.0.0
  */
 import groovy.json.JsonSlurper
 
@@ -257,10 +259,10 @@ private updateAlarmSystemStatus(partitionstatus) {
 
   def lastAlarmSystemStatus = state.alarmSystemStatus
   if (partitionstatus == "armedstay" || partitionstatus == "armedinstant") {
-    state.alarmSystemStatus = "armedHome"
+    state.alarmSystemStatus = "armHome"
   }
   if (partitionstatus == "armedaway" || partitionstatus == "armedmax") {
-    state.alarmSystemStatus = "armedAway"
+    state.alarmSystemStatus = "armAway"
   }
   if (partitionstatus == "ready") {
     state.alarmSystemStatus = "disarm"
