@@ -50,7 +50,7 @@ use the TCC app or website or thermstat to verify, because you'll eventually
 turn them off.
 
 Your events should look like this:
-!(https://github.com/bdwilson/bdwilson.github.io/blob/master/images/HoneywellTCC.png)
+![IFTTT Configuration](https://github.com/bdwilson/bdwilson.github.io/blob/master/images/HoneywellTCC.png)
 
 Next, install your driver.
 
@@ -60,7 +60,7 @@ Next, install your driver.
 4) Scroll to the bottom of the list and select ''Honeywell TCC IFTTT Thermostat Driver''
 5) Configure your command names to match what you configured above at IFTTT. It
 should look similar to this:
-!(https://github.com/bdwilson/bdwilson.github.io/blob/master/images/HoneywellTCC2.png)
+![Hubitat Configuration](https://github.com/bdwilson/bdwilson.github.io/blob/master/images/HoneywellTCC2.png)
 6) If you want to do perm holds unstead of holds for a # of hours, adjust your
 ''Hold#'' number, otherwise, all your changes will be permanent until you do a
 ''setFollowSchedule''.
