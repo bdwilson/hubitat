@@ -97,6 +97,14 @@ def setCoolingSetpoint(double temp) {
 	}
 }
 
+def setThermostatFanMode(mode) {
+	if (mode == "auto") {
+		fanAuto()
+	} else {
+		fanOn()
+	}
+}
+
 def fanOn() {	
 	logDebug("Settings: ${settings.fanModeOn}")
 	ifttt_call(settings.fanModeOn,"fanOperatingState",parm1:'on')  	
