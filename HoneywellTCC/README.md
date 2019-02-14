@@ -74,6 +74,6 @@ A: Setup two drivers per thermostat, use the same webhooks, but change the drive
 # Questions/Comments/Pull Requests
 Bug me on Twitter at [@brianwilson](http://twitter.com/brianwilson) or email me
 [here](http://cronological.com/comment.php?ref=bubba) or on the [Hubitat
-community](https://community.hubitat.com/)/@brianwilson.
+community](https://community.hubitat.com/t/honeywell-tcc-ifttt-driver/10385)/@brianwilson.
 
 
