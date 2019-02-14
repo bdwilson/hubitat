@@ -67,6 +67,10 @@ should look similar to this:
 7) Check the logs to see if things are working, if so, turn off debug.
 Remember, not everything works just what's listed above at the top of the page.
 
+# Questions
+Q: What if I want to do permanent holds and temp holds?
+A: Setup two drivers per thermostat, use the same webhooks, but change the driver options. 
+
 # Questions/Comments/Pull Requests
 Bug me on Twitter at [@brianwilson](http://twitter.com/brianwilson) or email me
 [here](http://cronological.com/comment.php?ref=bubba) or on the [Hubitat
