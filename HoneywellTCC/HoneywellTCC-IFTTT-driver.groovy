@@ -1,7 +1,7 @@
 /**
 * IFTTT Thermostat Driver for Hubitat
 *
-* v1.0
+* v1.1
 */
 metadata {
     definition (name: "Honeywell IFTTT Thermostat Driver", namespace: "brianwilson-hubitat", author: "Brian Wilson") {
