@@ -12,7 +12,7 @@
  *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
  *  for the specific language governing permissions and limitations under the License.
  * 
- *  Version: 1.0.0
+ *  Version: 1.0.1
  */
 import groovy.json.JsonSlurper
 
@@ -33,6 +33,7 @@ preferences {
 }
 
 def page1() {
+  state.isDebug = isDebug
   dynamicPage(name: "page1", install: true, uninstall: true) {
 	// Only support single hub
     //section("SmartThings Hub") {
@@ -47,7 +48,7 @@ def page1() {
     section("Honeywell Panel") {
       input name: "pluginType", type: "enum", title: "Plugin Type", required: true, submitOnChange: true, options: ["envisalink", "ad2usb"]
       input "securityCode", "password", title: "Security Code", description: "User code to arm/disarm the security panel", required: false
-      input "enableDiscovery", "bool", title: "Discover Zones (WARNING: /dall existing zones will be removed)", required: false, defaultValue: false
+      input "enableDiscovery", "bool", title: "Discover Zones (WARNING: All existing zones will be removed and recreated and mess up any existing rules that rely on zones.)", required: false, defaultValue: false
     }
 
     if (pluginType == "envisalink") {
@@ -72,12 +73,12 @@ def installed() {
 }
 
 def subscribeToEvents() {
-  subscribe(location, null, lanResponseHandler, [filterEvents:false])
-  subscribe(location, "hsmStatus", alarmHandler)
+	subscribe(location, null, lanResponseHandler, [filterEvents:false])
+  	subscribe(location, "hsmStatus", alarmHandler)
 }
 
 def uninstalled() {
-  removeChildDevices()
+ 	removeChildDevices()
 }
 
 def updated() {
@@ -105,44 +106,28 @@ def updated() {
 
   if (settings.enableDiscovery) {
     //delay discovery for 5 seconds
-    def DNI=macAddr.replace(":","").toUpperCase()
-    try{
-		// create primary parition, so that we can communicate via LAN to Hubitat.
-		// only 1 partition supported at this time. 
-		log.info "Attempting to create Honeywell Security"
-		addChildDevice("brianwilson-hubitat", "Honeywell Partition", DNI)
-    }catch(IllegalArgumentException e){
-        log.info "Honeywell Security already exists"
-        log.info e
-    }
+	def DNI=macAddr.replace(":","").toUpperCase()
+	ifDebug("Creating Honeywell Security Child")
+	addChildDevice("brianwilson-hubitat", "Honeywell Partition", DNI)
 	state.installed = true
     runIn(5, discoverChildDevices)
-	ifDebug("Running discover")
     settings.enableDiscovery = false
   }
 }
 
-// This was a big help here:
-// https://github.com/xxKeoxx/hubitat/blob/master/homecloudhub/app/homecloudhub.groovy 
-def lanResponseHandler(evt) {
-  // I'm sure this could be done better; Need to extract header in map
-  // but also need the body in json format. 
-  def map = parseLanMessage(evt)
-  def jsonMap = parseLanMessage(evt).json
-  
-  //ifDebug("map: ${map}")
-  //ifDebug("My Body: ${map.body}")
-  //ifDebug("My Headers: ${map.headers}")
-
-   //def parsedEvent = parseLanMessage(fromChildDev).json
-  def type = jsonMap?.type
-  //ifDebug("type of update: ${type}")
-  //ifDebug("header?: ${map.headers.'stnp-plugin'}")
-  //verify that this message is for this plugin
-  if (map.headers.'stnp-plugin' != settings.pluginType) {
-      return
-   }
-  processEvent(jsonMap)
+def lanResponseHandler(fromChildDev) {
+	try {
+    	def parsedEvent = parseLanMessage(fromChildDev).json
+		def description = parsedEvent?.description
+		def map = parseLanMessage(fromChildDev)
+  		if (map.headers.'stnp-plugin' != settings.pluginType) {
+      		return
+  		}
+  		processEvent(parsedEvent)
+	} catch(MissingMethodException) {
+		// these are events with description: null and data: null, so we'll just pass.
+		pass
+	}
 }
 
 private sendCommandPlugin(path) {
@@ -182,7 +167,7 @@ private processEvent(evt) {
   }
   if (evt.type == "partition") {
     updatePartitions(evt.partition, evt.state, evt.alpha)
-    updateAlarmSystemStatus(evt.state)
+    updateAlarmSystemStatus(evt.state,evt.alpha)
   }
 }
 
@@ -232,11 +217,16 @@ def alarmHandler(evt) {
     return
   }
 
+  // deal with when you have just set hsmSetArm=disarm  
+  // and received the event hsmStatus=disarmed 
+  if ((state.alarmSystemStatus == "disarm") && (evt.value == "disarmed")) {
+	return
+  }
   if (state.alarmSystemStatus == evt.value) {
     return
   }
 
-  ifDebug("Received HSM event: ${evt.value}")
+  ifDebug("Received HSM event: Value: ${evt.value} state.alarmSystemStatus: ${state.alarmSystemStatus}")
   state.alarmSystemStatus = evt.value
   if (evt.value == "armedHome") {
     sendCommandPlugin('/armStay')
@@ -252,8 +242,8 @@ def alarmHandler(evt) {
   }
 }
 
-private updateAlarmSystemStatus(partitionstatus) {
-  if (!settings.enableHSM || partitionstatus == "arming") {
+private updateAlarmSystemStatus(partitionstatus,alpha) {
+  if (!settings.enableHSM || partitionstatus == "arming" || alpha.contains("May Exit")) {
     return
   }
 
