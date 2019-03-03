@@ -12,5 +12,5 @@ Requirements
 Setup
 ---
 Here's pictures of my setup
-![](https://bdwilson.github.io/images/IMG_9005.JPG | width=100)
-![](https://bdwilson.github.io/images/IMG_9006.JPG | width=100)
+![](https://bdwilson.github.io/images/IMG_9005.JPG =100x)
+![](https://bdwilson.github.io/images/IMG_9006.JPG =100x)
