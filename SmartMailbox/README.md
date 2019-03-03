@@ -11,6 +11,7 @@ Requirements
 
 Setup
 ---
-Here's pictures of my setup
-<img src="https://bdwilson.github.io/images/IMG_9005.JPG" width="100">
-<img src="https://bdwilson.github.io/images/IMG_9006.JPG" width="100">
+Here's pictures of my setup:
+<br>
+<img src="https://bdwilson.github.io/images/IMG_9005.JPG" width="400"><br>
+<img src="https://bdwilson.github.io/images/IMG_9006.JPG" width="400">
