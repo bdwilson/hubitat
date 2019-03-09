@@ -15,7 +15,7 @@
  */
 definition(
     name: "Geohopper Multi-User API Presence App",
-    namespace: "bw",
+    namespace: "brianwilson-hubitat",
     author: "Brian Wilson",
     description: "Geohopper API Presence App",
     category: "My Apps",
@@ -38,14 +38,15 @@ def setupScreen(){
         //enable OAuth in the app settings or this call will fail
         createAccessToken()	
     }
-    def uri = getFullLocalApiServerUrl() + "/?access_token=${state.accessToken}"
-	def extUri = fullApiServerUrl() + "/?access_token=${state.accessToken}"
+ 	def uri = getFullLocalApiServerUrl() + "/location/?access_token=${state.accessToken}"
+    def extUri = fullApiServerUrl() + "/?access_token=${state.accessToken}"
+    extUri = extUri.replaceAll("null","location")
     return dynamicPage(name: "setupScreen", uninstall: true, install: true){
 		section ("Allow external service to control these things...") {
     		input "presence", "capability.presenceSensor", multiple: true, required: true
     	}
         section(){ 
-            paragraph("Use the following URI to access the page: <a href='${uri}'>${uri}</a> or <a href='${extUri}'>${extUri}</a> for external access.")
+            paragraph("Use the following as the base URI for GeoHopper; but follow instructions: <a href='${extUri}'>${extUri}</a>. If for some reason you want to use the Internal URI it would be <a href='${uri}'>${uri}</a>, however it's inaccessible from outside your home. ")
         }
 	    section("") {
        		input "isDebug", "bool", title: "Enable Debug Logging", required: false, multiple: false, defaultValue: false, submitOnChange: true
@@ -72,19 +73,23 @@ def listLocations() {
 
 def deviceHandler(evt) {}
 
-void correctURL () {
-	 httpError(200, "Yep, this is the right URL. But do a POST to /location/${params.user}")
+def correctURL () {
+	def msg = ["Yep, this is the right URL, just put it into GeoHopper Web Hook, set to POST and do a test. Make sure your GeoHopper location name matches the device '<location>-${params.user}'"]
+	ifDebug("${msg}")
+	return msg
 }
 
-void validCommands() {
-	 httpError(200, "Valid Commands: /listLocations, /location/<user>")
+def validCommands() {
+	def msg = ["Valid Commands: GET:/listLocations, POST:/location/<user>, GET:/location/<user> (to verify correct URL only)"]
+	ifDebug("${msg}")
+	return msg
 }
 
 void updateLocation() {
     update(presence)
 }
 
-private void update (devices) {
+def update (devices) {
    	def data = request.JSON
    	def location = data.location
    	def event = data.event
@@ -93,16 +98,21 @@ private void update (devices) {
     def device = devices.find { it.displayName == deviceName }
    	ifDebug("event: ${event} device: ${device} location: ${location} user: ${user} deviceName: ${deviceName}")
    
-   	if (location){
+ 	if (location){
         if (!device) {
-        	ifDebug("Error: device (${device}) not found. Make sure a device a virtual mobile presense device exists with Device Name of: ${device}")
-            httpError(404, "Device not found")
-     	} else {
+			def msg = ["Error: device (${device}) not found. Make sure a device a virtual mobile presense device exists with Device Name of: ${device}"]
+			ifDebug("${msg}")
+            //httpError(404, "Device not found")
+			return msg
+        } else {
             if(event == "LocationExit"){
-            	ifDebug("Turning Device ${device} off; ${user} єxited ${location}")
+                ifDebug("Turning Device ${device} off; ${user} єxited ${location}")
                 device.off();
-            } else { 
-            	ifDebug("Turning ${device} on; ${user} entered ${location}")
+			} else if (event == "LocationTest") {
+				ifDebug("Successfully tested ${device} for ${user} at ${location}. Assuming you entered and turning ${device} on.")
+				device.on();
+            } else {
+                ifDebug("Turning ${device} on; ${user} entered ${location}")
                 device.on();
             }
         }
@@ -120,6 +130,11 @@ mappings {
             GET: "listLocations"
         ]
     }
+	path("/location") {
+		action: [
+			GET: "validCommands"
+		]
+	}
     path("/location/:user") {
     	action: [
             POST: "updateLocation",
@@ -131,3 +146,4 @@ mappings {
 private ifDebug(msg) {  
     if (msg && state.isDebug)  log.debug 'GeoHopper-MultiUser-Presence: ' + msg  
 }
+
