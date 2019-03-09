@@ -2,8 +2,7 @@ GeoHopper Multi-User Virtual Presence Updater for Hubitat
 =======
 <br>
 GeoHopper is an app for iOS and Android that uses either device GPS or
-Bluetooth LE to GeoHopper
-[iBeacons](http://store.twocanoes.com/collections/ibeacons). This device
+Bluetooth LE to GeoHopper [iBeacons](http://store.twocanoes.com/collections/ibeacons). This device
 driver and SmartApp will allow you to use Bluetooth on your mobile
 device to set presence in SmartThings. This means you can now get accurate
 presence without using GPS and without using a presence sensor.
@@ -12,7 +11,7 @@ Requirements
 ------------
 To get started you'll need:
 - [GeoHopper](https://itunes.apple.com/us/app/geohopper/id605160102?mt=8).
-- An iBeacon (or you can use GPS in the GeoHopper). 
+- An iBeacon (Optional; or you can use GPS in the GeoHopper App). 
 - Hubitat Hub
 	- [A Virtual Presence Device](https://github.com/ajpri/STApps/blob/master/devicetypes/ajpri/virtual-mobile-presence.src/virtual-mobile-presence.groovy)
 	- A Hubitat app assigned to your Virtual Presence Device
