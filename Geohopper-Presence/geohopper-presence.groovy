@@ -15,9 +15,9 @@
  */
 definition(
     name: "Geohopper Multi-User API Presence App",
-    namespace: "brianwilson-hubitat",
+    namespace: "bw",
     author: "Brian Wilson",
-    description: "Geohopper Multi-User API Presence App",
+    description: "Geohopper API Presence App",
     category: "My Apps",
     iconUrl: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience.png",
     iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
@@ -33,6 +33,7 @@ import groovy.json.JsonSlurper
 import groovy.json.JsonOutput
 
 def setupScreen(){
+    state.isDebug = isDebug
     if(!state.accessToken){	
         //enable OAuth in the app settings or this call will fail
         createAccessToken()	
@@ -46,28 +47,24 @@ def setupScreen(){
         section(){ 
             paragraph("Use the following URI to access the page: <a href='${uri}'>${uri}</a> or <a href='${extUri}'>${extUri}</a> for external access.")
         }
+	    section("") {
+       		input "isDebug", "bool", title: "Enable Debug Logging", required: false, multiple: false, defaultValue: false, submitOnChange: true
+    	}
     }
 }
 
 def installed() {
-	log.debug "Installed with settings: ${settings}"
-	initialize()
+	ifDebug("Installed with settings: ${settings}")
 }
 
 def updated() {
-	log.debug "Updated with settings: ${settings}"
-	unsubscribe()
-	initialize()
-}
-
-def initialize() {
-	// TODO: subscribe to attributes, devices, locations, etc.
+	ifDebug("Updated with settings: ${settings}")
 }
 
 def listLocations() {
     def resp = []
     presence.each {
-      log.debug "RECEIVED: ${it.displayName}, attribute ${it.name}, ID: ${it.id}"
+      ifDebug("RECEIVED: ${it.displayName}, attribute ${it.name}, ID: ${it.id}")
       resp << [Name: it.displayName, ID: it.id]
     }
     return resp
@@ -76,7 +73,7 @@ def listLocations() {
 def deviceHandler(evt) {}
 
 void correctURL () {
-	 httpError(200, "Yep, this is the right URL.")
+	 httpError(200, "Yep, this is the right URL. But do a POST to /location/${params.user}")
 }
 
 void validCommands() {
@@ -88,35 +85,24 @@ void updateLocation() {
 }
 
 private void update (devices) {
-   
-	// worked on ST :(
-	//def data = request.JSON
-    //def location = data.location
-    //def event = data.event
-   	def jsonSlurper = new JsonSlurper()
-    def plexJSON = params.findAll { key,value -> key =~ /location/ } 
-	def firstKey = plexJSON.keySet().stream().findFirst().get();
-	def json = jsonSlurper.parseText(firstKey)
-	log.debug "json: ${json.location}"
-	log.debug "json event ${json.event}"
-	def location = json.location
-   	def event = json.event
+   	def data = request.JSON
+   	def location = data.location
+   	def event = data.event
    	def user = params.user
    	def deviceName = location + "-" + user
-   	def device = devices.find { it.displayName == deviceName }
-   	log.debug "update, request: params: ${params}, data, ${data}, devices: $devices.id, $devices.displayName"
-   	log.debug "event: ${event} device: ${device} location: ${location} user: ${user} deviceName: ${deviceName}"
+    def device = devices.find { it.displayName == deviceName }
+   	ifDebug("event: ${event} device: ${device} location: ${location} user: ${user} deviceName: ${deviceName}")
    
    	if (location){
         if (!device) {
-        	log.debug "Error: device (${device}) not found"
+        	ifDebug("log.debug "Error: device (${device}) not found")
             httpError(404, "Device not found")
      	} else {
             if(event == "LocationExit"){
-            	log.debug "Turning device off"
+            	logDebug("Turning ${device} off")
                 device.off();
             } else { 
-            	log.debug "Turning device on"
+            	logDebug("Turning ${device} on")
                 device.on();
             }
         }
@@ -140,4 +126,8 @@ mappings {
             GET: "correctURL"
         ]
     }
+}
+
+private ifDebug(msg) {  
+    if (msg && state.isDebug)  log.debug 'GeoHopper-MultiUser-Presence' + msg  
 }
