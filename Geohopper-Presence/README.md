@@ -37,7 +37,7 @@ Above]'''.  This will be your URL to configure in GeoHopper.  It should look
 something like this:
 http://192.168.1.xx/apps/api/xx/location/[your user]?access_token=adafae03-0330-4aeb-b15e-xxxxxxxx
 or https://cloud.hubitat.com/api/xxx-xxx-xx-xxx/apps/xx/location/[your user]?access_token=adafae03-0330-4
-aeb-b15e-xxxxxxxxx.  For the example in #2 above, [your user] is Brian.  
+aeb-b15e-xxxxxxxxx.  For the example in #2 above, [your user] is Brian. <b>If you have "null" listed in your URL, replace that with /location/name?access_token=xxxx</br>
 6. Now paste this URL into your browser and make sure you get the following
 response:
 <code>{"error":true,"type":"SmartAppException","message":"Yep, this is the right URL."} </code>

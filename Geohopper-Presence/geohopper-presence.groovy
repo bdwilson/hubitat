@@ -95,14 +95,14 @@ private void update (devices) {
    
    	if (location){
         if (!device) {
-        	ifDebug("log.debug "Error: device (${device}) not found")
+        	ifDebug("Error: device (${device}) not found. Make sure a device a virtual mobile presense device exists with Device Name of: ${device}")
             httpError(404, "Device not found")
      	} else {
             if(event == "LocationExit"){
-            	logDebug("Turning ${device} off")
+            	ifDebug("Turning Device ${device} off; ${user} єxited ${location}")
                 device.off();
             } else { 
-            	logDebug("Turning ${device} on")
+            	ifDebug("Turning ${device} on; ${user} entered ${location}")
                 device.on();
             }
         }
@@ -129,5 +129,5 @@ mappings {
 }
 
 private ifDebug(msg) {  
-    if (msg && state.isDebug)  log.debug 'GeoHopper-MultiUser-Presence' + msg  
+    if (msg && state.isDebug)  log.debug 'GeoHopper-MultiUser-Presence: ' + msg  
 }
