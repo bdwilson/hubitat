@@ -21,9 +21,8 @@ Installation
 1. Go to Drivers Code and create a new device using [virtual-mobile-presence.groovy](https://github.com/ajpri/STApps/blob/master/devicetypes/ajpri/virtual-mobile-presence.src/virtual-mobile-presence.groovy).
 2. Go to Devices and create a new virtual device '''name it whatever the location name will be called in
 GeoHopper with a - and a USER after it'''. Mine are called "Virtual Presence-Brian" and "Virtual Presence-Spawn1".  Network Device ID can be
-'''VIRTUAL_PRESENCE_1''' for the first. Type will be
-the type you configured in step 1.  Make sure Location and/or Hub is selected
-and select create. For this example, mine is named "Virtual Presence - Brian" and my
+'''VIRTUAL_PRESENCE_1''' for the first. Device Type will be
+the type you configured in step 1. For this example, mine is named "Virtual Presence-Brian" and my
 Geohopper location in #8 below is named "Virtual Presence". You can create multiple
 virtual devices and give them different names after the "-" then you can
 reference them after the location below in #5 and use that new webhook in #8.
@@ -36,13 +35,14 @@ something like this (without the []): https://cloud.hubitat.com/api/xxx-xxx-xx-x
 6. Now paste this URL into your browser and make sure you get the following
 response:
 <code>["Yep, this is the right URL, just put it into GeoHopper Web Hook, set to POST and do a test. Make sure your GeoHopper location name matches the device '<location>-Brian'"]</code>
-7. Install GeoHopper app and your iBeacon.  In the app, go to Settings->Web
+7. Install GeoHopper app and your iBeacon (optional).  In the app, go to Settings->Web
 Service and configure a new web service using the URL above and 
-select "Post". You can
+select "Post" (text yourself the url and copy/paste it). You can
 select Execute Locally if the server will be on the same network your mobile
-device is on when the triggers need to run. 
+device is on when the triggers need to run, but I always use the external URL
+in situations where location will be outside my wifi range. 
 8. Configure a GeoHopper location or rename your iBeacon to be whatever the
-name of your device was in step 2 (minus the "- Name" part since that will get
+name of your device was in step 2 (minus the "-Name" part since that will get
 passed on your webhook URL).  For this location, enable your web service
 and perform a test.  It should perform the "On" or "Present" action (check your
  Hubitat device to make sure you see the logs rolling in.  If not, make sure
