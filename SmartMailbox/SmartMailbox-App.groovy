@@ -15,6 +15,7 @@ definition(
     iconX3Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png")
 
 preferences {
+	state.isDebug = isDebug
 	section("Choose one or more, when..."){
 		input "contact", "capability.contactSensor", title: "Contact Opens", required: false, multiple: true
 	}
@@ -22,44 +23,83 @@ preferences {
 		input "messageText", "Your mail was delivered", title: "Mail Delivered?", required: false
 		input "sendPushMessage", "capability.notification", title: "Send a Pushover notification?", multiple: true, required: true, submitOnChange: true
 	}
-
-	section("Minimum time between messages (optional, defaults to every message)") {
-		input "frequency", "decimal", title: "Minutes", required: false
-	}
-    section("Only notify between these times of day") {
+	
+	section("Only notify between these times of day") {
 			input "starting", "time", title: "Starting", required: false 
 			input "ending", "time", title: "Ending", required: false 
 	}
+	section("Minimum time between messages (optional, defaults to every message) - don't use if using 'Notify every other' below.") {
+		input "frequency", "decimal", title: "Minutes", required: false
+	}
+	section("Notify every other time mailbox is open (resets nightly; uses the above 'between these times' schedule if set)") {
+       input "notifyEveryOther", "bool", title: "Notify every other time", required: false, multiple: false, defaultValue: false, submitOnChange: true
+       input "notifyFirstTime", "bool", title: "Notify First Time? (otherwise second)", required: false, multiple: false, defaultValue: false, submitOnChange: true
+
+	}
+	section("") {
+       		input "isDebug", "bool", title: "Enable Debug Logging", required: false, multiple: false, defaultValue: false, submitOnChange: true
+    }
+ 
 }
 
 def installed() {
-	log.debug "Installed with settings: ${settings}"
+	ifDebug("Installed with settings: ${settings}")
 	subscribeToEvents()
 }
 
 def updated() {
-	log.debug "Updated with settings: ${settings}"
+	ifDebug("Updated with settings: ${settings}")
 	unsubscribe()
 	subscribeToEvents()
 }
 
+def uninstall() {
+	unschedule()
+}
+
 def subscribeToEvents() {
+	state.isDebug=false
 	subscribe(contact, "contact.open", eventHandler)
 	subscribe(contactClosed, "contact.closed", eventHandler)
+	if (settings.notifyEveryOther) {
+		ifDebug("Setting notifyEveryOther active")
+			resetNotify()
+		    unschedule()
+			schedule("0 0 0 ? * * *", resetNotify)
+	}
+	if (settings.isDebug) {
+		state.isDebug=true
+	}
+}
+
+def resetNotify() {
+	if (settings.notifyFirstTime) {
+		state.notifyEveryOther = 0
+	} else {
+		state.notifyEveryOther = 1
+	}	
 }
 
 def eventHandler(evt) {
 	if (timeOk) {
-    	if (frequency) {
+		if ((settings.notifyEveryOther) && (state.notifyEveryOther % 2 == 0)) {
+			ifDebug("notifyEveryOther= ${state.notifyEveryOther}") 
+			sendMessage(evt)
+		} else if (frequency) {
 			def lastTime = state[evt.deviceId]
+			def curDiff = now() - lastTime
+			def freq = frequency * 60000
+			ifDebug("Last Time: ${lastTime}, currDiff: ${currDiff}, frequency: ${frequency}, freq: ${freq}")
 			if (lastTime == null || now() - lastTime >= frequency * 60000) {
 				sendMessage(evt)
 			}
-		}
-		else {
+		} else if (!settings.notifyEveryOther) {
 			sendMessage(evt)
 		}
     }
+	if (settings.notifyEveryOther) {
+		state.notifyEveryOther+=1
+	}
 }
 
 private sendMessage(evt) {
@@ -67,12 +107,9 @@ private sendMessage(evt) {
 	if (messageText) {
 		msg = messageText
 	}
-	log.debug "$evt.name:$evt.value '$msg'"
+	ifDebug("$evt.name:$evt.value '$msg'")
 	sendPushMessage.deviceNotification(msg)
-
-	if (frequency) {
-		state[evt.deviceId] = now()
-	}
+	state[evt.deviceId] = now()
 }
 
 private getTimeOk() {
@@ -91,6 +128,10 @@ private getTimeOk() {
     	result = currTime <= stop
     }
     
-	log.trace "timeOk = $result"
+	ifDebug("timeOk = $result")
 	result
+}
+
+private ifDebug(msg) {  
+    if (msg && state.isDebug)  log.debug 'SmartMailbox: ' + msg  
 }
