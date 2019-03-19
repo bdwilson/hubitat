@@ -60,8 +60,8 @@ def parse(String description) {
     }
     //if (result) log.debug "Parse returned ${result}"
     def statusTextmsg = ""
-    statusTextmsg = "Min was ${device.currentState('powerOne')?.value}\nMax was ${device.currentState('powerTwo')?.value}"
-    sendEvent("name":"statusText", "value":statusTextmsg)
+   // statusTextmsg = "Min was ${device.currentState('powerOne')?.value}\nMax was ${device.currentState('powerTwo')?.value}"
+   // sendEvent("name":"statusText", "value":statusTextmsg)
     //log.debug statusTextmsg
     return result
 }
@@ -132,7 +132,7 @@ def zwaveEvent(hubitat.zwave.commands.batteryv1.BatteryReport cmd) {
 
 def zwaveEvent(hubitat.zwave.Command cmd) {
     // Handles all Z-Wave commands we aren't interested in
-    log.debug "Unhandled event ${cmd}"
+    //log.debug "Unhandled event ${cmd}"
     [:]
 }
 
@@ -189,23 +189,29 @@ def resetmaxmin() {
 
 def configure() {
     log.debug "${device.name} configuring device"
-    def cmd = delayBetween([
-    	//zwave.configurationV1.configurationSet(parameterNumber: 255, size: 4, scaledConfigurationValue: 1).format() 	// Performs a complete factory reset.  Use this all by itself and comment out all others below.  Once reset, comment this line out and uncomment the others to go back to normal
-    
-        zwave.configurationV1.configurationSet(parameterNumber: 3, size: 1, scaledConfigurationValue: 1).format(),      // Disable selective reporting, so always update based on schedule below <set to 1 to reduce network traffic>
-        zwave.configurationV1.configurationSet(parameterNumber: 4, size: 2, scaledConfigurationValue: 50).format(),     // (DISABLED by first option) Don't send unless watts have changed by 25 <default is 50>
-        zwave.configurationV1.configurationSet(parameterNumber: 8, size: 1, scaledConfigurationValue: 10).format(),     // (DISABLED by first option) Or by 5% <default is 10>
+    if (kDelay == null) {               // Shouldn't have to do this, but there seem to be initialization errors
+                kDelay = 300
+        }
 
-        zwave.configurationV1.configurationSet(parameterNumber: 101, size: 4, scaledConfigurationValue: 4).format(),    // Combined energy in Watts
-        zwave.configurationV1.configurationSet(parameterNumber: 111, size: 4, scaledConfigurationValue: 30).format(),   // Every 30 Seconds (for Watts)
+        if (dDelay == null) {
+                dDelay = 30
+        }
 
-        zwave.configurationV1.configurationSet(parameterNumber: 102, size: 4, scaledConfigurationValue: 8).format(),    // Combined energy in kWh
-        zwave.configurationV1.configurationSet(parameterNumber: 112, size: 4, scaledConfigurationValue: 300).format(),   // every 5 minutes (for kWh)
-
-        zwave.configurationV1.configurationSet(parameterNumber: 103, size: 4, scaledConfigurationValue: 0).format(),    // Disable report 3
-        zwave.configurationV1.configurationSet(parameterNumber: 113, size: 4, scaledConfigurationValue: 0).format()     // Disable report 3
-      
-    ])
-
+        def cmd = delayBetween([
+                zwave.configurationV1.configurationSet(parameterNumber: 3, size: 1, scaledConfigurationValue: 0).format(),                      // Disable (=0) selective reporting
+                zwave.configurationV1.configurationSet(parameterNumber: 4, size: 2, scaledConfigurationValue: 50).format(),                     // Don't send whole HEM unless watts have changed by 30
+                zwave.configurationV1.configurationSet(parameterNumber: 5, size: 2, scaledConfigurationValue: 50).format(),                     // Don't send L1 Data unless watts have changed by 15
+                zwave.configurationV1.configurationSet(parameterNumber: 6, size: 2, scaledConfigurationValue: 50).format(),                     // Don't send L2 Data unless watts have changed by 15
+        zwave.configurationV1.configurationSet(parameterNumber: 8, size: 1, scaledConfigurationValue: 5).format(),                      // Or by 5% (whole HEM)
+        zwave.configurationV1.configurationSet(parameterNumber: 9, size: 1, scaledConfigurationValue: 5).format(),                      // Or by 5% (L1)
+        zwave.configurationV1.configurationSet(parameterNumber: 10, size: 1, scaledConfigurationValue: 5).format(),                     // Or by 5% (L2)
+                zwave.configurationV1.configurationSet(parameterNumber: 101, size: 4, scaledConfigurationValue: 6145).format(),         // Whole HEM and L1/L2 power in kWh
+                zwave.configurationV1.configurationSet(parameterNumber: 111, size: 4, scaledConfigurationValue: kDelay).format(),       // Default every 120 Seconds
+                zwave.configurationV1.configurationSet(parameterNumber: 102, size: 4, scaledConfigurationValue: 1573646).format(),  // L1/L2 for Amps & Watts, Whole HEM for Amps, Watts, & Volts
+                zwave.configurationV1.configurationSet(parameterNumber: 112, size: 4, scaledConfigurationValue: dDelay).format(),       // Defaul every 30 seconds
+                zwave.configurationV1.configurationSet(parameterNumber: 103, size: 4, scaledConfigurationValue: 0).format(),            // Disable Report 3
+                zwave.configurationV1.configurationSet(parameterNumber: 113, size: 4, scaledConfigurationValue: 0).format()             // eDesable Report 3
+        ], 2000)
+        log.debug cmd
     cmd
 }
