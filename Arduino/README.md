@@ -1,12 +1,18 @@
 Arduino ESP12/ESP8266 WiFi Maker API Device
 =======
 <br>
-The goal of this device is to call a device refresh AFTER a power failure. The
-goal is to refresh a ''canary'' lightbulb so that Hubitat sees that the light
-is now on, thus turning whatever lights are using this ''canary'' as a trigger
-off. I use this in order to turn off all of my Zigbee bulbs (Sengled) after a
-power failure. Usually failures are at night, so the goal is to have the lights
-turned off as soon as the power comes back. It takes under 2 seconds for this
+The goal of this device is to call a device refresh AFTER a power failure. My
+smart bulbs (Sengled) are pretty dumb - in the event of a power failure, they turn on,
+even if they were off before the power outage. To combat this, I have a
+"canary" bulb in my attic that I never turn on - the only time it comes on is
+during a power outage, so my goal was to use this as the trigger to turn all
+the other lights off after an outage. The issue I ran into is that Hubitat
+doesn't know that the status of the bulb changed after a power outage (not sure
+why because this worked fine on SmartThings), anyhow, the point of this device
+is to trigger an API call after the power outage to tell Hubitat to refresh my
+''canary'' lightbulb so that Hubitat sees that the light is now on, thus turning whatever lights are using this ''canary'' as a trigger
+within Rule Machine. Since we experience most of our power failures at night, the goal is to have the lights
+turned off as soon as the power comes back. It takes about 1`second for this
 device to connect to your wireless network (assuming your network gear and
 hubitat is on a UPS), and make the HTTP call to the Hubitat Maker API. In
 reality you could use this code to do any sort of action when the power comes
