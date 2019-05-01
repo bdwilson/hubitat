@@ -12,8 +12,9 @@ why because this worked fine on SmartThings), anyhow, the point of this device
 is to trigger an API call after the power outage to tell Hubitat to refresh my
 ''canary'' lightbulb so that Hubitat sees that the light is now on, thus turning whatever lights are using this ''canary'' as a trigger
 within Rule Machine. Since we experience most of our power failures at night, the goal is to have the lights
-turned off as soon as the power comes back. It takes about 1`second for this
-device to connect to your wireless network (assuming your network gear and
+turned off as soon as the power comes back. It takes less than 1 second for the
+ESP12 device to drain the USB power supply when power dies and less than 1
+second for this device to connect to your wireless network (assuming your network gear and
 hubitat is on a UPS), and make the HTTP call to the Hubitat Maker API. In
 reality you could use this code to do any sort of action when the power comes
 back on - send notification, make sure doors are locked, etc. 
@@ -23,6 +24,7 @@ Requirements
 To get started you'll need:
 - [ESP8266 ESP12 USB device](https://www.amazon.com/ESP8266-ESP-01S-Wireless-Development-PlayStation-4/dp/B07FBNZ79T/) - this one works well and is super cheap.
 - [Arduino](https://arduino-esp8266.readthedocs.io/en/latest/installing.html)
+[Ì](https://bubba.d.pr/9MdpJs)
 
 Installation
 --------------------
@@ -38,7 +40,7 @@ Arduino](https://arduino-esp8266.readthedocs.io/en/latest/installing.html).
 Make sure you follow the Instruction steps about adding the Additional Board
 Manager URL: http://arduino.esp8266.com/stable/package_esp8266com_index.json,
 then open Boards Manager and install version 2.5.0 or greater for ESP8266.
-https://arduino-esp8266.readthedocs.io/en/latest/installing.html (get version
+https://arduino-esp8266.readthedocs.io/en/latest/installing.html
 
 3. Go to Tools -> Board and select NodeMCU 0.9 (ESP-12 Module)
 
@@ -56,6 +58,11 @@ Also open up your Hubitat -> Logs and see if you see the connections coming in
 the ESP12 Device into an outlet that is not protected by a UPS so it can make
 calls to refresh your bulb once power has been restored.  Your WiFi network and
 Hubitat should be on a UPS in order for this all to work.
+
+8. Configure a RM rule to turn all bulbs out when your "canary" bulb turns on,
+or (optionally) Install Smarter Bulbs from this repo in Apps Code in Hubitat and activate it. It
+will check all selected bulbs every 10 minutes and save their state. In the
+case of a power outage, your bulbs will be reset to their state. 
 
 Changes
 -------
