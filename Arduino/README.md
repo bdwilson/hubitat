@@ -19,7 +19,8 @@ hubitat is on a UPS), and make the HTTP call to the Hubitat Maker API. In
 reality you could use this code to do any sort of action when the power comes
 back on - send notification, make sure doors are locked, etc.
 <br>
-[Video](https://bubba.d.pr/9MdpJs) of the device in action with Hubitat.
+<br>
+[Video](https://bubba.d.pr/9MdpJs+) of the device in action with Hubitat.
 
 Requirements
 ------------
