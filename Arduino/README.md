@@ -24,7 +24,7 @@ Requirements
 To get started you'll need:
 - [ESP8266 ESP12 USB device](https://www.amazon.com/ESP8266-ESP-01S-Wireless-Development-PlayStation-4/dp/B07FBNZ79T/) - this one works well and is super cheap.
 - [Arduino](https://arduino-esp8266.readthedocs.io/en/latest/installing.html)
-[Ì](https://bubba.d.pr/9MdpJs)
+[](https://bubba.d.pr/9MdpJs)
 
 Installation
 --------------------
