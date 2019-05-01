@@ -17,9 +17,8 @@ ESP12 device to drain the USB power supply when power dies and less than 1
 second for this device to connect to your wireless network (assuming your network gear and
 hubitat is on a UPS), and make the HTTP call to the Hubitat Maker API. In
 reality you could use this code to do any sort of action when the power comes
-back on - send notification, make sure doors are locked, etc. 
-
-[Video](https://bubba.d.pr/9MdpJs)
+back on - send notification, make sure doors are locked, etc.  [Video of the
+device in action with Hubitat.](https://bubba.d.pr/9MdpJs)
 
 Requirements
 ------------
