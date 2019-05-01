@@ -19,12 +19,13 @@ hubitat is on a UPS), and make the HTTP call to the Hubitat Maker API. In
 reality you could use this code to do any sort of action when the power comes
 back on - send notification, make sure doors are locked, etc. 
 
+![](https://bubba.d.pr/9MdpJs)
+
 Requirements
 ------------
 To get started you'll need:
 - [ESP8266 ESP12 USB device](https://www.amazon.com/ESP8266-ESP-01S-Wireless-Development-PlayStation-4/dp/B07FBNZ79T/) - this one works well and is super cheap.
 - [Arduino](https://arduino-esp8266.readthedocs.io/en/latest/installing.html)
-(https://bubba.d.pr/9MdpJs)
 
 Installation
 --------------------
