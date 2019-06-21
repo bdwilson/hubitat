@@ -1,7 +1,8 @@
 /**
  *  Weewx Weather Driver - for Local Device Capabilities 
- * 
  *  Pulls data/variables from Weewx Weather Driver daily.json and publishes those to be local, usable capabilies.
+ * 
+ *  Import URL: https://raw.githubusercontent.com/bdwilson/hubitat/master/Weewx/Weewx_Local_Capabilities-Hubitat.groovy
  *  
  *  Search for "variable" and alter the sections there with the information you want to capture from your daily.json file:
  *  Follow these directions to create the file via Weewx: https://github.com/sgrayban/hubitat-weewx-driver/
