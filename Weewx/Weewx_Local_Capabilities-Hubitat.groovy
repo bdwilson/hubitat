@@ -128,15 +128,15 @@ def PollStation()
            // change this to be whatever variable you want to pull from daily.json.
            // the replace function will need to remove fahrenheit, in, % so adjust
            // as needed
-           LOGDEBUG("Getting variable1 : ${resp1.data.stats.current.poolTemp}")
-           def var1=(resp1.data.stats.current.poolTemp)
+           LOGDEBUG("Getting variable1 : ${resp1.data.stats.current.outTemp}")
+           def var1=(resp1.data.stats.current.outTemp)
            // remove fahrenheit and celsius (doesn't hurt to have both) 
            var1 = var1.replace("\u00B0F", "")
            var1 = var1.replace("\u00B0C", "")
             
            // same as above. if not needed, comment out
-           LOGDEBUG("Getting variable2: ${resp1.data.stats.current.crawlHumidity}")
-           def var2=(resp1.data.stats.current.crawlHumidity)
+           LOGDEBUG("Getting variable2: ${resp1.data.stats.current.humidity}")
+           def var2=(resp1.data.stats.current.humidity)
            var2 = var2.replace("%", "")
            
            // same as above. if not needed, comment out.
