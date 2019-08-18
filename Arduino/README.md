@@ -1,6 +1,10 @@
 Arduino ESP12/ESP8266 WiFi Maker API Device
 =======
 <br>
+NOTE: When there is a quick blip of power loss, it's not been enough to reset
+this device connected to a powersupply. I've had better success by putting
+calls within my apcupsd daemon to call refreshes on my "canary" device.
+
 The goal of this device is to call a device refresh AFTER a power failure. My
 smart bulbs (Sengled) are pretty dumb - in the event of a power failure, they turn on,
 even if they were off before the power outage. To combat this, I have a

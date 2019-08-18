@@ -1,0 +1,106 @@
+on System#Boot do
+  gpio,12,0
+  gpio,13,0 
+  gpio,14,0 
+  gpio,16,0
+  let 1,0
+  let 2,0
+  let 3,0
+  let 4,0
+endon
+
+on quickClean do
+  taskvalueset,1,2,%eventvalue1% //R#S 1,2 on/off
+  if [R#S]=1
+    if %eventvalue2% > 0
+      let 5,%eventvalue2%
+    else 
+      let 5,1800
+    endif
+    timerSet,1,%v5% // set timer for...
+    if [VAR#4]!=1
+       gpio,12,0
+       gpio,13,0
+       gpio,14,0
+       gpio,16,1
+       let 4,1
+       let 1,0
+       let 2,0
+       let 3,0
+    endif
+  else 
+    gpio,16,0 // turn off r4
+    let 4,0
+    timerSet,1,0
+  endif
+endon
+
+on Speed do
+ taskvalueset,1,1,%eventvalue1% //R#N Relay #
+ taskvalueset,1,2,%eventvalue2% //R#S 1,2 on/off
+ if [R#S]=1 // turn on
+   timerSet,1,0
+   if [VAR#1]!=1 and [R#N]=1
+     gpio,13,0
+     gpio,14,0
+     gpio,16,0
+     gpio,12,1
+     let 1,1
+     let 2,0
+     let 3,0
+     let 4,0
+   endif
+   if [VAR#2]!=1 and [R#N]=2
+     gpio,12,0
+     gpio,14,0
+     gpio,16,0
+     gpio,13,1
+     let 1,0
+     let 2,1
+     let 3,0
+     let 4,0
+   endif
+   if [VAR#3]!=1 and [R#N]=3
+     gpio,12,0
+     gpio,13,0
+     gpio,16,0
+     gpio,14,1
+     let 1,0
+     let 2,0
+     let 3,1
+     let 4,0
+   endif
+   if [VAR#4]!=1 and [R#N]=4
+     gpio,12,0
+     gpio,13,0
+     gpio,14,0
+     gpio,16,1
+     let 1,0
+     let 2,0
+     let 3,0
+     let 4,1
+   endif
+ else
+   if [VAR#1]!=0 and [R#N]=1
+     gpio,12,0
+     let 1,0
+   endif
+   if [VAR#2]!=0 and [R#N]=2
+     gpio,13,0
+     let 2,0
+   endif
+   if [VAR#3]!=0 and [R#N]=3
+     gpio,14,0
+     let 3,0
+   endif
+   if [VAR#4]!=0 and [R#N]=4
+     gpio,16,0
+     let 4,0
+   endif
+ endif
+endon
+
+On Rules#Timer=1 do  
+   gpio,16,0 //stop quickclean 
+   let 4,0
+endOn
