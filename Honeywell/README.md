@@ -62,7 +62,7 @@ reinvent the wheel
 
 # FAQ
 
-**Q.**: When I enable Årm Away, it looks like it's going to Arm Away, but then
+**Q.**: When I enable Arm Away, it looks like it's going to Arm Away, but then
 it performs an Arm Stay? What gives?<br>
 **A.**: This one stumped me for several months. Ends up, it's a setting within
 the alarm itself - if a door is not opened after arming, then it assumes you
