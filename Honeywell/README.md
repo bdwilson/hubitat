@@ -52,12 +52,24 @@ running on.
 6) Turn discover zones ON. 
 7) Save and go to live logs and watch for errors. 
 
-# To Do.
+# To Do. 
 
 1) ~~I have no idea if SHM works, or Hubitat's version.~~ Has been updated for 2-way integration with HSM. 
 2) ~~No idea how to make buttons for partition. This might just work?~~ Not necessary with Hubitat.  
-3) I realize native interfaces to Envisalink TPI for Vista/Ademco would be better; but the node-proxy setup has been working so well with SmartThings, why reinvent the
-wheel.
+3) I realize native interfaces to Envisalink TPI for Vista/Ademco would be
+better; but the node-proxy setup has been working so well with SmartThings, why
+reinvent the wheel
+
+# FAQ
+
+**Q.**: When I enable Årm Away, it looks like it's going to Arm Away, but then
+it performs an Arm Stay? What gives?
+**A.**: This one stumped me for several months. Ends up, it's a setting within
+the alarm itself - if a door is not opened after arming, then it assumes you
+haven't left and reverts the arm away to an arm stay.
+[Here](https://www.alarmgrid.com/faq/how-do-i-disable-auto-stay-arming-on-a-honeywell-vista-system) is information
+about turning this off. 
+
 
 # Questions/Comments
 Bug me on Twitter at [@brianwilson](http://twitter.com/brianwilson) or email me
