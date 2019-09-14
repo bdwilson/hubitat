@@ -1,12 +1,17 @@
-Arduino ST_Anything Pool Controller
+Arduino ST_Anything Pool Controller for Hubitat
 =======
 <br>
 The goal of this device is to control my Pool Pump (Pentair Superflow VS) + my
 [$S.R. Smith Kelo pool
 lights](https://srsmith.com/en-us/products/pool-lighting/kelo-led-pool-light/). 
 
-***Need to Finish documentation***
+The goal is to have buttons to control what speed the pump is running and
+optionally, being able to control the lights. The main reason for me to do the
+speed was that I could force a higher speed when the pool heater was on (heater
+on 40AMP outdoor outlet). Now I have a Hubitat automation that can ensure the
+pool speed is on speed 1 when the heater is on. 
 
+![](https://bdwilson.github.io/images/IMG_8BC0D8160AE5-1.jpeg){:width="400px"}
 
 Requirements
 ------------
@@ -41,25 +46,25 @@ turn, changes the colors. This is a common design for pool lighting systems.
 **If you're not going to wire your lights to this only only want to control
 your pool speeds, comment out those relay switches and executors for the
 sensors within the code.**
-![](ħttps://bdwilson.github.io/images/ledmanual.png){:width="400px"}
+![](https://bdwilson.github.io/images/ledmanual.png){:width="400px"}
 
 4. Splice your SuperFlow VS communication wire and wire it according to the
 docs below and speeds mentioned above. 
-![](ħttps://bdwilson.github.io/images/superflovs.png){:width="400px"}
+![](https://bdwilson.github.io/images/superflovs.png){:width="400px"}
 Example here is a LinkNode R4 
-![](ħttps://bdwilson.github.io/images/IMG_0882.JPG){:width="400px"}
+![](https://bdwilson.github.io/images/IMG_0882.JPG){:width="400px"}
 
 Note: by default on a SuperFlow VS will use external controls if any of the
 inputs have signal, otherwise, the pump will follow the schedule on the device.
 This worked best for me. If you want only External controls to work, follow
 this information. You cannot power on/off the pump via either method. 
-![](ħttps://bdwilson.github.io/images/superflovs.png){:width="400px"}
+![](https://bdwilson.github.io/images/superflovs.png){:width="400px"}
 
 5. If you are wiring lights, you'll need to tap into your existing power for
 your low voltage lights and essentially put a relay inbetween those
 connections. Be very careful if you're messing in your pool control or lighting
 control box and insure that mains are off at the breaker.
-![](ħttps://bdwilson.github.io/images/IMG_0885.JPG){:width="400px"}
+![](https://bdwilson.github.io/images/IMG_0885.JPG){:width="400px"}
 
 6. Install the rest of ST_Anything within Hubitat and it should discover all of
 your switches and relayswitches. If everything works, put everything in a
