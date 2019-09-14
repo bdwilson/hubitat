@@ -52,7 +52,7 @@ sensors within the code.**
 docs below and speeds mentioned above. 
 ![](https://bdwilson.github.io/images/superflovs.png){:width="400px"}
 Example here is a LinkNode R4 
-![](https://bdwilson.github.io/images/IMG_0882.JPG){:width="400px"}
+![](https://bdwilson.github.io/images/IMG_0882.JPG | width=400px)
 
 Note: by default on a SuperFlow VS will use external controls if any of the
 inputs have signal, otherwise, the pump will follow the schedule on the device.
