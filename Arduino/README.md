@@ -79,5 +79,3 @@ back on.
 Bugs/Contact Info
 -----------------
 Bug me on Twitter at [@brianwilson](http://twitter.com/brianwilson) or email me [here](http://cronological.com/comment.php?ref=bubba).
-
-
