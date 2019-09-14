@@ -172,7 +172,8 @@ void setup()
   //static st::EX_Switch executor6(F("switch6"), PIN_S6, LOW, false);  //Non-Inverted logic for "Active High" Relay Board
   //static st::EX_Switch executor7(F("switch7"), PIN_S7, LOW, false);  //Non-Inverted logic for "Active High" Relay Board
   static st::EX_Switch executor8(F("switch8"), PIN_S8, LOW, false);  //Non-Inverted logic for "Active High" Relay Board
-  // setup light controller timers. 
+  // setup light controller timers. notice these are all PIN_S8 because the
+  // light controller uses only a single relay just different on/off/on sequences.
   static st::S_TimedRelay executor9(F("relaySwitch1"), PIN_S8, LOW, false, 800, 0, 1, 1);     // soft white, 
   static st::S_TimedRelay executor10(F("relaySwitch2"), PIN_S8, LOW, false, 800, 800, 2, 1);  // slow change
   static st::S_TimedRelay executor11(F("relaySwitch3"), PIN_S8, LOW, false, 800, 800, 3, 1);  // blue.
