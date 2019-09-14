@@ -64,7 +64,7 @@ this information. You cannot power on/off the pump via either method.
 your low voltage lights and essentially put a relay inbetween those
 connections. Be very careful if you're messing in your pool control or lighting
 control box and insure that mains are off at the breaker.
-![](https://bdwilson.github.io/images/IMG_0885.JPG){:width="400px"}
+<img src="https://bdwilson.github.io/images/IMG_0885.JPG" width=400px>
 
 6. Install the rest of ST_Anything within Hubitat and it should discover all of
 your switches and relayswitches. If everything works, put everything in a
