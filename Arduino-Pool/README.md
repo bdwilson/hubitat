@@ -14,10 +14,14 @@ Requirements
 To get started you'll need:
 - [LinkNode
   R8](https://www.amazon.com/ESP8266-ESP-01S-Wireless-Development-PlayStation-4/dp/B07FBNZ79T).
-You'll also need a power supply, or be comfortable dissecting an old USB cable
-and hardwiring it to your R4 or R8 device. 
+If you have an R4, you'll need to [review this
+device](https://github.com/DanielOgorchock/ST_Anything/tree/master/Arduino/Sketches/ST_Anything_LinkNodeR4_ESP8266WiFi)
+and modify it to fit the options of my R8. From some of the pictures below, you'll see
+an R4, but I wasn't running ST_Anything/Hubduino on that device, so I don't
+have R4 code to share. You'll also need a power supply, or be comfortable dissecting an old USB cable and hardwiring it to your R4 or R8 device. 
 - [Arduino](https://arduino-esp8266.readthedocs.io/en/latest/installing.html)
-- [ST_Anything](https://github.com/DanielOgorchock/ST_Anything)
+- [ST_Anything](https://github.com/DanielOgorchock/ST_Anything) and
+  [Hubduino](https://github.com/DanielOgorchock/ST_Anything/tree/master/HubDuino)
 - [SuperFlo VS Communication Cable](https://www.polytecpools.com/Pentair-SuperFlo-VS-Communication-Cable_p_9177.html)
 - [Pool Lights](https://srsmith.com/media/178718/2018-kelo_manual_0318.pdf)
   (Optional) - Any model that is low voltage and the colors are triggered via
@@ -66,7 +70,9 @@ connections. Be very careful if you're messing in your pool control or lighting
 control box and insure that mains are off at the breaker.
 <img src="https://bdwilson.github.io/images/IMG_0885.JPG" width=400px>
 
-6. Install the rest of ST_Anything within Hubitat and it should discover all of
+6. Install the rest of
+[Hubduino](https://github.com/DanielOgorchock/ST_Anything/tree/master/HubDuino)
+in Hubitat and it should discover all of
 your switches and relayswitches. If everything works, put everything in a
 [water-tight box](https://www.amazon.com/gp/product/B07BQD3SZV).
 
