@@ -1,11 +1,13 @@
 Geofency Multi-User Virtual Presence Updater for Hubitat
 =======
 <br>
-Geofency is an app for iOS that uses either device GPS or
-Bluetooth LE iBeacons. This device driver and SmartApp will allow you to use
-Bluetooth or GPS info on your mobile device to set presence in SmartThings. This means you can now get accurate
-presence with or without using GPS - depending on if you own an iBeacon or not
-- and without using a presence sensor.
+Geofency is an app for iOS that uses either device GPS or Bluetooth LE iBeacons. This device driver and SmartApp will allow you to use
+Bluetooth iBeacons or GPS info on your mobile device to set presence in
+Hubitat. This means you can now get accurate presence with or without using GPS
+- depending on if you own an iBeacon or not - and without using a presence
+sensor. It also means you can have many different geofence locations that can
+trigger any number of virtual presense devices (because Hubitat app is limited
+to a single geofence currently). 
 
 Requirements
 ------------
@@ -14,7 +16,7 @@ To get started you'll need:
 - An iBeacon (Optional; or you can use GPS in the Geofency App). 
 - Hubitat Hub
 	- [A Virtual Presence Device](https://github.com/ajpri/STApps/blob/master/devicetypes/ajpri/virtual-mobile-presence.src/virtual-mobile-presence.groovy)
-	- A Hubitat app assigned to your Virtual Presence Device(s)
+	- [My Hubitat app](https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/geofency-presence.groovy) assigned to your Virtual Presence Device(s) above
 
 Installation
 --------------------
