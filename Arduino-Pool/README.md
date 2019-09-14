@@ -19,7 +19,9 @@ and hardwiring it to your R4 or R8 device.
 - [Arduino](https://arduino-esp8266.readthedocs.io/en/latest/installing.html)
 - [ST_Anything](https://github.com/DanielOgorchock/ST_Anything)
 - [SuperFlo VS Communication Cable](https://www.polytecpools.com/Pentair-SuperFlo-VS-Communication-Cable_p_9177.html)
-- [Pool Lights](https://srsmith.com/media/178718/2018-kelo_manual_0318.pdf) (Optional) - Any model that is controlled with quick on/off/on to cycle through the lights.
+- [Pool Lights](https://srsmith.com/media/178718/2018-kelo_manual_0318.pdf)
+  (Optional) - Any model that is low voltage and the colors are triggered via
+quick on/off/on to cycles to go through the modes/colors. 
 
 Installation
 --------------------
