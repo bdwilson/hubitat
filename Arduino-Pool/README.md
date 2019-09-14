@@ -46,9 +46,9 @@ your wireless network, Hub IP, and config settings below
 	- Relay Switch 1-8 are configured as timed relay switches to turn the
 	  switch on/off/on within 1 second for a certain number of times which in
 turn, changes the colors. This is a common design for pool lighting systems.
-**If you're not going to wire your lights to this only only want to control
-your pool speeds, comment out those relay switches and executors for the
-sensors within the code.**
+**If you're not going to wire your lights to this and only want to control
+your pool speeds, comment out the relay switches and executors for that
+particular relay within the code.**
 <img src="https://bdwilson.github.io/images/ledmanual.png" width=400px>
 
 4. Splice your SuperFlow VS communication wire and wire it according to the
