@@ -1,7 +1,7 @@
 Geofency Multi-User Virtual Presence Updater for Hubitat
 =======
 <br>
-Geofency is an app for iOS that uses either device GPS or Bluetooth LE iBeacons. This device driver and SmartApp will allow you to use
+Geofency is an app for iOS (sorry Android users) that uses either device GPS or Bluetooth LE iBeacons. This device driver and SmartApp will allow you to use
 Bluetooth iBeacons or GPS info on your mobile device to set presence in
 Hubitat. This means you can now get accurate presence with or without using GPS
 - depending on if you own an iBeacon or not - and without using a presence
@@ -57,5 +57,3 @@ iBeacons or GPS locations in Geofency.
 Bugs/Contact Info
 -----------------
 Bug me on Twitter at [@brianwilson](http://twitter.com/brianwilson) or email me [here](http://cronological.com/comment.php?ref=bubba).
-
-
