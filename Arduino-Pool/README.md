@@ -11,7 +11,7 @@ speed was that I could force a higher speed when the pool heater was on (heater
 on 40AMP outdoor outlet). Now I have a Hubitat automation that can ensure the
 pool speed is on speed 1 when the heater is on. 
 
-![](https://bdwilson.github.io/images/IMG_8BC0D8160AE5-1.jpeg){:width="400px"}
+<img src="https://bdwilson.github.io/images/IMG_8BC0D8160AE5-1.jpeg" width=400px>
 
 Requirements
 ------------
@@ -46,19 +46,19 @@ turn, changes the colors. This is a common design for pool lighting systems.
 **If you're not going to wire your lights to this only only want to control
 your pool speeds, comment out those relay switches and executors for the
 sensors within the code.**
-![](https://bdwilson.github.io/images/ledmanual.png){:width="400px"}
+<img src="https://bdwilson.github.io/images/ledmanual.png" width=400px>
 
 4. Splice your SuperFlow VS communication wire and wire it according to the
 docs below and speeds mentioned above. 
-![](https://bdwilson.github.io/images/superflovs.png){:width="400px"}
+<img src=https://bdwilson.github.io/images/superflovs.png width=400px>
 Example here is a LinkNode R4 
-![](https://bdwilson.github.io/images/IMG_0882.JPG | width=400px)
+<img src="https://bdwilson.github.io/images/IMG_0882.JPG" width=400px>
 
 Note: by default on a SuperFlow VS will use external controls if any of the
 inputs have signal, otherwise, the pump will follow the schedule on the device.
 This worked best for me. If you want only External controls to work, follow
 this information. You cannot power on/off the pump via either method. 
-![](https://bdwilson.github.io/images/superflovs.png){:width="400px"}
+<img src="https://bdwilson.github.io/images/superflovs.png" width=400px>
 
 5. If you are wiring lights, you'll need to tap into your existing power for
 your low voltage lights and essentially put a relay inbetween those
