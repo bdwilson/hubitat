@@ -27,7 +27,8 @@ Installation
 --------------------
 
 1. Follow the instructions with ST_Anything and get it and it's dependancies
-setup in Arduino. Connect your R8 or R4 device an FT232 device to program it. 
+setup in Arduino. Connect your R8 or R4 device an FT232 device or similar that
+can be used to program the ESP8266 on the R4 or R8.
 
 2. Install ST_Anything-LinkNodeR8.ino into Arduino and modify the settings for
 your wireless network, Hub IP, and config settings below
