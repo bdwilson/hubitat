@@ -12,7 +12,7 @@ to a single geofence currently).
 The added benefit of using Geofency is you can keep track of how long you stay
 in places that you frequent. 
 
-<img src="https://bdwilson.github.io/images/IMG_0BDCE0D2F6F9-1.jpeg" width=400px>
+<img src="https://bdwilson.github.io/images/IMG_0BDCE0D2F6F9-1.jpeg" width=300px>
 
 Requirements
 ------------
