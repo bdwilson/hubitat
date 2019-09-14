@@ -40,7 +40,7 @@
 
 #include <EX_Switch.h>       //Implements an Executor (EX) via a digital output to a relay
 #include <S_TimedRelay.h>    //Implements a Sensor to control a digital output pin with timing capabilities
-#include <WebOTA.h>
+//#include <WebOTA.h>  // optional if you want to have an OTA web interface to upload new versions https://github.com/scottchiefbaker/ESP-WebOTA 
 
 
 //******************************************************************************************
@@ -253,7 +253,7 @@ void setup()
 //******************************************************************************************
 void loop()
 {
-  webota.handle();
+  //webota.handle();
   //*****************************************************************************
   //Execute the Everything run method which takes care of "Everything"
   //*****************************************************************************
