@@ -2,8 +2,7 @@ Arduino ST_Anything Pool Controller for Hubitat
 =======
 <br>
 The goal of this device is to control my Pool Pump (Pentair Superflow VS) + my
-[$S.R. Smith Kelo pool
-lights](https://srsmith.com/en-us/products/pool-lighting/kelo-led-pool-light/). 
+[S.R. Smith Kelo pool lights](https://srsmith.com/en-us/products/pool-lighting/kelo-led-pool-light/). 
 
 The goal is to have buttons to control what speed the pump is running and
 optionally, being able to control the lights. The main reason for me to do the
