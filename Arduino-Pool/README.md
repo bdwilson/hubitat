@@ -58,7 +58,8 @@ Note: by default on a SuperFlow VS will use external controls if any of the
 inputs have signal, otherwise, the pump will follow the schedule on the device.
 This worked best for me. If you want only External controls to work, follow
 this information. You cannot power on/off the pump via either method. 
-<img src="https://bdwilson.github.io/images/superflovs.png" width=400px>
+
+<img src="https://bdwilson.github.io/images/superflov2s.png" width=400px>
 
 5. If you are wiring lights, you'll need to tap into your existing power for
 your low voltage lights and essentially put a relay inbetween those
