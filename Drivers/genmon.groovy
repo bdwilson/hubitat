@@ -1,37 +1,5 @@
 /**
- * Please Note: This app is NOT released under any open-source license.
- * Please be sure to read the license agreement before installing this code.
- *
  *  Genmon Driver for Hubitat Elevation
- *
- *  Edits by Brian Wilson
- *  Original code © 2019 AScott Grayban for Weewx
- *  Original code from Andrew Parker
- *
- * This software package is created and licensed by Scott Grayban.
- *
- * This software, along with associated elements, including but not limited to online and/or electronic documentation are
- * protected by international laws and treaties governing intellectual property rights.
- *
- * This software has been licensed to you. All rights are reserved. You may use and/or modify the software.
- * You may not sublicense or distribute this software or any modifications to third parties in any way.
- *
- * You may not distribute any part of this software without the author's express permission
- *
- * By downloading, installing, and/or executing this software you hereby agree to the terms and conditions set forth in the Software license agreement.
- * This agreement can be found on-line at: https://sgrayban.github.io/Hubitat-Public/software_License_Agreement.txt
- * 
- * Hubitat is the trademark and intellectual property of Hubitat Inc. 
- *
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License Agreement
- * for the specific language governing permissions and limitations under the License.
- *
- *-------------------------------------------------------------------------------------------------------------------
- *
- *
- *  Version:
- *  1.0.0 - Initial commit
  *
  */
 
@@ -56,12 +24,10 @@ metadata {
        // command "Stop"
        // command "StartAndTransfer"
         
-// Base Info   
         attribute "Generator Time", "string"
         attribute "Monitor Time", "string"
         attribute "Alarm Status", "string"
         
-// Collected Local Station Data       
         attribute "Switch State", "string"
         attribute "Engine State", "string"
         attribute "Battery Voltage", "string"
