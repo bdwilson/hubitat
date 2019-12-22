@@ -4,7 +4,8 @@
  *
  *  Genmon Driver for Hubitat Elevation
  *
- *  Original code © 2019 AScott Grayban
+ *  Edits by Brian Wilson
+ *  Original code © 2019 AScott Grayban for Weewx
  *  Original code from Andrew Parker
  *
  * This software package is created and licensed by Scott Grayban.
@@ -21,7 +22,6 @@
  * This agreement can be found on-line at: https://sgrayban.github.io/Hubitat-Public/software_License_Agreement.txt
  * 
  * Hubitat is the trademark and intellectual property of Hubitat Inc. 
- * Scott Grayban has no formal or informal affiliations or relationships with Hubitat.
  *
  * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
  * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License Agreement
