@@ -39,7 +39,7 @@
  *         1.2: bdwilson - adjusted level settings to use runIn vs. blocking delays
  */
 metadata {
-    definition(name: "Neo Smart Controller", namespace: "bigrizzo", author: "bigrizz", importUrl: "https://raw.githubusercontent.com/bdwilson/hubitatDrivers/master/NeoSmart.groovy") {
+    definition(name: "Neo Smart Controller", namespace: "brianwilson-hubitat", author: "Bigrizz, Brian Wilson", importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/NeoSmart/NeoSmart.groovy") {
         capability "WindowShade"
 		capability "Switch"
 		capability "Actuator"
