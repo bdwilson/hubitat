@@ -290,13 +290,17 @@ def favorite() {
     // we don't have to know where the blind is here as this is calling a setting on the blind/room
     url = "http://" + controllerIP + ":8838/neo/v1/transmit?command=" + blindCode + "-gp&id=" + controllerID + "&hash=" + date()
     if (logEnable) log.debug "Sending favorite GET request to ${url}"
+    def closingTime = timeToFav
+	if (state.secs > timeToFav) {
+		closingTime = state.secs - timeToFav 
+    } else {
+		closingTime = timeToFav - state.secs
+    }
     state.secs=timeToFav
     state.level=100-((timeToFav/timeToClose)*100)
 	get(url,"partially open")
-    // this runIn time is going to be wrong because we don't know where it is.
-    // maybe address later if we're keeping track of where the blind is with
-    // state.level and state.secs. I dont use favorite() so ... 
-    runInMillis(state.secs.toInteger(),updateStatus,[data: [status: "partially open", level: state.level, secs: state.secs]])
+	closingTime = closingTime * 1000
+    runInMillis(closingTime.toInteger(),updateStatus,[data: [status: "partially open", level: state.level, secs: state.secs]])
 }
 
 def setPosition(position) { // timeToClose= closed/down, 0=open/up
