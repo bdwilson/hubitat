@@ -43,7 +43,7 @@
  *              above. If your "50%" or "25" locations aren't in the right
  *              place, adjust your timing up or down to tweak
  *              - Config option to stop if you press open or close for a second
- *              time (since I'm using a 2 button controller for up/down/stop)
+ *              time (since I'm using a 2 button controller for open/close/stop)
  */
 metadata {
     definition(name: "Neo Smart Controller", namespace: "brianwilson-hubitat", author: "Bigrizz, Brian Wilson", importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/NeoSmart/NeoSmart.groovy") {
