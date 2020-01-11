@@ -43,7 +43,7 @@ long it takes to get to the favorite setting from open.
 6) Add your blinds to your dashboard by selecting the new devices and using
 "shade" as the device type. 
 
-Optional Alexa Integration
+Optional Alexa Integration (probably same with Google Home)
 ---
 
 * Share out your blinds to the Hubitat Amazon Echo App. Ask Alexa to discover new devices.  
