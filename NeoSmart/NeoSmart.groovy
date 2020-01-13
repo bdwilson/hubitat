@@ -82,7 +82,7 @@ def date() {
 }
 
 def get(url,mystate) {
-   log.debug "Call to ${url}; setting ${mystate}"
+   if (logEnable) log.debug "Call to ${url}; setting ${mystate}"
    state.lastCmd = mystate
    try {
         httpGet(url) { resp ->
