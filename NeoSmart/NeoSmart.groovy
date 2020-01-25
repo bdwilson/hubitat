@@ -44,7 +44,11 @@
  *              place, adjust your timing up or down to tweak
  *              - Config option to stop if you press open or close for a second
  *              time (since I'm using a 2 button controller for open/close/stop)
+ *       1.3.1: moved to open vs. opened. keep version in states.
  */
+
+def driverVer() { return "1.3.1" }
+
 metadata {
     definition(name: "Neo Smart Controller", namespace: "brianwilson-hubitat", author: "Bigrizz, Brian Wilson", importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/NeoSmart/NeoSmart.groovy") {
         capability "WindowShade"
@@ -109,6 +113,7 @@ def installed() {
 	}
     log.warn "debug logging is: ${logEnable == true}"
     if (logEnable) runIn(3600, logsOff)
+	state.DriverVersion=driverVer()
 }
 
 def updated() {
@@ -118,6 +123,7 @@ def updated() {
 	}
     log.warn "debug logging is: ${logEnable == true}"
     if (logEnable) runIn(1800, logsOff)
+	state.DriverVersion=driverVer()
 }
 
 def parse(String description) {
@@ -194,7 +200,7 @@ def open() {
         } else if (state.lastCmd == "stopped") { // we're partially open
             closingTime = state.secs
             if (logEnable) log.debug "Going from Stopped to Opening. closingTime will now be: ${closingTime}"
-        } else if (state.lastCmd == "opened") {
+        } else if (state.lastCmd == "open") {
             if (logEnable) log.debug "Status is open, open was hit. unscheduling all and updating status immediately"
             unschedule(updateStatus)
             closingTime=0
@@ -209,7 +215,7 @@ def open() {
         if (logEnable) log.debug "Opening... timeToOpen: ${closingTime}"
   
         closingTime = closingTime * 1000
-        runInMillis(closingTime.toInteger(),updateStatus,[data: [status: "opened", level: 100, secs: 0]])
+        runInMillis(closingTime.toInteger(),updateStatus,[data: [status: "open", level: 100, secs: 0]])
     }
 }
 
@@ -247,8 +253,8 @@ def UpdateTimeRunning() {
         if (logEnable) log.debug "Found that ${now} - ${state.stateChangeTime} = ${timeRunning} ($timeRunningSecs)"
 
     }
-    if ((timeRunningSecs > timeToClose) || (state.lastCmd == "opened") || (state.lastCmd == "closed") || (state.lastCmd == "stopped")) { 
-        if (logEnable) log.debug "Found that ${timeRunningSecs} > ${timeToClose} OR lastCmd was opened/closed/stopped"
+    if ((timeRunningSecs > timeToClose) || (state.lastCmd == "open") || (state.lastCmd == "closed") || (state.lastCmd == "stopped")) { 
+        if (logEnable) log.debug "Found that ${timeRunningSecs} > ${timeToClose} OR lastCmd was open/closed/stopped"
         if (logEnable) log.debug "Resetting state.stateChangeTime = ${now}, lastCmd: ${state.lastCmd}"
         state.stateChangeTime = now
     } else if ((state.stateChangeTime < now) && (timeRunningSecs != null)) {
