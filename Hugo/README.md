@@ -29,4 +29,4 @@ Hugo1 if you have more than one)<br><img src="https://bdwilson.github.io/images/
 1. Go into Hubitat Apps -> Rule Machine -> Create New -> Name it "Button - Hugo 1" or whatever you wish.  Select Trigger Events -> Button Device -> Select you virtual Hugo Device you created in step 1 above.
 1. Select Pre-fill all button actions with "pushed".  Then go through each button and map it to what command you wish to run.<br> <img src="https://bdwilson.github.io/images/hubitat-hugo2.png" width=800px>
 1. Verify using the URL's in #4 above, to make sure your buttons do what you want. 
-1. Once you're happy, [follow the Hugo instructions](https://github.com/mcer12/Hugo-ESP8266/wiki/Sketch:-HTTP-(Basic-URL-trigger) to add each URL from above, adjusting the number from 1 to 7. <br> <img src="https://bdwilson.github.io/images/hubitat-hugo3.png" width=800px>
+1. Once you're happy, [follow the Hugo instructions](https://github.com/mcer12/Hugo-ESP8266/wiki/Sketch:-HTTP-(Basic-URL-trigger)) to add each URL from above, adjusting the number from 1 to 7. <br> <img src="https://bdwilson.github.io/images/hubitat-hugo3.png" width=800px>
