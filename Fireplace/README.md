@@ -27,11 +27,9 @@ middle (common) connection.<br><img src="https://bdwilson.github.io/images/IMG_2
 1. Connect your relay shield device and make sure it works by using [this test code](https://github.com/bdwilson/hubitat/blob/master/Fireplace/wemos_d1-relay-test.ino) - this test code assumes you're using D5 to control your relay, not D1. Adjust this if you think you can get D1 working on your device. This code will toggle the relay on/off - you will hear this. If you don't hear anything, it's not working. 
 1. Follow the instructions with ST_Anything and get it and it's dependancies setup in Arduino. Connect your Wemos D1 via USB to your computer to program via Arduino.
 1. Install [wemos_d1-hubduino-fireplace.ino](https://github.com/bdwilson/hubitat/blob/master/Fireplace/wemos_d1-hubduino-fireplace.ino) in Arduino and make sure you add the Wifi info for your network and your Hubitat IP.
-1. Make sure you install all the
-[ST_Anything](https://github.com/DanielOgorchock/ST_Anything/tree/master/HubDuino)
-Parent Ethernet device and the Child Relay Switch device. If you're having
-issues, make sure your wall switch for the fireplace is turned on and that
-you've properly spliced and connected your relay into NO and middle connector
-on the relay. Also, make sure you've done step 1 to verify your relay works -
-if not, follow the video in the requirements to move D1 for the relay to be
-either D5 or D6.
+1. Make sure you install all the [ST_Anything](https://github.com/DanielOgorchock/ST_Anything/tree/master/HubDuino) <b>Parent Ethernet device</b> and the <b>Child Relay Switch</b> device. If you're having issues, make sure your wall switch for the fireplace is turned on and that you've properly spliced and connected your relay into NO and middle connector on the relay. Also, make sure you've done step 1 to verify your relay works - if not, follow the video in the requirements to move D1 for the relay to be either D5 or D6.  
+1. Optional: [Print a case](https://www.thingiverse.com/thing:2667568). If you don't have a case, make sure you protect all metal contacts on the device with electrical tape. 
+
+Bugs/Contact Info
+-----------------
+Bug me on Twitter at [@brianwilson](http://twitter.com/brianwilson) or email me [here](http://cronological.com/comment.php?ref=bubba).
