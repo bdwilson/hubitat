@@ -28,11 +28,10 @@ Hugo](https://www.tindie.com/products/nicethings/hugo-esp8266-4-button-wifi-remo
 device number and the # sign with your button (1-7).
 http://192.168.1.xx/apps/api/8/devices/1825/#?access_token=xxxx-xxx-xxx-xxxxxx  (HINT: if you leave off the button number, you will see the capabilities of the device - this is a good way to determine if you have the right URL). 
 <img src="https://bdwilson.github.io/images/hubitat-hugo0.png" width=800px>
-6. Go into Hubitat Apps -> Rule Machine -> Create New -> Name it "Hugo Button Controller" or whatever you wish.  Select Trigger Events -> Button Device -> Select you virtual Hugo Device you created in step 1 above.
+6. Go into Hubitat Apps -> Rule Machine -> Create New -> Name it "Button - Hugo 1" or whatever you wish.  Select Trigger Events -> Button Device -> Select you virtual Hugo Device you created in step 1 above.
 7. Select Pre-fill all button actions with "pushed".  Then go through each button and map it to what command you wish to run.
 <img src="https://bdwilson.github.io/images/hubitat-hugo2.png" width=500px>
 8. Verify using the URL's in #4 above, to make sure your buttons do what you want. 
-9. Once you're happy, [follow the Hugo
-instructions](https://github.com/mcer12/Hugo-ESP8266/wiki/Sketch:-HTTP-(Basic-URL-trigger)
+9. Once you're happy, [follow the Hugo instructions](https://github.com/mcer12/Hugo-ESP8266/wiki/Sketch:-HTTP-(Basic-URL-trigger)
 to add each URL from above, adjusting the number from 1 to 7.  
 <img src="https://bdwilson.github.io/images/hubitat-hugo3.png" width=500px>
