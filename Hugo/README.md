@@ -18,8 +18,8 @@ Hugo](https://www.tindie.com/products/nicethings/hugo-esp8266-4-button-wifi-remo
 * [Buy a Hubitat](https://hubitat.com/)
 
 ## Installation
-1. Create a new Virtual Button within Hubitat -> Devices.  Call it Hugo (or Hugo1 if you have more than one)
-<img src="https://bdwilson.github.io/images/hubitat-hugo1.png" width=800px>
+1. Create a new Virtual Button within Hubitat -> Devices.  Call it Hugo (or
+Hugo1 if you have more than one)<br><img src="https://bdwilson.github.io/images/hubitat-hugo1.png" width=800px>
 1. Install the Hubitat (if not already installed) Maker API Built-In app. Add your new Hugo device to Maker API. 
 1. Use the <b>Get All Devices</b> link within Maker API Hubitat App to get the info for all devices. Copy this URL; it should look similar to this: http://192.168.1.xx/apps/api/8/devices?access_token=xxxx-xxx-xxx-xxxxxx
 1. Look through the list to determine the Device ID of your Hugo device you created above. For my example, it will be device # 1825
