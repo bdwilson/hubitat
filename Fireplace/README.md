@@ -21,12 +21,7 @@ Requirements
 - Fireplace that uses a dry contact device to turn it on (non-powered
   lightswitch) - you'll have to break this connection and wire your relay into
 one side of this connection. You will wire this to the NO (normally open) and
-middle (common) connection.<br><img src="https://bdwilson.github.io/images/IMG_2624.JPG" width=400px>
-<br>
-<img src="https://bdwilson.github.io/images/IMG_2629.JPG" width=400px>
-<br>
-<img src="https://bdwilson.github.io/images/IMG_2631.JPG" width=400px>
-
+middle (common) connection.<br><img src="https://bdwilson.github.io/images/IMG_2624.JPG" width=400px> <br> <img src="https://bdwilson.github.io/images/IMG_2629.JPG" width=400px> <br> <img src="https://bdwilson.github.io/images/IMG_2631.JPG" width=400px> 
 
 ## Installation
 1. Connect your relay shield device and make sure it works by using [this test code](https://github.com/bdwilson/hubitat/blob/master/Fireplace/wemos_d1-relay-test.ino) - this test code assumes you're using D5 to control your relay, not D1. Adjust this if you think you can get D1 working on your device. This code will toggle the relay on/off - you will hear this. If you don't hear anything, it's not working. 
