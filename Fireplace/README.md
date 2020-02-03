@@ -7,7 +7,8 @@ The goal of this device is to spend ~$12 on a device that can connect to
 Hubitat and Alexa to control my fireplace. My fireplace (Heat-N-Glo) has 2 wall
 switches, one to control the fan, one to control the fireplace. Both of these
 are dry switches and do not have MAINS voltage. This device sіts inbetween the
-wall switch (in series) that turns on the fireplace. Being in series means that
+wall switch (in series) that turns on the fireplace (I leave the fan switch on
+all the time as it only runs if the temp is > a certain amount). Being in series means that
 the wall switch now is a master OFF connection (if off, this relay device won't
 work). Also, the linked Arduino code linked below has a 2 hour shutoff (i.e. it
 will turn off your fireplace after 2 hours) - this is a saftey precaution. 
