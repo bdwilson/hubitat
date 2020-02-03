@@ -12,8 +12,7 @@ my blinds. I'm going to detail how to integrate your Hugo device into Hubitat.
 
 <img src="https://bdwilson.github.io/images/hubitat-hugo4.png" width=200px>
 
-##Prerequisites
-
+## Prerequisites
 * [Buy a
 Hugo](https://www.tindie.com/products/nicethings/hugo-esp8266-4-button-wifi-remote/)
 * [Buy a Hubitat](https://hubitat.com/)
