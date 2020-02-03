@@ -9,6 +9,8 @@ firmware](https://github.com/mcer12/Hugo-ESP8266), you can even [solder an IR
 transmitter to it and use it as a real remote - and other hardware
 mods](https://github.com/mcer12/Hugo-ESP8266/wiki). I use my device to control
 my blinds. I'm going to detail how to integrate your Hugo device into Hubitat.
+One of the best features of this is that when you drop and the case breaks, you
+can just print another one. 
 
 <img src="https://bdwilson.github.io/images/hubitat-hugo4.png" width=200px>
 
