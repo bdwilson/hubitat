@@ -2,6 +2,8 @@
  *  Smarter Bulbs - https://raw.githubusercontent.com/nsweet68/SmartThingsPublic/master/smartapps/smartthings/smarter-bulbs.src/smarter-bulbs.groovy 
  *
  *  Copyright 2016 Nick Sweet.
+ *  Updates by Brian Wilson
+ *  - only update status on init or if change (no scheduled job) - 02/20/2020
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -50,46 +52,44 @@ def initialize() {
     subscribe(slaves, "switch", saveStates)
     subscribe(canary,"switch.on", checkRestore)
     //canary.refresh() // no need to refresh canary as we'll do this via ESP12 
-    saveStates() 
-	// changed to 10 minutes vs 5. each bulb refresh shows in logs so trying to
-	// trim that down.
-	runEvery10Minutes(checkRestore) 
+    initStates()
+
     
 }
 
-def saveStates(evt) {
-	//log.debug "Checking States"
-    if ("off" == canary.currentSwitch ) {
-    	def lightsOff = [:]
-    	slaves?.each {
+def initStates() {
+    def lightsOff = [:]
+    slaves?.each {
 			if (it.currentSwitch == "off"){
-        	//log.debug "${it.id} value ${it.currentSwitch}" 
-        	lightsOff[it.id]="off"
+        	    //log.debug "${it.id} value ${it.currentSwitch}" 
+        	    lightsOff[it.id]="off"
         	}
-		}
-   	state.lOff = lightsOff
 	}
+   	state.lOff = lightsOff   
+}
+    
+       
+def saveStates(evt) {
+    if (canary.currentSwitch == "off") {  // only keep track of state if canary is off
+        state.lOff[evt?.deviceId]=evt.value
+        //log.debug "Saving State for ${evt.displayName} (${evt?.deviceId}) = ${evt.value}" 
+    }
 }
 
 def checkRestore(evt) {
-    //log.debug "Checking Restore"  
-    //canary.refresh() 
-    //log.debug "Canary is ${canary.currentSwitch}"
     if ("on" == canary.currentSwitch) { 
-    	log.debug "Turning stuff off due to power outage"
+    	log.info "Canary came on; restoring off states."
         restoreState()
+        pauseExecution(200)
         canary.off()
         }
-    slaves*.refresh() // Sengled bulbs don't support poll 
-    saveStates(evt)
 }
 
 private restoreState() {
   slaves?.each {
-	if (state.lOff[it.id] == "off") {
-    	log.debug "turning $it.label off based on previous state"
+      if (state.lOff[it.id] == "off") { 
+    	log.info "Turning $it.label off based on previous state"
 		it.off()
     }
   }
 }
-
