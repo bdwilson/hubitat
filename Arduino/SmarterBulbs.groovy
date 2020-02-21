@@ -1,8 +1,8 @@
 /**
- *  Smarter Bulbs - https://raw.githubusercontent.com/nsweet68/SmartThingsPublic/master/smartapps/smartthings/smarter-bulbs.src/smarter-bulbs.groovy 
+ *  Smarter Bulbs - https://raw.githubusercontent.com/bdwilson/hubitat/master/Arduino/SmarterBulbs.groovy
  *
  *  Copyright 2016 Nick Sweet.
- *  Updates by Brian Wilson
+ *  Updates by Brian Wilson for Hubitat
  *  - only update status on init or if change (no scheduled job) - 02/20/2020
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -26,6 +26,7 @@ definition(
 	description: "Save the state of a bunch of bulbs and reset when 'Canary' bulb turns on",
 	category: "My Apps",
 	iconUrl: "https://s3.amazonaws.com/smartapp-icons/Convenience/App-LightUpMyWorld.png",
+    importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Arduino/SmarterBulbs.groovy", 
 	iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/App-LightUpMyWorld@2x.png"
 )
 preferences {
