@@ -28,6 +28,8 @@ metadata {
     command "trigger2"
     command "chime"
     command "bypass"
+    
+    attribute "panelStatus", "String"
   }
 
   tiles(scale: 2) {
@@ -110,6 +112,10 @@ def armInstant() {
   parent.sendCommandPlugin('/armInstant');
 }
 
+def off() {
+     parent.sendCommandPlugin('/disarm');
+} 
+
 def disarm() {
   parent.sendCommandPlugin('/disarm');
 }
@@ -131,7 +137,7 @@ def bypass() {
 }
 
 def parse(description) {
-	parent.ifDebug('Honeywell Partition: ' + description)
+	//parent.ifDebug('Honeywell Partition: ' + description)
 	// send parent app any LAN communications sent to the Partition. 
 	parent.lanResponseHandler(description)
 }
