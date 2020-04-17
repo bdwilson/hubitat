@@ -36,13 +36,13 @@ OR
 
 Modify /etc/apcupsd/apccontrol and look for "mainsback" and add the curl
 command below using the URL from #1 below:
-<code>
+<pre>
     mainsback)
     if [ -f /etc/apcupsd/powerfail ] ; then
        printf "Continuing with shutdown."  | ${WALL}
     fi
     curl -s <URL FROM BELOW>
-</code>
+</pre>
 
 Installation
 --------------------
