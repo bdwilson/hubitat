@@ -3,7 +3,8 @@ Arduino ESP12/ESP8266 WiFi Maker API Device
 <br>
 NOTE: When there is a quick blip of power loss, it's not been enough to reset
 this device connected to a powersupply. I've had better success by putting
-calls within my apcupsd daemon to call refreshes on my "canary" device.
+calls within my apcupsd daemon to call refreshes on my "canary" device - see
+requirements for other options. 
 
 The goal of this device is to call a device refresh AFTER a power failure. My
 smart bulbs (Sengled) are pretty dumb - in the event of a power failure, they turn on,
@@ -28,6 +29,20 @@ Requirements
 To get started you'll need:
 - [ESP8266 ESP12 USB device](https://www.amazon.com/ESP8266-ESP-01S-Wireless-Development-PlayStation-4/dp/B07FBNZ79T/) - this one works well and is super cheap.
 - [Arduino](https://arduino-esp8266.readthedocs.io/en/latest/installing.html)
+
+OR
+
+- Using an APC UPS, and running apcupsd on Linux to monitor the UPS status 
+
+Modify /etc/apcupsd/apccontrol and look for "mainsback" and add the curl
+command below using the URL from #1 below:
+<code>
+    mainsback)
+    if [ -f /etc/apcupsd/powerfail ] ; then
+       printf "Continuing with shutdown."  | ${WALL}
+    fi
+    curl -s <URL FROM BELOW>
+</code>
 
 Installation
 --------------------
