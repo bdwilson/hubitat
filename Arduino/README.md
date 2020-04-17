@@ -41,7 +41,7 @@ command below using the URL from #1 below:
     if [ -f /etc/apcupsd/powerfail ] ; then
        printf "Continuing with shutdown."  | ${WALL}
     fi
-    curl -s <URL FROM BELOW>
+    curl -s http://192.168.1.xx/apps/api/8/devices/xxx/refresh?access_token=xxxxxx-xxxxxx-xxxx-xxxxxx
 </pre>
 
 Installation
