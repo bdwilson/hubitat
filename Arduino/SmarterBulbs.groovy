@@ -4,7 +4,7 @@
  *  Copyright 2016 Nick Sweet.
  *  Updates by Brian Wilson
  *  - only update status on init or if change (no scheduled job) - 02/20/2020
- *  - only do one update if there's a series of light changes (unschedule/schedule) - 4/16
+ *  - only do one update if there's a series of light changes (unschedule/schedule) - 4/16/2020
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
