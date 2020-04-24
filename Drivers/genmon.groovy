@@ -105,7 +105,8 @@ def PollStation()
     def params1 = [
         uri: "http://${ipaddress}:${port}/cmd/status_json",
         requestContentType: 'application/json',
-        contentType: 'application/json'
+        contentType: 'application/json',
+		timeout: 5
          ]
     
     try {
@@ -211,7 +212,8 @@ def PollStation()
        def params2 = [
             uri: "http://${ipaddress}:${port}/cmd/power_log_json?power_log_json=43200,fuel",
             requestContentType: 'application/json',
-            contentType: 'application/json'
+            contentType: 'application/json',
+			timeout: 5
          ]
     
         try {
@@ -236,7 +238,8 @@ def PollStation()
        def params3 = [
             uri: "http://${ipaddress}:${port}/cmd/power_log_json?power_log_json=1440,fuel",
             requestContentType: 'application/json',
-            contentType: 'application/json'
+            contentType: 'application/json',
+			timeout: 5
          ]
     
         try {
@@ -264,7 +267,8 @@ def PollStation()
        def params4 = [
             uri: "http://${ipaddress}:${port}/cmd/power_log_json?power_log_json=10080,fuel",
             requestContentType: 'application/json',
-            contentType: 'application/json'
+            contentType: 'application/json',
+			timeout: 5
          ]
     
         try {
@@ -292,7 +296,8 @@ def PollStation()
         def params5 = [
             uri: "http://${ipaddress}:${port}/cmd/outage_json",
             requestContentType: 'application/json',
-            contentType: 'application/json'
+            contentType: 'application/json',
+			timeout: 5
          ]
     
         try {

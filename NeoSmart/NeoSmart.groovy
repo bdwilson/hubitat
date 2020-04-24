@@ -45,12 +45,14 @@
  *              - Config option to stop if you press open or close for a second
  *              time (since I'm using a 2 button controller for open/close/stop)
  *       1.3.1: moved to open vs. opened. keep version in states.
+ *       1.3.2: added config to stop if you change directions vs. changing
+ * 				direction.
  */
 
-def driverVer() { return "1.3.1" }
+def driverVer() { return "1.3.2" }
 
 metadata {
-    definition(name: "Neo Smart Controller", namespace: "brianwilson-hubitat", author: "Bigrizz, Brian Wilson", importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/NeoSmart/NeoSmart.groovy") {
+    definition(name: "Neo Smart Controller-alpha", namespace: "brianwilson-hubitat", author: "Bigrizz, Brian Wilson", importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/NeoSmart/NeoSmart.groovy") {
         capability "WindowShade"
 		capability "Switch"
 		capability "Actuator"
@@ -72,6 +74,7 @@ preferences {
         input "timeToClose", "number", title: "Time in seconds it takes to close the blinds completely", required: true
         input "timeToFav", "number", title: "Time in seconds it takes to reach your favorite setting when closing the blinds", required: true, defaultValue: 0
         input name: "stopOnDouble", type: "bool", title: "Stop on the second press of open or close?", defaultValue: false
+        input name: "stopOnReverse", type: "bool", title: "Stop when pressing alternate direction vs changing direction.", defaultValue: false
         input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
     }
 }
@@ -89,7 +92,7 @@ def get(url,mystate) {
    if (logEnable) log.debug "Call to ${url}; setting ${mystate}"
    state.lastCmd = mystate
    try {
-        httpGet(url) { resp ->
+        httpGet([uri:url, timeout:5]) { resp ->
             if (resp.success) {
                 sendEvent(name: "windowShade", value: "${mystate}", isStateChange: true)
            }
@@ -151,6 +154,8 @@ def close() {
     
     if (stopOnDouble && (state.lastCmd == "closing")) {
        stop()
+    } else if (stopOnReverse && (state.lastCmd == "opening")) {
+       stop()
     } else if (state.lastCmd != "closing") {
         
         UpdateTimeRunning()
@@ -187,6 +192,8 @@ def open() {
     
     if (stopOnDouble && (state.lastCmd == "opening")) {
         stop()
+    } else if (stopOnReverse && (state.lastCmd == "closing")) {
+       stop()
     } else if (state.lastCmd != "opening") {
         
         UpdateTimeRunning()    
