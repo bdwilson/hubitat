@@ -889,7 +889,7 @@ private apiGet(apiPath, apiQuery = [], callback = {}) {
         }
        
 	try {
-		httpGet([ uri: getApiURL(), path: apiPath, headers: myHeaders, query: apiQuery ]) { response -> callback(response) }
+		httpGet([ uri: getApiURL(), timeout: 5, path: apiPath, headers: myHeaders, query: apiQuery ]) { response -> callback(response) }
 	}	catch (SocketException e)	{
 		//sendAlert("API Error: $e")
         ifDebug("API Error: $e")
@@ -913,7 +913,7 @@ private apiPut(apiPath, apiBody = [], callback = {}) {
     }
     
 	try {
-		httpPut([ uri: getApiURL(), path: apiPath, headers: myHeaders, contentType: "application/json; charset=utf-8", body: apiBody, query: apiQuery ]) { response -> callback(response) }
+		httpPut([ uri: getApiURL(), timeout: 5, path: apiPath, headers: myHeaders, contentType: "application/json; charset=utf-8", body: apiBody, query: apiQuery ]) { response -> callback(response) }
 	} catch (SocketException e)	{
 		ifDebug("API Error: $e")
 	}
@@ -929,7 +929,7 @@ private apiPostLogin(apiPath, apiBody = [], callback = {}) {
                          "Culture": "en",
                          "MyQApplicationId": getApiAppID() ]
 	try {
-		httpPost([ uri: getApiURL(), path: apiPath, headers: myHeaders, contentType: "application/json; charset=utf-8", body: apiBody ]) { response -> callback(response) }
+		httpPost([ uri: getApiURL(), timeout: 5, path: apiPath, headers: myHeaders, contentType: "application/json; charset=utf-8", body: apiBody ]) { response -> callback(response) }
 	} catch (SocketException e)	{
 		ifDebug("API Error: $e")
 	}
@@ -991,7 +991,8 @@ def sendCommand(child, attributeName, attributeValue) {
 def getVersionInfo(oldVersion, newVersion){	
     def params = [
         uri:  'http://www.fantasyaftermath.com/getMyQVersion/' + oldVersion + '/' + newVersion,
-        contentType: 'application/json'
+        contentType: 'application/json',
+		timeout: 5
     ]
     asynchttpGet('responseHandlerMethod', params)
 }

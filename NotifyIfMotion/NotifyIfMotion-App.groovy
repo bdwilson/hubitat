@@ -41,7 +41,7 @@ def motionHandler(evt) {
 	
 	 log.debug("Motion Detected Date: ${evt.date} Value: ${evt.value} DisplayName: ${evt.displayName}  deviceName: ${deviceName} State: ${state}")
     
-	httpPost(uri: "${settings.endpointURL}", body: [name: "${evt.name}", value: "${evt.value}", displayName: "${deviceName}", stateChanged: "$evt.isStateChange()"])
+	httpPost(uri: "${settings.endpointURL}", timeout: 5, body: [name: "${evt.name}", value: "${evt.value}", displayName: "${deviceName}", stateChanged: "$evt.isStateChange()"])
 		{response -> log.debug "HTTP Response from Homer: ${response.data}"}
 }
 

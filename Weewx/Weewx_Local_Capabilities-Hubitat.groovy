@@ -111,7 +111,8 @@ def PollStation()
 {
     LOGDEBUG("Weewx: ForcePoll called")
     def params1 = [
-        uri: "http://${ipaddress}:${weewxPort}/${weewxPath}"
+        uri: "http://${ipaddress}:${weewxPort}/${weewxPath}",
+		timeout: 5
          ]
 
     try {
