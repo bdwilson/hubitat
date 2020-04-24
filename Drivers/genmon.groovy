@@ -101,6 +101,7 @@ def parse(String description) {
 
 def PollStation()
 {
+	// updated timeouts to 5s vs. 300s default
     LOGDEBUG("Genmon: ForcePoll called")
     def params1 = [
         uri: "http://${ipaddress}:${port}/cmd/status_json",
