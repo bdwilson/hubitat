@@ -52,7 +52,7 @@
 def driverVer() { return "1.3.2" }
 
 metadata {
-    definition(name: "Neo Smart Controller-alpha", namespace: "brianwilson-hubitat", author: "Bigrizz, Brian Wilson", importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/NeoSmart/NeoSmart.groovy") {
+    definition(name: "Neo Smart Controller", namespace: "brianwilson-hubitat", author: "Bigrizz, Brian Wilson", importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/NeoSmart/NeoSmart.groovy") {
         capability "WindowShade"
 		capability "Switch"
 		capability "Actuator"
