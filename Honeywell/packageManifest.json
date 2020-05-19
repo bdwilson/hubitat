@@ -1,0 +1,54 @@
+{
+  "packageName": "Honeywell Security",
+  "author": "Brian Wilson",
+  "version": "1.0.1",
+  "minimumHEVersion": "0.0",
+  "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Honeywell",
+  "communityLink": "https://community.hubitat.com/t/release-envisalink-app-driver-for-vista-ademco-honeywell-alarm-via-smartthings-nodeproxy/9726",
+  "dateReleased": "2020-05-18",
+  "drivers": [
+    {
+      "id": "6435a2e5-c84b-4abb-80d9-69fbf9d25a6b",
+      "name": "Honeywell Zone Contact",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Honeywell/Honeywell_Zone_Contact.groovy",
+      "required": true,
+      "version": "1.0.1"
+    },
+    {
+      "id": "9e136ad0-f854-42c0-b0a9-ae5c318880ac",
+      "name": "Honeywell Zone Motion",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Honeywell/Honeywell_Zone_Motion.groovy",
+      "required": true,
+      "version": "1.0.1"
+    },
+    {
+      "id": "b61c2708-34ab-4367-876c-762e8d152106",
+      "name": "Honeywell Zone Smoke",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Honeywell/Honeywell_Zone_Smoke.groovy",
+      "required": true,
+      "version": "1.0.1"
+    },
+    {
+      "id": "6858119c-e781-4e89-bda7-cfc0dda27e01",
+      "name": "Honeywell Partition",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Honeywell/Honeywell_Partition.groovy",
+      "required": true,
+      "version": "1.0.1"
+    }
+  ],
+  "apps": [
+    {
+      "id": "78bd6c8e-d6dd-47b4-a4be-d8a64d13c3be",
+      "name": "Honeywell Security",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Honeywell/Honeywell_Security.groovy",
+      "required": true,
+      "oauth": false,
+      "version": "1.0.1"
+    }
+  ]
+}
