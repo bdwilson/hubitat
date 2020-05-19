@@ -1,15 +1,16 @@
 /**
- *  Smart Mail Box
+ *  Smart Mailbox
  *
  *  Original SmartThings author Edgar Santana, edited for Hubitat by Brian Wilson
  *  Date: 2015-1-11
  */
 definition(
-    name: "Smart Mail Box",
+    name: "Smart Mailbox",
     namespace: "brianwilson-hubitat",
     author: "Brian Wilson",
     description: "Get notifications or text message when your mail arrives.",
     category: "Convenience",
+	importURL: "https://raw.githubusercontent.com/bdwilson/hubitat/master/SmartMailbox/SmartMailbox-App.groovy",
     iconUrl: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience.png",
     iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
     iconX3Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png")
@@ -59,8 +60,13 @@ def uninstall() {
 
 def subscribeToEvents() {
 	state.isDebug=false
+	state.lastTime=NULL
 	subscribe(contact, "contact.open", eventHandler)
 	subscribe(contactClosed, "contact.closed", eventHandler)
+	//contact.each {
+	//	log.debug("ID: ${it.deviceId}")
+	//	state[it.deviceId]=NULL
+	//}
 	if (settings.notifyEveryOther) {
 		ifDebug("Setting notifyEveryOther active")
 			resetNotify()
@@ -86,12 +92,19 @@ def eventHandler(evt) {
 			ifDebug("notifyEveryOther= ${state.notifyEveryOther}") 
 			sendMessage(evt)
 		} else if (frequency) {
-			def lastTime = state[evt.deviceId]
-			def curDiff = now() - lastTime
-			def freq = frequency * 60000
-			ifDebug("Last Time: ${lastTime}, currDiff: ${currDiff}, frequency: ${frequency}, freq: ${freq}")
-			if (lastTime == null || now() - lastTime >= frequency * 60000) {
-				sendMessage(evt)
+			//def lastTime = state[evt.deviceId]
+			lastTime = state.lastTime
+			ifDebug("lastTime = ${lastTime} ${state.lastTime}")
+			if (lastTime != null) {
+			    def curDiff = now() - lastTime
+			    def freq = frequency * 60000
+			    ifDebug("Last Time: ${lastTime}, currDiff: ${currDiff}, frequency: ${frequency}, freq: ${freq}")
+			    if (now() - lastTime >= frequency * 60000) {
+				    sendMessage(evt)
+				}	
+			} else {
+					ifDebug("lastTime=null")
+					sendMessage(evt)
 			}
 		} else if (!settings.notifyEveryOther) {
 			sendMessage(evt)
@@ -103,13 +116,16 @@ def eventHandler(evt) {
 }
 
 private sendMessage(evt) {
+	state.lastTime = now()
 	def msg = "Mail is here!"
 	if (messageText) {
 		msg = messageText
 	}
-	ifDebug("$evt.name:$evt.value '$msg'")
+	ifDebug("$evt.name:$evt.value:$evt.deviceId:${now()} '$msg'")
 	sendPushMessage.deviceNotification(msg)
-	state[evt.deviceId] = now()
+	//state[evt.deviceId] = now()
+	state.lastTime = now()
+
 }
 
 private getTimeOk() {
