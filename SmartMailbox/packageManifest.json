@@ -1,0 +1,20 @@
+{
+  "packageName": "Smart Mailbox",
+  "author": "Brian Wilson",
+  "minimumHEVersion": "0.0",
+  "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/SmartMailbox",
+  "communityLink": "https://community.hubitat.com/t/release-smart-mailbox/11402",
+  "dateReleased": "2020-05-18",
+  "apps": [
+    {
+      "id": "f32b9308-1dc4-47e8-94b4-d84cbb3e43a0",
+      "name": "Smart Mail Box",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/SmartMailbox/SmartMailbox-App.groovy",
+      "required": true,
+	  "version": "1.0.0",
+      "oauth": false
+    }
+  ],
+  "version": "1.0.0"
+}
