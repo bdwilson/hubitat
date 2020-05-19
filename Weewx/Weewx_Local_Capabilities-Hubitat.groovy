@@ -1,16 +1,9 @@
 /**
  *  Weewx Weather Driver - for Local Device Capabilities 
- *  Pulls data/variables from Weewx Weather Driver daily.json and publishes those to be local, usable capabilies.
  * 
- *  Import URL: https://raw.githubusercontent.com/bdwilson/hubitat/master/Weewx/Weewx_Local_Capabilities-Hubitat.groovy
- *  
- *  Search for "variable" and alter the sections there with the information you want to capture from your daily.json file:
- *  Follow these directions to create the file via Weewx: https://github.com/sgrayban/hubitat-weewx-driver/
- *  
- *  You will have to edit this code to make this work; if you know how to migrate the info that you have to edit into 
- *  preference variables, please send me a pull request!  Please read the comments to modify for your use. 
- *  
- *-------------------------------------------------------------------------------------------------------------------
+ *  Pulls data/variables from Weewx Weather Driver daily.json and publishes those to be local, usable capabilies.
+ *  Edits by Brian Wilson
+ * 
  *  Most code was originally in Weewx Weather Driver - With External Forecasting and is available here:
  *  https://raw.githubusercontent.com/CobraVmax/Hubitat/master/Drivers/Weather/Weewx%20Weather%20Driver%20-%20With%20External%20Forecasting.groovy
  *  
@@ -55,6 +48,7 @@ metadata {
         capability "Illuminance Measurement"
         capability "Relative Humidity Measurement"
         capability "Water Sensor"
+        capability "Switch"
         command "PollStation"
         command "poll"
 
@@ -67,7 +61,7 @@ metadata {
 
         section("Query Inputs"){
             input "ipaddress", "text", required: true, title: "Weewx Server IP/URI", defaultValue: "0.0.0.0"
-            input "weewxPort", "text", required: true, title: "Connection Port", defaultValue: "800"
+            input "weewxPort", "text", required: true, title: "Connection Port", defaultValue: "80"
             input "weewxPath", "text", required: true, title: "path to file", defaultValue: "weewx/daily.json"
             input "amtRain", "text", required: false, title: "amout of rain required to show as wet", defaultValue: ".25"
             input "logSet", "bool", title: "Log All Data", required: true, defaultValue: false
@@ -111,8 +105,7 @@ def PollStation()
 {
     LOGDEBUG("Weewx: ForcePoll called")
     def params1 = [
-        uri: "http://${ipaddress}:${weewxPort}/${weewxPath}",
-		timeout: 5
+        uri: "http://${ipaddress}:${weewxPort}/${weewxPath}", timeout: 5
          ]
 
     try {
@@ -136,15 +129,15 @@ def PollStation()
            var1 = var1.replace("\u00B0C", "")
             
            // same as above. if not needed, comment out
-           LOGDEBUG("Getting variable2: ${resp1.data.stats.current.humidity}")
-           def var2=(resp1.data.stats.current.humidity)
-           var2 = var2.replace("%", "")
+           //LOGDEBUG("Getting variable2: ${resp1.data.stats.current.crawlHumidity}")
+           //def var2=(resp1.data.stats.current.crawlHumidity)
+           //var2 = var2.replace("%", "")
            
            // same as above. if not needed, comment out.
            LOGDEBUG("Getting variable3: ${resp1.data.stats.sinceMidnight.rainSum}")
            def var3=(resp1.data.stats.sinceMidnight.rainSum)
            var3 = var3.replace("in", "")                
-           LOGDEBUG("Done with variables: ${var1} ${var2} ${var3}")
+           //LOGDEBUG("Done with variables: ${var1} ${var2} ${var3}")
 
            sendEvent(name: "WeewxUptime", value: resp1.data.serverUptime)
            sendEvent(name: "WeewxLocation", value: resp1.data.location)
@@ -162,8 +155,10 @@ def PollStation()
                // if you're note using wet/dry water values, you will need to adjust
                if (var3.toDouble() >= amtRain.toDouble()) {
                     sendEvent(name: "water", value: "wet")
+                    sendEvent(name: "switch", value: "on")
                } else {
                     sendEvent(name: "water", value: "dry")
+                    sendEvent(name: "switch", value: "off")
                } 
            }
            LOGDEBUG("Done with events")
