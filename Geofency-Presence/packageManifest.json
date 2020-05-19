@@ -1,0 +1,30 @@
+{
+  "packageName": "Geofency Presence",
+  "author": "Brian Wilson",
+  "version": "1.0.0",
+  "minimumHEVersion": "0.0",
+  "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Geofency-Presence",
+  "communityLink": "https://community.hubitat.com/t/release-geofency-presence/22788",
+  "dateReleased": "2020-05-18",
+  "drivers": [
+    {
+      "id": "526022be-bc79-4716-a34d-ef9e0eb7ba3a",
+      "name": "Virtual Mobile Presence",
+      "namespace": "ajpri",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/virtual-mobile-presence.groovy",
+      "required": true,
+      "version": "1.0.0"
+    }
+  ],
+  "apps": [
+    {
+      "id": "5a253fb8-8b55-46ca-8db8-769389b01fa5",
+      "name": "Geofency Multi-User API Presence App",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/geofency-presence.groovy",
+      "required": true,
+      "oauth": false,
+      "version": "1.0.0"
+    }
+  ]
+}
