@@ -1,0 +1,18 @@
+{
+  "packageName": "Weewx Local Capabilities",
+  "author": "Brian Wilson",
+  "version": "1.0.0",
+  "minimumHEVersion": "0.0",
+  "communityLink": "https://community.hubitat.com/t/release-weewx-local-capabilities/17709",
+  "dateReleased": "2020-05-18",
+  "drivers": [
+    {
+      "id": "eb0ff71f-f91b-4573-ba97-44193ee29266",
+      "name": "Weewx Local Capabilities",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Weewx/Weewx_Local_Capabilities-Hubitat.groovy",
+      "required": false,
+      "version": "1.0.0"
+    }
+  ]
+}
