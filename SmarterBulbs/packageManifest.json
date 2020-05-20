@@ -1,0 +1,8 @@
+{
+  "packageName": "Smarter Bulbs",
+  "author": "Brian Wilson",
+  "minimumHEVersion": "0.0",
+  "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/SmarterBulbs",
+  "communityLink": "https://community.hubitat.com/t/power-failure-recovery-via-rm/4298/12",
+  "dateReleased": "2020-05-20"
+}

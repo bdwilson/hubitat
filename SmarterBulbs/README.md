@@ -1,4 +1,4 @@
-Arduino ESP12/ESP8266 WiFi Maker API Device
+SmarterBulbs / Controlling Zwave/Zigbee bulbs after a power outage with Arduino ESP12/ESP8266 WiFi Maker API Device
 =======
 <br>
 NOTE: When there is a quick blip of power loss, it's not been enough to reset

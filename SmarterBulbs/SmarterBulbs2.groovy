@@ -4,7 +4,6 @@
  *  Copyright 2016 Nick Sweet.
  *  Updates by Brian Wilson
  *  - only update status on init or if change (no scheduled job) - 02/20/2020
- *  - only do one update if there's a series of light changes (unschedule/schedule) - 4/16/2020
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -37,14 +36,6 @@ preferences {
     section("Zigbee bulbs to monitor") {    
         input "slaves","capability.switch", multiple: true
     }
-    section("Logs") {
-        input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
-    }
-}
-
-def logsOff() {
-    log.warn "debug logging disabled..."
-    app.updateSetting("logEnable", [value: "false", type: "bool"])
 }
 
 def installed() {
@@ -59,38 +50,32 @@ def updated() {
 }
 
 def initialize() {
-    log.warn "SmarterBulbbs: Debug logging is: ${logEnable == true}"
-    if (logEnable) runIn(3600, logsOff)
     subscribe(slaves, "switch", saveStates)
     subscribe(canary,"switch.on", checkRestore)
-    checkStates()
+    //canary.refresh() // no need to refresh canary as we'll do this via ESP12 
+    initStates()
+
+    
 }
 
-def checkStates() {
-    canary.refresh()
+def initStates() {
     def lightsOff = [:]
     slaves?.each {
-			//if (it.currentSwitch == "off"){
+			if (it.currentSwitch == "off"){
         	    //log.debug "${it.id} value ${it.currentSwitch}" 
-                if (logEnable) log.debug "SmarterBulbs: Saving State for ${it.displayName} (${it.id}) = ${it.currentSwitch}" 
-        	    lightsOff[it.id]=it.currentSwitch
-        	//}
+        	    lightsOff[it.id]="off"
+        	}
 	}
    	state.lOff = lightsOff   
 }
     
        
 def saveStates(evt) {
+    canary.refresh()
+    pauseExecution(200)
     if (canary.currentSwitch == "off") {  // only keep track of state if canary is off
-            unschedule(checkStates) // unschedule + runIn combo keeps you from having 
-            runInMillis(5000, checkStates)  // each light re-checked if 4 or 5 lights go off at once
-        //state.lOff[evt?.deviceId]=evt.value
-        //log.debug "SmarterBulbs: Saving State for ${evt.displayName} (${evt?.deviceId}) = ${evt.value}" 
-    } else {
-       log.info "SmarterBulbs: Found canary bulb on while saving states; doing a restore."
-       unschedule(checkRestore)
-       runInMillis(5000, checkRestore)
-       //checkRestore()
+        state.lOff[evt?.deviceId]=evt.value
+        log.debug "SmarterBulbs: Saving State for ${evt.displayName} (${evt?.deviceId}) = ${evt.value}" 
     }
 }
 
@@ -98,18 +83,18 @@ def checkRestore(evt) {
     if ("on" == canary.currentSwitch) { 
     	log.info "SmarterBulbs: Canary came on; restoring off states."
         restoreState()
-        pauseExecution(200)
-        log.info "SmarterBulbs: Turning off canary"
+        //pauseExecution(200)
         canary.off()
-    } 
+        }
 }
 
 private restoreState() {
   slaves?.each {
       if (state.lOff[it.id] == "off") { 
     	log.info "SmarterBulbs: Turning $it.label off based on previous state"
-        //pauseExecution(200)
+        pauseExecution(200)
 		it.off()
     }
   }
 }
+
