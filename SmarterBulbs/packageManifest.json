@@ -4,5 +4,15 @@
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/SmarterBulbs",
   "communityLink": "https://community.hubitat.com/t/power-failure-recovery-via-rm/4298/12",
-  "dateReleased": "2020-05-20"
+  "dateReleased": "2020-05-20",
+  "apps": [
+    {
+      "id": "ca61de3f-a457-426c-9629-e1516167e9c3",
+      "name": "Smarter Bulbs",
+      "namespace": "smartthings",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/SmarterBulbs/SmarterBulbs.groovy",
+      "required": true,
+      "oauth": false
+    }
+  ]
 }
