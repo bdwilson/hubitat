@@ -12,7 +12,9 @@
       "namespace": "smartthings",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/SmarterBulbs/SmarterBulbs.groovy",
       "required": true,
-      "oauth": false
+      "oauth": false,
+      "version": "1.0.0"
     }
-  ]
+  ],
+  "version": "1.0.0"
 }
