@@ -4,7 +4,8 @@ SmarterBulbs / Controlling Zwave/Zigbee bulbs after a power outage with Arduino 
 NOTE: When there is a quick blip of power loss, it's not been enough to reset
 this device connected to a powersupply. I've had better success by putting
 calls within my apcupsd daemon to call refreshes on my "canary" device - see
-requirements for other options. 
+requirements for other options if you do have a UPS that you can use to query
+for power status. 
 <br><br>
 The goal of this device is to call a device refresh AFTER a power failure. My
 smart bulbs (Sengled) are pretty dumb - in the event of a power failure, they turn on,
@@ -35,7 +36,8 @@ OR
 - Using an APC UPS, and running apcupsd on Linux to monitor the UPS status 
 
 Modify /etc/apcupsd/apccontrol and look for "mainsback" and add the curl
-command below using the URL from #1 below:
+command below using the URL from #1 below. You can also add additional refresh
+calls by putting a <code>sleep 1</code> inbetween the curl calls:
 <pre>
     mainsback)
     if [ -f /etc/apcupsd/powerfail ] ; then
