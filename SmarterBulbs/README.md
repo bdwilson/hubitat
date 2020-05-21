@@ -60,7 +60,7 @@ reality you could use this code to do any sort of action when the power comes
 back on - send notification, make sure doors are locked, etc. Here is a video (https://bubba.d.pr/9MdpJs) of the device in action with Hubitat.
 
 Here is the hardware/software needed for this method:
-- [ESP8266 ESP12 USB device](https://www.amazon.com/IZOKEE-Wireless-Transceiver-Mega2560-Raspberry/dp/B07D49MSTM) - this one works well and is super cheap.
+- [ESP8266 ESP12 USB device](https://www.amazon.com/Geekstory-ESP-01S-ESP8266-Wireless-4-5-5-5V/dp/B084ZQZF88) - this one works well and is super cheap.
 - [Arduino](https://arduino-esp8266.readthedocs.io/en/latest/installing.html)
 
 Requirements
