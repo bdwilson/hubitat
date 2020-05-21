@@ -108,7 +108,8 @@ calls to refresh your bulb once power has been restored.  Your WiFi network and
 Hubitat should be on a UPS in order for this all to work.
 
 8. Configure a RM rule to turn all bulbs out when your "canary" bulb turns on,
-or (optionally) Install Smarter Bulbs from this repo in Apps Code in Hubitat and activate it. It
+or [Install Smarter Bulbs from this
+repo](https://raw.githubusercontent.com/bdwilson/hubitat/master/SmarterBulbs/SmarterBulbs.groovy) in Apps Code in Hubitat and activate it. It
 will check all selected bulbs every 10 minutes and save their state. In the
 case of a power outage, your bulbs will be reset to their state. 
 
