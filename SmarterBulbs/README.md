@@ -49,18 +49,18 @@ below a certain threshold, refresh your canary bulb via MakerAPI.
 3. <b>Method 3</b>: Using an Arduino device to refresh your bulbs when power is
 restored to the device
 
-This method requires an ESP12 device with custom code included here that will
+This method requires an ESP-01 device with custom code included here that will
 call a refresh to your "canary" device when power is restored. This takes more
 than just a "blib" as the capacitors in your USB powersupply will likely not
 get low enough on a blip to cause the device to power off. 
 
-It takes lessthan 1 second for the ESP12 device to drain the USB power supply when power dies and less than 1 second for this device to connect to your wireless network (assuming your network gear and
+It takes lessthan 1 second for the ESP-01 device to drain the USB power supply when power dies and less than 1 second for this device to connect to your wireless network (assuming your network gear and
 hubitat is on a UPS), and make the HTTP call to the Hubitat Maker API. In
 reality you could use this code to do any sort of action when the power comes
 back on - send notification, make sure doors are locked, etc. Here is a video (https://bubba.d.pr/9MdpJs) of the device in action with Hubitat.
 
 Here is the hardware/software needed for this method:
-- [ESP8266 ESP12 USB device](https://www.amazon.com/ESP8266-ESP-01S-Wireless-Development-PlayStation-4/dp/B07FBNZ79T/) - this one works well and is super cheap.
+- [ESP8266 ESP12 USB device](https://www.amazon.com/IZOKEE-Wireless-Transceiver-Mega2560-Raspberry/dp/B07D49MSTM) - this one works well and is super cheap.
 - [Arduino](https://arduino-esp8266.readthedocs.io/en/latest/installing.html)
 
 Requirements
