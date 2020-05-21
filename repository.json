@@ -1,0 +1,48 @@
+{
+  "author": "Brian Wilson",
+  "gitHubUrl": "https://github.com/bdwilson",
+  "packages": [
+    {
+      "name": "Smarter Bulbs",
+      "category": "Convenience",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/SmarterBulbs/packageManifest.json",
+      "description": "Help keep track of the state of your smart bulbs in case of a power outage"
+    },
+    {
+      "name": "Geofency Presence",
+      "category": "Control",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/packageManifest.json",
+      "description": "Set presence based on Geofency iOS App"
+    },
+    {
+      "name": "Honeywell Security",
+      "category": "Security",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Honeywell/packageManifest.json",
+      "description": "Integration with Honeywell Vista/Envisalink Alarm Systems (requires external node-proxy server)"
+    },
+    {
+      "name": "Neosmart Blinds",
+      "category": "Control",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/NeoSmart/packageManifest.json",
+      "description": "Control your NeoSmart blinds (requires Neosmart hub)"
+    },
+    {
+      "name": "Smart Mailbox",
+      "category": "Convenience",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/SmartMailbox/packageManifest.json",
+      "description": "Be notified when you recieve mail in your mailbox"
+    },
+    {
+      "name": "Weewx Local Capabilities",
+      "category": "Convenience",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Weewx/packageManifest.json",
+      "description": "Allows you to bring capabilities like outdoor temp, rain status, etc into Hubitat.  Switch will control if its wet/dry for use with Simple Irrigation app"
+    },
+    {
+      "name": "Envisalink for Vista Ademco/20p Alarm System",
+      "category": "Security",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat_envisalink/master/packageManifest.json",
+      "description": "Native Hubitat support for Vista Ademco/20p via Envisalink - unsupported at this time"
+    }
+  ]
+}
