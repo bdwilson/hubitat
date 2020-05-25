@@ -132,17 +132,17 @@ def PollStation()
 
            }
             def temp, humid, var1, var2, rain, wet, varT
-            if (settings.temp && settings.temp != "None") {
+            if (settings.temp) {
                 temp = varFix(resp1,settings.temp)
             }
-            if (settings.humid && settings.humid != "None") {
+            if (settings.humid) {
                 humid = varFix(resp1,settings.humid)
             }
-            if (settings.var1 && settings.var1 != "None") {
+            if (settings.var1) {
                 varT = varFix(resp1,settings.var1)
                 var1 = varT.isDouble() ? varT.toDouble() : null
             }
-            if (settings.var2 && settings.var2 != "None") {
+            if (settings.var2) {
                 varT = varFix(resp1,settings.var2)
                 var2 = varT.isDouble() ? varT.toDouble() : null
             }
