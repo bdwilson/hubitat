@@ -55,6 +55,7 @@ metadata {
         attribute "WeewxUptime", "string"
         attribute "Refresh-Weewx", "string"
 	    attribute "WeewxLocation", "string"
+        attribute "RainForPeriod", "string"
 
     }
     preferences() {
@@ -63,9 +64,18 @@ metadata {
             input "ipaddress", "text", required: true, title: "Weewx Server IP/URI", defaultValue: "0.0.0.0"
             input "weewxPort", "text", required: true, title: "Connection Port", defaultValue: "80"
             input "weewxPath", "text", required: true, title: "path to file", defaultValue: "weewx/daily.json"
-            input "amtRain", "text", required: false, title: "amout of rain required to show as wet", defaultValue: ".25"
+            //input "amtRain", "text", required: false, title: "amout of rain required to show as wet", defaultValue: ".25"
             input "logSet", "bool", title: "Log All Data", required: true, defaultValue: false
             input "pollInterval", "enum", title: "Weewx Station Poll Interval", required: true, defaultValue: "5 Minutes", options: ["Manual Poll Only", "5 Minutes", "10 Minutes", "15 Minutes", "30 Minutes", "1 Hour", "3 Hours"]
+            input "temp", "text", title: "Temp Source", required: false, defaultValue: "data.stats.current.outTemp"
+            input "humid", "text", title: "Humidity Source", required: false, defaultValue: "data.stats.current.humidity"
+            //input "rain", "text", title: "Rain Source", required: false, defaultValue: "data.stats.sinceMidnight.rainSum"
+            input "var1", "text", title: "Custom Rain Source", required: false, defaultValue: "data.stats.sinceMidnight.rainSum"
+            input "var2", "text", title: "2nd Custom Rain Source", required: false, defaultValue: ""
+            input "varoperator", "enum", title: "Custom Operator - to act on custom source 1 and 2", required: true, defaultValue: "or", options: ["or", "and"]
+            //input "var1capability", "enum", title: "Custom 1 Capability", required: true, defaultValue: "None", options: ["None", "temperature", "humidity", "water", "switch"]
+            //input "customoperator", "enum", title: "Custom Switch Operator", required: true, defaultValue: "None", options: ["None", ">", "<"]
+            input "customamount", "text", title: "Custom value for switch to be on", required: false, defaultValue: ""
         }
 
     }
@@ -84,7 +94,7 @@ def updated() {
     def pollIntervalCmd = (settings?.pollInterval ?: "3 Hours").replace(" ", "")
 
 
-    log.debug ("${pollIntervalCmd} ${pollInterval}")
+    //log.debug ("${pollIntervalCmd} ${pollInterval}")
     if(pollInterval == "Manual Poll Only"){LOGINFO( "MANUAL POLLING ONLY")}
     else{ "runEvery${pollIntervalCmd}"(pollSchedule)}
 
@@ -100,6 +110,7 @@ def poll(){
 def parse(String description) {
 }
 
+def toIntOrNull = { it?.isInteger() ? it.toInteger() : null }
 
 def PollStation()
 {
@@ -117,57 +128,104 @@ def PollStation()
                 LOGINFO( "params1: ${params1}")
                 LOGINFO( "response contentType: ${resp1.contentType}")
  		        LOGINFO( "response data: ${resp1.data}")
+                LOGINFO( "response data: ${resp1.data}")
+
            }
-         
-           // change this to be whatever variable you want to pull from daily.json.
-           // the replace function will need to remove fahrenheit, in, % so adjust
-           // as needed
-           LOGDEBUG("Getting variable1 : ${resp1.data.stats.current.outTemp}")
-           def var1=(resp1.data.stats.current.outTemp)
-           // remove fahrenheit and celsius (doesn't hurt to have both) 
-           var1 = var1.replace("\u00B0F", "")
-           var1 = var1.replace("\u00B0C", "")
-            
-           // same as above. if not needed, comment out
-           //LOGDEBUG("Getting variable2: ${resp1.data.stats.current.crawlHumidity}")
-           //def var2=(resp1.data.stats.current.crawlHumidity)
-           //var2 = var2.replace("%", "")
-           
-           // same as above. if not needed, comment out.
-           LOGDEBUG("Getting variable3: ${resp1.data.stats.sinceMidnight.rainSum}")
-           def var3=(resp1.data.stats.sinceMidnight.rainSum)
-           var3 = var3.replace("in", "")                
-           //LOGDEBUG("Done with variables: ${var1} ${var2} ${var3}")
+            def temp, humid, var1, var2, rain, wet, varT
+            if (settings.temp && settings.temp != "None") {
+                temp = varFix(resp1,settings.temp)
+            }
+            if (settings.humid && settings.humid != "None") {
+                humid = varFix(resp1,settings.humid)
+            }
+            if (settings.var1 && settings.var1 != "None") {
+                varT = varFix(resp1,settings.var1)
+                var1 = varT.isDouble() ? varT.toDouble() : null
+            }
+            if (settings.var2 && settings.var2 != "None") {
+                varT = varFix(resp1,settings.var2)
+                var2 = varT.isDouble() ? varT.toDouble() : null
+            }
 
            sendEvent(name: "WeewxUptime", value: resp1.data.serverUptime)
            sendEvent(name: "WeewxLocation", value: resp1.data.location)
            sendEvent(name: "Refresh-Weewx", value: pollInterval)
             
-           if (var1) {
-               // adjust if var1 isn't a temperature value.
-               sendEvent(name: "temperature", value: var1)
+           if (temp) {
+               sendEvent(name: "temperature", value: temp)
            }
-           if (var2) {
-               // adjust if var2 isn't a humidity value
-               sendEvent(name: "humidity", value: var2)
+           if (humid) {
+               sendEvent(name: "humidity", value: humid)
            }
-           if (var3) {
-               // if you're note using wet/dry water values, you will need to adjust
-               if (var3.toDouble() >= amtRain.toDouble()) {
+           wet=0
+           rain=0 
+            if (!settings.customamount) {
+                log.error("You need to set a custom amount")
+            } else {
+                if (settings.var1 && !settings.var2) {
+                    if (var1 > settings.customamount.toDouble()) {
+                        wet=1 
+                    }
+                    rain=var1
+                }
+                if (settings.var1 && settings.var2) {
+                    if (varoperator == "and") {
+                        def tRain = var1 + var2
+                        rain=tRain
+                        if (tRain.toDouble() >= settings.customamount.toDouble()) {
+                            wet=1
+                        }
+                    } else {
+                        if ((var1 >= settings.customamount.toDouble()) || (var2 >= settings.customamount.toDouble())) {
+                            wet=1
+                        }
+                        rain=var2
+                        if (var1 > var2) {
+                                rain=var1
+                        }
+                    }
+                }
+            }
+            if (wet == 1) {
                     sendEvent(name: "water", value: "wet")
                     sendEvent(name: "switch", value: "on")
-               } else {
+            } else {
                     sendEvent(name: "water", value: "dry")
-                    sendEvent(name: "switch", value: "off")
-               } 
-           }
-           LOGDEBUG("Done with events")
-   }
+                    sendEvent(name: "switch", value: "off")               
+            }
+            sendEvent(name: "RainForPeriod", value: rain)
+
+        }
 
     } catch (e) {
         log.error "something went wrong: $e"
     }
 
+}
+
+def varFix (response,var) {
+    try {    
+        def vars = var.split(/\./)
+        //settings.temp.split('.').collect { it }.join('.')
+        size = vars.size()
+        //log.debug "SIze: ${size}"
+        if (vars.size() == 2) {
+            newVar=response."${vars[0]}"."${vars[1]}"
+        } else if (vars.size() == 3) {
+            newVar=response."${vars[0]}"."${vars[1]}"."${vars[2]}"
+        } else if (vars.size() == 4) {
+            newVar=response."${vars[0]}"."${vars[1]}"."${vars[2]}"."${vars[3]}"
+        }
+        //log.debug "Var: ${var}  NewVar: ${newVar}  Size: ${size}" 
+        newVar = newVar.replace("\u00B0F", "")
+        newVar = newVar.replace("\u00B0C", "")
+        newVar = newVar.replace(" in", "")  
+        newVar = newVar.replace(" mm", "")   
+        return newVar
+   } catch (e) {
+        log.error "something went wrong: $e"
+        log.error("It appears ${var} doesn't exist. Please check http://${ipaddress}:${weewxPort}/${weewxPath} to see if that value exists.")
+    }    
 }
 
 def pollSchedule() {
@@ -181,6 +239,14 @@ def logCheck() {
     } else if(state.checkLog == false){
         log.info "Further Logging Disabled"
     }
+}
+
+def on() {
+    PollStation()
+}
+
+def off() {
+    PollStation()
 }
 
 def LOGDEBUG(txt){
