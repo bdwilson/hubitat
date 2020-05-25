@@ -75,7 +75,7 @@ metadata {
             input "varoperator", "enum", title: "Custom Operator - to act on custom source 1 and 2", required: true, defaultValue: "or", options: ["or", "and"]
             //input "var1capability", "enum", title: "Custom 1 Capability", required: true, defaultValue: "None", options: ["None", "temperature", "humidity", "water", "switch"]
             //input "customoperator", "enum", title: "Custom Switch Operator", required: true, defaultValue: "None", options: ["None", ">", "<"]
-            input "customamount", "text", title: "Custom value for switch to be on", required: false, defaultValue: ""
+            input "customamount", "text", title: "Custom value for switch to be on", required: false, defaultValue: "0"
         }
 
     }
@@ -159,7 +159,7 @@ def PollStation()
            }
            wet=0
            rain=0 
-            if (!settings.customamount) {
+            if ((settings.var1 || settings.var2) && !settings.customamount) {
                 log.error("You need to set a custom amount")
             } else {
                 if (settings.var1 && !settings.var2) {
