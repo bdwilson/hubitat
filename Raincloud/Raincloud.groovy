@@ -28,7 +28,7 @@
  * 
  */
 
-def driverVer() { return "1.0.0" }
+def driverVer() { return "1.1.0" }
 
 metadata {
     definition(name: "Raincloud Controller", namespace: "brianwilson-hubitat", author: "Brian Wilson", importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Raincloud/Raincloud.groovy") {
@@ -51,6 +51,8 @@ metadata {
 preferences {
     section("URIs") {
 		input "controllerURL", "text", title: "Rainycloud URL and port", required: true
+        input "controllerID", "text", title: "Controller ID", required: true
+        input "faucetID", "text", title: "Faucet ID", required: true
         input "valveID", "text", title: "Valve ID (1-4)", required: true
         input "defaultTime", "text", title: "Default time to keep valve open", required: true, defaultValue: "10"
         input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true            
@@ -123,6 +125,7 @@ def installed() {
 	if (!controllerURL || !valveID || !defaultTime) {
 		log.error "Please make sure Rainycloud URL and Valve ID are configured." 
 	}
+	controllerURL = settings.controllerURL + "/" + settings.controllerID + "/" + settings.faucetID
     log.warn "debug logging is: ${logEnable == true}"
     if (logEnable) runIn(3600, logsOff)
 	state.DriverVersion=driverVer()
