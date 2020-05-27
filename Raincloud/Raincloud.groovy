@@ -4,16 +4,18 @@
  * Calls URIs with HTTP GET to manage Melnor Raincloud devices.
  * 
  * Assumptions: 
- * 1) You are using a single device. Multiple devices could work
- * as there is some work on this here: https://github.com/tchellomello/raincloudy/issues/22
- * 2) You need to create one virtual device per valve - its up to you
+ * 1) You need to create one virtual device per valve - its up to you
  * to not schedule the valves to overlap.
- * 3) The default time to run needs to be > whatever time you schedule via an 
+ * 2) The default time to run needs to be > whatever time you schedule via an 
  * app like Simple Irrigation.
- * 4) Be courteous with your scheduling to check status updates. If you have 4
+ * 3) Be courteous with your scheduling to check status updates. If you have 4
  * valves checking every 5 minutes, it could be seen as putting considerable load
  * on Melnor's servers. I would not go lower than 5 minutes while valves are open
  * and would consider setting the refresh time to manual or 3 hours while closed.
+ * 4) This should really be a parent/child app setup and the backend API should
+ * respond with the statuses of all controllers/faucets/valves vs. one response
+ * per valve. I only have 1 faucet so this doesn't impact me as much as it does
+ * others. Feel free to fix and send me pull requests. 
  * 
  * You need to run a Rainycloud API server on your network: https://github.com/bdwilson/rainycloud-flask
  * 
@@ -50,9 +52,9 @@ metadata {
 
 preferences {
     section("URIs") {
-		input "controllerURL", "text", title: "Rainycloud URL and port", required: true
+		input "URL", "text", title: "Rainycloud URL and port", required: true, defaultValue: "http://x.x.x.x:5058/api"
         input "controllerID", "text", title: "Controller ID", required: true
-        input "faucetID", "text", title: "Faucet ID", required: true
+        input "faucetID", "text", title: "Faucet ID (4 digit alpha-numeric)", required: true
         input "valveID", "text", title: "Valve ID (1-4)", required: true
         input "defaultTime", "text", title: "Default time to keep valve open", required: true, defaultValue: "10"
         input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true            
@@ -121,11 +123,11 @@ def logsOff() {
 }
 
 def installed() {
-    log.info "installed or updated"
-	if (!controllerURL || !valveID || !defaultTime) {
-		log.error "Please make sure Rainycloud URL and Valve ID are configured." 
+    log.info "installed or updated with ${settings}"
+	if (!settings.URL || !settings.valveID || !settings.defaultTime || !settings.controllerID || !settings.faucetID) {
+		log.error "Please make sure Rainycloud URL, controller, faucet and Valve ID are configured. You can see your devices listed when you start raincloudy-flask." 
 	}
-	controllerURL = settings.controllerURL + "/" + settings.controllerID + "/" + settings.faucetID
+	state.controllerURL = settings.URL + "/" + settings.controllerID + "/" + settings.faucetID
     log.warn "debug logging is: ${logEnable == true}"
     if (logEnable) runIn(3600, logsOff)
 	state.DriverVersion=driverVer()
@@ -176,7 +178,7 @@ def off() {
 }
 
 def close() {
-    url = controllerURL + "/close/" + valveID     
+    url = state.controllerURL + "/close/" + valveID     
     get(url,"closing")
     refresh()
 }
@@ -185,18 +187,18 @@ def open(mins) {
     if (!mins)
         mins = defaultTime
     
-    url = controllerURL + "/open/" + valveID + "/" + mins    
+    url = state.controllerURL + "/open/" + valveID + "/" + mins    
     get(url,"opening")
     refresh()
 }
 
 def refresh() {
-    url = controllerURL + "/status/" + valveID
+    url = state.controllerURL + "/status/" + valveID
     get(url,"refresh")
 }
 
 def battery() {
-    url = controllerURL + "/battery"
+    url = state.controllerURL + "/battery"
     get(url,"battery")
 }
 
@@ -205,7 +207,7 @@ def auto() {
         aw = 0
     else 
         aw = 1
-    url = controllerURL + "/auto/" + valveID + "/" + aw     
+    url = state.controllerURL + "/auto/" + valveID + "/" + aw     
     get(url,"auto")
     refresh()
 }
