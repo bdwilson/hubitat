@@ -1,6 +1,6 @@
 # Melnor Raincloud Driver
 * You need a Raincloud watering device connected to WifiAquaTimer website.
-* You need a system that can run a Python flask app ([rainycloud-flask)[https://github.com/bdwilson/raincloudy-flask]) 
+* You need a system that can run a Python flask app - [rainycloud-flask)[https://github.com/bdwilson/raincloudy-flask]
 * Import [this
 driver](https://raw.githubusercontent.com/bdwilson/hubitat/master/Raincloud/Raincloud.groovy)
 into Hubitat Drivers and add a new Virtual Device. 
