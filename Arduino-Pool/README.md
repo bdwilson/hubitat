@@ -26,6 +26,11 @@ have R4 code to share. You'll also need a power supply, or be comfortable dissec
 - [Pool Lights](https://srsmith.com/media/178718/2018-kelo_manual_0318.pdf)
   (Optional) - Any model that is low voltage and the colors are triggered via
 quick on/off/on to cycles to go through the modes/colors. 
+- [Temperature Sensor](https://www.amazon.com/gp/product/B07QL9PLY9/) -
+  Optional Temperature Sensor - You can use either
+[ST_Anything](https://github.com/DanielOgorchock/ST_Anything/blob/master/Arduino/Sketches/ST_Anything_10kThermistor_ESP8266WiFi/ST_Anything_10kThermistor_ESP8266WiFi.ino)
+- using the PS_10KThermistor or [Weewx Pool
+Sensor](https://github.com/bdwilson/weewx-poolsensor). With this sensor I'm using these settings: Bcoefficient: 3950, Thermistor Nominal (@25C): 11000, Series Resistor: 9900
 
 Installation
 --------------------
