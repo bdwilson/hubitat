@@ -21,7 +21,7 @@ To get started you'll need; all in, its about $20. You'll also need some jumper 
 - [Project Box](https://www.thingiverse.com/thing:4460677) - This is one I
   made, you could come up with something on your own.
 - [Hubitat Virtual Garage Drivers](https://community.hubitat.com/t/release-zooz-garage-door-opener/38605) - this was designed for a Zooz relay but works just fine with these relays. 
-- A zwave contact device indicating when your door is closed. I'm not going to cover this cost or install here as this was required for the MyQ Lite implementation. __This is required for the above code to work, otherwise there is no way of knowing if your door is open or closed.__
+- A zwave contact device per garage door you wish to control. This is for indicating when your door is closed. I'm not including this in this cost or cover install here as this was required for the MyQ Lite implementation. __This is required for the above Hubitat Virtual Garage code to work, otherwise there is no way of knowing if your door is open or closed.__
 
 Installation
 --------------------
