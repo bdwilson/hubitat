@@ -35,7 +35,7 @@ reserved, you should do this.
 
 3. Wire it up:
 - Wemos D1 Mini will use D6 and D7 to control the two relays - connect D6 to D1
-  of one of the relays, and D7 to D1 (Pin D1 is what most relay shields use to trigger the relay) of the other relay. <img src="https://bdwilson.github.io/images/IMG_4029.JPG" width=400px>
+  of one of the relays, and D7 to D1 of the other relay. Pin D1 is what most relay shields use to trigger the relay however each Wemos I've tried hasn't worked with pin D1 to trigger the relays, thus me mapping the relays to D6 and D7 on the Wemos. <img src="https://bdwilson.github.io/images/IMG_4029.JPG" width=400px>
 - Get 5v and Ground from Wemos D1 Mini to each relay - I daisy chained them in
   my pictures (yellow and white from D1 Mini) <img src="https://bdwilson.github.io/images/IMG_4030.JPG" width=400px>
 - Use a multi-tester to figure out how your buttons are wired - the remote I
