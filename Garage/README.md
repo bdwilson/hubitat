@@ -4,9 +4,6 @@ The goal of this device is to control my Garage openers - which are MyQ
 compatible with something that gives me local control and does not rely on the
 MyQ Cloud. I was previously using MyQ Lite for Hubitat (which at one point I
 was helping to keep working with they changed things), but I'd had enough.
-
-<img src="https://bdwilson.github.io/images/IMG_8BC0D8160AE5-1.jpeg" width=400px>
-
 Requirements
 ------------
 To get started you'll need:
