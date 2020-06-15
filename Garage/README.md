@@ -20,6 +20,7 @@ To get started you'll need; all in, its about $20. You'll also need some jumper 
   $10 that looked like this and could control 4 doors (I used top 2 buttons) <img src="https://bdwilson.github.io/images/garage_remote.png" width=400px>
 - [Project Box](https://www.thingiverse.com/thing:4460677) - This is one I
   made, you could come up with something on your own.
+- [Hubitat Virtual Garage Drivers](https://community.hubitat.com/t/release-zooz-garage-door-opener/38605) - this was designed for a Zooz relay but works just fine with these relays. 
 
 Installation
 --------------------
@@ -50,7 +51,11 @@ in Hubitat and install the [ethernet
 driver](https://github.com/bdwilson/ST_Anything/blob/master/HubDuino/Drivers/hubduino-parent-ethernet.groovy)
 and the [relay switch
 driver](https://github.com/bdwilson/ST_Anything/blob/master/HubDuino/Drivers/child-relay-switch.groovy)
-it should discover your relayswitch devices. If everything works, put it in
+it should discover your relayswitch devices. 
+
+5. Install [Kevin's](https://github.com/krlaframboise/Hubitat) Zooz [app and drivers](https://community.hubitat.com/t/release-zooz-garage-door-opener/38605) and link the Relays to virtual garage doors. 
+
+6. If everything works, put it in
 your box: <img src="https://bdwilson.github.io/images/IMG_4013.jpg" width=400px>
 <img src="https://bdwilson.github.io/images/IMG_4014.jpg" width=400px>
 
