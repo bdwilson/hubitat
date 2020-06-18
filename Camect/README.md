@@ -12,7 +12,8 @@ Instructions
 * Import [this
 driver](https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/camect_connect-motion-driver.py)
 and [this
-app](https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/camect_connect-app.py). 
+app](https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/camect_connect-app.py).
+**You need to enable OAUTH for the App during installation.**
 * Optionally install
 [camect_connector.py](https://github.com/bdwilson/hubitat/master/Camect/camect_connector.py)
 if you wish to sync Camera events to Hubitat. 
