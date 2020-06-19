@@ -47,7 +47,7 @@ def page1() {
     state.isDebug = isDebug
     return dynamicPage(name: "page1", install: true, uninstall: true) {
     section("Raincloud Connect") {
-      paragraph "This integration requires the Raincloudy Flask python app in order to communicate with Melnor Raincloud. You'll need to set this up on a Linux system prior to completing this info."
+      paragraph "This integration requires the <a href='https://github.com/bdwilson/raincloudy-flask'>Raincloudy Flask python app</a> in order to communicate with Melnor Raincloud. You'll need to set this up on a Linux system prior to completing this info."
       paragraph "Keep in mind, if you rename your zones within the RainCloud app, you'll need to restart your Rainycloud Flask app to pull new names into this integration"
       input "URL", "text", title: "Rainycloud Flask Server and port", description: "http://192.168.1.x:5058", required: true
       input "pollInterval", "enum", title: "Rainycloud API Poll Interval (how often to poll the RainCloud servers when all valves are closed)", required: true, defaultValue: "Manual Poll Only", options: ["Manual Poll Only", "5 Minutes", "10 Minutes", "15 Minutes", "30 Minutes", "1 Hour", "3 Hours"]
@@ -104,18 +104,20 @@ private removeChildDevices() {
 def childClose(DNI) {
     def item = DNI.tokenize('-')
     response = sendCommand("/${item[0]}/${item[1]}/close/${item[2]}")
-    runIn(10,updateStatus)
+    updateStatus(response)
+    runIn(15, updateStatus)
 
 }
 
 def childAuto(DNI, autoWatering) {
     def item = DNI.tokenize('-')
-    if (autoWatering == true) 
+    if (autoWatering == "true") 
         aw = 0
     else 
         aw = 1
+    ifDebug("AutoWater: ${autoWatering}:${aw}:${item[0]}:${item[1]}:${item[2]}")
     response = sendCommand("/${item[0]}/${item[1]}/auto/${item[2]}/${aw}")
-    runIn(10,updateStatus)
+    updateStatus(response)
 }
 
 def childOpen(DNI, mins=[:]) {
@@ -124,15 +126,17 @@ def childOpen(DNI, mins=[:]) {
          mins = settings.defaultTime
     }
     response = sendCommand("/${item[0]}/${item[1]}/open/${item[2]}/${mins}")
-    runIn(10,updateStatus)
+    updateStatus(response)
+    runIn(15, updateStatus)
+
 }
 
-def childRain(DNI, mins=[:]) {
+def childRain(DNI, days=[:]) {
     def item = DNI.tokenize('-')
-    if (!mins) {
-         mins = settings.defaultTime
+    if (days < 0 || days > 7) {
+         days = "0"
     }
-    response = sendCommand("/${item[0]}/${item[1]}/rain/${item[2]}/${mins}")
+    response = sendCommand("/${item[0]}/${item[1]}/rain/${item[2]}/${days}")
     updateStatus(response)
 }
 
