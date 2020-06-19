@@ -4,7 +4,7 @@ This app will allow you to:
 1. Sync HSM states to set Camect's Home/Default modes
 2. Create virtual Motion devices within Hubitat to represent each camera.
 Motion detected on a camera will be synced to Hubitat. You need a Linux system
-to run the [camect_connector.py](https://github.com/bdwilson/camect-connector/camect_connector.py). This connects to Camect and forwards events to
+to run the [Camect Connector](https://github.com/bdwilson/camect-connector). This connects to Camect and forwards events to
 Hubitat (still, all communications remains local). 
 
 Instructions
@@ -13,9 +13,12 @@ Instructions
 driver](https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/camect_connect-motion-driver.py)
 and [this
 app](https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/camect_connect-app.py).
-**You need to enable OAUTH for the App during installation.**
+* Install the User App Camect Connect; use the variables you'll need to install the app.
+    1. You'll need to then navigate to [https://local.home.camect.com](https://local.home.camect.com) and accept the Terms of Service. You'll end up on your local server and the name will be **xxxxxx**.l.home.camect.com. This beginning part is considered your **Camect Code**. 
+    2. You'll then need to determine your username and password - the username in the default case is **admin** and the password is the first part of your email address that you used to register your camect device - for instance, bob@gmail.com would give you the password "bob".
+**You need to enable OAUTH for the App during the optional installation.**
 * Optionally install
-[camect_connector.py](https://github.com/bdwilson/hubitat/master/Camect/camect_connector.py)
+[Camect Connector](https://github.com/bdwilson/hubitat/master/Camect/camect_connector.py)
 if you wish to sync Camera events to Hubitat. 
 
 # Work In Progress
