@@ -18,7 +18,7 @@ app](https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/camect_con
     2. You'll then need to determine your username and password - the username in the default case is **admin** and the password is the first part of your email address that you used to register your camect device - for instance, bob@gmail.com would give you the password "bob".
 **You need to enable OAUTH for the App during the optional installation.**
 * Optionally install
-[Camect Connector](https://github.com/bdwilson/hubitat/master/Camect/camect_connector.py)
+[Camect Connector](https://github.com/bdwilson/camect-connector)
 if you wish to sync Camera events to Hubitat. 
 
 # Work In Progress
