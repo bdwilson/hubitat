@@ -8,6 +8,7 @@ metadata {
 
     attribute "LastMessage", "string"
     attribute "Objects", "string"
+    attribute "LastURL", "string"
   }
 }
 
@@ -36,6 +37,7 @@ def updateStatus(state, time, json) {
   runInMillis(time,inactive) 
   sendEvent (name: "Objects", value: "${json.detected_obj}")
   sendEvent (name: "LastMessage", value: "${desc}")
+  sendEvent (name: "LastURL", value: "${json.url}") 
   sendEvent (name: "motion", value: "${newState}", descriptionText: "${desc}")
   
 }
