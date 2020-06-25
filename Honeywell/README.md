@@ -9,7 +9,7 @@ talking to a Envisalink 3/4 device.
 
 1) SmartThings Node Proxy with Envisalink plugin configured and working. More
 info on this here:
-https://github.com/redloro/smartthings#envisalink-vista-tpi-plugin--alarmdecoder-ad2usb.
+https://github.com/redloro/smartthings#envisalink-vista-tpi-plugin--alarmdecoder-ad2usb or you can also see the original [ST thread](https://community.smartthings.com/t/release-honeywell-ademco-vista-20p-integration/41227) if you are new to this and not moving from ST to Hubitat. 
 If you're moving from SmartThings to Hubitat then you already have this. You
 will need to update your config.json to point to the IP address/port of your Hubitat
 device, however the Honeywell Security app *should* do this for you, but I have
