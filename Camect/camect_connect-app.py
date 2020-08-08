@@ -49,6 +49,10 @@ def page1() {
     section(){ 
         paragraph("Use the following URL for Camect Connector variable hubitatOAUTHURL if you have enabled Motion Device Creation: <a href='${uri}'>${uri}</a>")
     }
+    section() {
+            paragraph "Please save the above app before coming back and setting up a disabler"
+            app(name: "CamectMotionDisabler", appName: "Camect Connect Child - Motion Disabler", namespace: "brianwilson-hubitat", title: "Add a Motion Disabler", multiple: true)
+    }
   }
 }
 
