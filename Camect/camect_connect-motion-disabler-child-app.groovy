@@ -1,14 +1,11 @@
 /**
- Camect Connect Child - Motion Disabler
+ *  Camect Connect Child - Motion Disabler
+ *  Version: 1.1.0
  */
 
 import groovy.time.TimeCategory
 import java.text.SimpleDateFormat
 
-def setVersion(){
-    state.name = "Simple Irrigation"
-	state.version = "2.0.6"
-}
 
 definition(
     name: "Camect Connect Child - Motion Disabler",
@@ -34,19 +31,27 @@ def pageConfig() {
 			paragraph "Select optional sensors/locks/contacts that will be used to disable notifications on the selected camera."
 		}
         section("Select cameras that will be disabled when any of the below are triggered") {
-            prefListDevices() 
+            prefListDevices("Select which cameras to use that will have motion disabled") 
         }
         section("Which presence sensors?") {
 		    input "contacts", "capability.contactSensor", title: "Contact Sensors(s):", required: false, multiple: true
+            input "contactOpen", "bool", title: "On contact open?", required: true, defaultValue: true
+            input "contactClose", "bool", title: "On contact close?", required: true, defaultValue: true
 	    }
 		section("Which locks?") {
 		    input "locks", "capability.lock", title: "Lock(s):", required: false, multiple: true
+            input "lockUnlock", "bool", title: "On lock unlocked?", required: true, defaultValue: true
+            input "lockLock", "bool", title: "On lock locked?", required: true, defaultValue: true
 	    }
         section("Which motion sensors?") {
 		    input "motions", "capability.motionSensor", title: "Motion(s):", required: false, multiple: true
+            input "motionActive", "bool", title: "On motion active?", required: true, defaultValue: true
+            input "motionInactive", "bool", title: "On motion inactive?", required: true, defaultValue: true
 	    }
         section("Which presence sensors?") {
 		    input "presence", "capability.presenceSensor", title: "Presence Sensors(s):", required: false, multiple: true
+            input "onPresent", "bool", title: "On presence present?", required: true, defaultValue: true
+            input "onNotPresent", "bool", title: "On presence not present?", required: true, defaultValue: true
 	    }
         section("How long to disable camera notifications if detection is found?") {
             input "seconds", "number", title: "Number of Seconds", required: true, defaultValue: 60, width: 6
@@ -55,26 +60,6 @@ def pageConfig() {
              label title: "Name", required: true
         }
 	}
-}
-
-def prefListDevices() {  
-    state.cameraList = [:]
-    def response = parent.sendCommand('/ListCameras')
-    for (camera in response.camera) { 
-        parent.ifDebug("Camera Found: ID ${camera.id} Name: ${camera.name}")
-        state.cameraList[camera.id] = camera.name
-    }
-    if (state.cameraList) {
-        	//def nextPage = "sensorPage"
-           // if (!state.doorList){nextPage = "summary"}  //Skip to summary if there are no doors to handle
-                //return dynamicPage(name: "prefListDevices",  title: "Devices", nextPage:nextPage, install:false, uninstall:false) {
-                    //if (state.camera) {
-                        section("Select which cameras to use"){
-                            input(name: "cameras", type: "enum", required:false, multiple:true, options:state.cameraList)
-                        }
-                    //}
-                  
-    }
 }
 
 def installed() {
@@ -89,35 +74,34 @@ def updated() {
 }
 
 def initialize() {
-    //state.cameraList.each { camera ->
-        
-        //def items = camera.split('=')
-	//log.debug "DeviceName: ${deviceName}  FieldNum: ${fieldNum}  evt: ${evt}"
-    //def items = fieldNum.split('field')
-        //def id = items[0]
-        //def name = items[1]
-        //parent.ifDebug "Camera List: ID: ${camera.key} Name: ${camera.value} "
+    
+    //cameras.each { camera -> 
+    //    parent.ifDebug "CameraID's Selected: ${camera} "
     //}
     
-    cameras.each { camera -> 
-        parent.ifDebug "CameraID's Selected: ${camera} "
-    }
-    
     if (presence) {
-	    subscribe(presence, "presence.present", genericHandler)
-        //subscribe(presence, "presence.not present", genericHandler)
+        if (onPresent) 
+	        subscribe(presence, "presence.present", genericHandler)
+        if (onNotPresent) 
+            subscribe(presence, "presence.not present", genericHandler)
     }
     if (locks) {
-        subscribe(lock, "lock.locked", genericHandler)
-        subscribe(lock, "lock.unlocked", genericHandler)
+        if (lockLock) 
+            subscribe(lock, "lock.locked", genericHandler)
+        if (lockUnlock) 
+            subscribe(lock, "lock.unlocked", genericHandler)
     }
     if (contacts) {
-        subscribe(contact, "contact.open", genericHandler)
-        subscribe(contact, "contact.closed", genericHandler)
+        if (contactOpen)
+            subscribe(contact, "contact.open", genericHandler)
+        if (contactClose)
+            subscribe(contact, "contact.closed", genericHandler)
     }
     if (motions) {
-        subscribe(motions, "motion.active", genericHandler)
-        subscribe(motions, "motion.inactive", genericHandler)
+        if (motionActive) 
+            subscribe(motions, "motion.active", genericHandler)
+        if (motionInActive)
+            subscribe(motions, "motion.inactive", genericHandler)
     }
 }
 	
@@ -130,6 +114,18 @@ def genericHandler(evt) {
         parent.ifDebug "Received an event for ${evt.displayName} with value: ${evt.value}; Sending disable to camera: ${camera} for ${settings.seconds}"
         parent.ifDebug "Camera List: ID: ${camera} Name: ${state.cameraList[camera]} "
     }
-    
-    
+}
+
+def prefListDevices(title) {  
+    state.cameraList = [:]
+    def response = parent.sendCommand('/ListCameras')
+    for (camera in response.camera) { 
+        parent.ifDebug("Camera Found: ID ${camera.id} Name: ${camera.name}")
+        state.cameraList[camera.id] = camera.name
+    }
+    if (state.cameraList) {
+        section("${title}"){
+            input(name: "cameras", type: "enum", required:false, multiple:true, options:state.cameraList)
+        }
+    }           
 }
