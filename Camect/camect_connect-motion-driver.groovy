@@ -3,7 +3,11 @@
  *  Version: 1.1.0 
  */
 metadata {
-  definition (name: "Camect Motion", namespace: "brianwilson-hubitat", author: "bubba@bubba.org") {
+  definition (name: "Camect Motion", 
+	namespace: "brianwilson-hubitat", 
+	author: "bubba@bubba.org",
+	importURL: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/camect_connect-motion-driver.groovy"
+   ) {
     capability "Motion Sensor"
     capability "Sensor"
 

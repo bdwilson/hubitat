@@ -13,6 +13,7 @@ definition(
   iconUrl: "https://raw.githubusercontent.com/redloro/smartthings/master/images/honeywell-security.png",
   iconX2Url: "https://raw.githubusercontent.com/redloro/smartthings/master/images/honeywell-security.png",
   iconX3Url: "https://raw.githubusercontent.com/redloro/smartthings/master/images/honeywell-security.png",
+  importURL: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/camect_connect-app.groovy", 
   singleInstance: true
 )
 

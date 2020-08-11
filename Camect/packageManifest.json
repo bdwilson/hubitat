@@ -1,0 +1,39 @@
+{
+  "packageName": "Camect Connect",
+  "author": "Brian Wilson",
+  "version": "1.1.0",
+  "minimumHEVersion": "0.0",
+  "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Camect/README.md",
+  "communityLink": "https://community.hubitat.com/t/release-camect-connect/43837",
+  "dateReleased": "2020-08-09",
+  "apps": [
+    {
+      "id": "d42b02c8-bf6b-4482-ae6f-e8ad6cea3fde",
+      "name": "Camect Connect",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/camect_connect-app.groovy",
+      "required": true,
+      "oauth": true,
+      "version": "1.1.0"
+    },
+    {
+      "id": "9c44c0f2-73bc-4be6-af7a-2bbe2665df2b",
+      "name": "Camect Connect Child - Motion Disabler",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/camect_connect-motion-disabler-child-app.groovy",
+      "required": false,
+      "oauth": false,
+      "version": "1.1.0"
+    }
+  ],
+  "drivers": [
+    {
+      "id": "f3a71492-ba10-4507-ba2d-9462c850dbb6",
+      "name": "Camect Motion",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/camect_connect-motion-driver.groovy",
+      "required": false,
+      "version": "1.1.0"
+    }
+  ]
+}

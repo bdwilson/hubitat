@@ -17,7 +17,7 @@ definition(
     iconUrl: "",
     iconX2Url: "",
     iconX3Url: "",
-	importUrl: "https://raw.githubusercontent.com/bptworld/Hubitat/master/Apps/Simple%20Irrigation/SI-child.groovy",
+	importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/camect_connect-motion-disabler-child-app.groovy",
 )
 
 preferences {
