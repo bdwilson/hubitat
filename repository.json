@@ -43,6 +43,12 @@
       "category": "Security",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat_envisalink/master/packageManifest.json",
       "description": "Native Hubitat support for Vista Ademco/20p via Envisalink - unsupported at this time"
+    },
+    {
+      "name": "Camect Connect",
+      "category": "Convenience",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/packageManifest.json",
+      "description": "Allows you to connect and sync HSM and virtual motion devices with your Camect NVR"
     }
   ]
 }
