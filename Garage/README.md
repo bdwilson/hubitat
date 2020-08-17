@@ -4,7 +4,7 @@ Arduino ST_Anything Garage Controller for Hubitat
 The goal of this device is to control my Garage openers - which are MyQ
 compatible with something that gives me local control and does not rely on the
 MyQ Cloud. I was previously using MyQ Lite for Hubitat (which at one point I
-was helping to keep working with they changed things), but I'd had enough.
+was helping to keep working with they changed things), but I'd had enough. This project is also documented on the [Hubitat Community](https://community.hubitat.com/t/yet-another-garage-door-controller-w-hubduino/43544) so you might find support there. 
 
 
 Requirements
