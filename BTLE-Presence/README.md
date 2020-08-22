@@ -8,11 +8,10 @@ seconds (configurable for what your threshold is). Wherever you run the python
 script from is your "location" and you can assign different "users" to be
 looked for within the script, thus it's multi-user. This idea was borrowed from
 here: https://www.domoticz.com/wiki/Presence_detection_%28Bluetooth_4.0_Low_energy_Beacon%29. 
-
-
+<br><br>
 The added benefit of using this is that you don't need to invest in expensive
 presence devices, assuming you have a Linux device with bluetooth LE
-capabilities and it's in a locatoin where it can see the BTLE devices you wish
+capabilities and it's in a location where it can see the BTLE devices you wish
 to track.
 
 Requirements
