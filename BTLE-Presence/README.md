@@ -73,9 +73,9 @@ Hubitat Installation
 --------------------
 1. Go to Drivers Code and create a new device using [virtual-mobile-presence.groovy](https://github.com/ajpri/STApps/blob/master/devicetypes/ajpri/virtual-mobile-presence.src/virtual-mobile-presence.groovy).
 2. Go to Devices and create a new virtual device '''name it whatever the location name will be called in
-Geofency with a - and a USER after it'''. Mine are called "Virtual Presence-Brian" and "Virtual Presence-Spawn1".  Network Device ID can be
-'''VIRTUAL_PRESENCE_1''' for the first. Device Type will be
-the type you configured in step 1. For this example, mine is named "Virtual Presence-Brian" and my
+your script with a - and a USER after it'''. Mine are called "Home-Brian" and "Home-Spawn1".  Network Device ID can be
+'''HOME_VIRTUAL_PRESENCE_1''' for the first. Device Type will be
+the type you configured in step 1. For this example, mine is named "Home-Brian" and my
  location name above is "Home". You can create multiple
 virtual devices and give them different names after the "-" then you can
 reference them after the location below in #5 and use that new webhook in #8.
@@ -89,7 +89,9 @@ URL_HUBITAT entry for the python script above. It should look something like
 this: http://192.168.1.30/apps/api/414/location/?user=PARAM_NAME&location=PARAM_IDX&cmd=PARAM_CMD&access_token=3523535-1356-235623465-xxxxx-xxxxx
 6. Now paste this URL into your browser and make sure you get the following
 response:
-<code>["Yep, this is the right URL, just put it into Geofency Web Hook, set to POST and do a test. Make sure your Geofency location name matches the device '<location>-Brian'"]</code>
+<code>["Yep, this is the right URL, just put it into check_beacon_presence.py
+URL_HUBITAT. Make sure your location name (next to last element of each array
+in TAG_DATA) in the script matches the device '<location>-<name>'"]</code>
 7. Install the url in the python script, then run it as root.  Also you'll want
 to set it up to run as root (see Autorun as Service section
 [here](https://www.domoticz.com/wiki/Presence_detection_%28Bluetooth_4.0_Low_energy_Beacon%29).
