@@ -30,9 +30,6 @@ preferences {
   page(name: "setupScreen")
 }
 
-import groovy.json.JsonSlurper
-import groovy.json.JsonOutput
-
 def setupScreen(){
     state.isDebug = isDebug
     if(!state.accessToken){	
