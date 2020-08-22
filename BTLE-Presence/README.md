@@ -101,6 +101,13 @@ sudo ./check_beacon_presence.py
 8. You should now have a virtual presence sensor that you can tie to
 Hubitat actions. You can create as many virtual presense sensors as you have
 tags. 
+9.
+<pre>
+$ sudo ./check_beacon_presence.py
+Brian - HOME - http://192.168.1.30/apps/api/414/location/?user=Brian&location=Home&cmd=HOME&access_token=806621fc-6d62-42e8-a07c-xxxxxxxxxxxxxx
+Amy - AWAY - http://192.168.1.30/apps/api/414/location/?user=Amy&location=Home&cmd=AWAY&access_token=806621fc-6d62-42e8-a07c-xxxxxxxxxxxxxx
+Amy - HOME - http://192.168.1.30/apps/api/414/location/?user=Amy&location=Home&cmd=HOME&access_token=806621fc-6d62-42e8-a07c-xxxxxxxxxxxxxx
+</pre>
 
 Bugs/Contact Info
 -----------------
