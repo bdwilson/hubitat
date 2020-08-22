@@ -13,6 +13,10 @@ The added benefit of using this is that you don't need to invest in expensive
 presence devices, assuming you have a Linux device with bluetooth LE
 capabilities and it's in a location where it can see the BTLE devices you wish
 to track.
+<br><br>
+There is a [thread on this
+topic](https://community.hubitat.com/t/release-btle-presence-sensor/48332) in
+the Hubitat forums. Please check here for help.
 
 Requirements
 ------------
@@ -110,4 +114,6 @@ Amy - HOME - http://192.168.1.30/apps/api/414/location/?user=Amy&location=Home&c
 
 Bugs/Contact Info
 -----------------
+There is a [thread on this topic](https://community.hubitat.com/t/release-btle-presence-sensor/48332) in the Hubitat forums. Please check here for help.
+<br><br>
 Bug me on Twitter at [@brianwilson](http://twitter.com/brianwilson) or email me [here](http://cronological.com/comment.php?ref=bubba).
