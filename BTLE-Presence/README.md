@@ -6,17 +6,16 @@ devices into Hubitat in order to set presence for users. This will work with
 Tile Mate devices, and any other device that transmits BT presence every few
 seconds (configurable for what your threshold is). Wherever you run the python
 script from is your "location" and you can assign different "users" to be
-looked for within the script, thus it's multi-user. This idea was borrowed from
-here: https://www.domoticz.com/wiki/Presence_detection_%28Bluetooth_4.0_Low_energy_Beacon%29. 
+looked for within the script, thus it's multi-user. This idea was <a
+href="https://www.domoticz.com/wiki/Presence_detection_%28Bluetooth_4.0_Low_energy_Beacon%29">borrowed
+from here.</a>
 <br><br>
 The added benefit of using this is that you don't need to invest in expensive
 presence devices, assuming you have a Linux device with bluetooth LE
 capabilities and it's in a location where it can see the BTLE devices you wish
 to track.
 <br><br>
-There is a [thread on this
-topic](https://community.hubitat.com/t/release-btle-presence-sensor/48332) in
-the Hubitat forums. Please check here for help.
+There is a <a href="https://community.hubitat.com/t/release-btle-presence-sensor/48332">thread on this topic</a> in the hubitat forums.
 
 Requirements
 ------------
