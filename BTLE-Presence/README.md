@@ -56,7 +56,10 @@ $ sudo ./test_beacon.py
 devices your system can see. Good luck finding out which one is the BT device
 you care about. I know the Tile Mate devices broadcast once every 15-20
 seconds, so look for an entry with "back after 16 secs" and those will be your
-Tile Mate devices.  Grab the mac addresses you care about.
+Tile Mate devices.  Grab the mac addresses you care about. **Note: You can also
+adjust time_threshold at the top of test_beacon.py to only see things that
+beacon at time interverals LONGER than time_threshold. This is currently set to
+10, so it should see Tile Mate devices as they beacon at >10 seconds.**
 7. Update your mac addresses in TAG_DATA array in check_beacon_presence.py.
 Here is my example. I named my tiles "Brian" and "Amy" (ties to part of the
 device name in Hubitat). I have a timeout of 30
