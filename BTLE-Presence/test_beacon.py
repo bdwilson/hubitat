@@ -7,6 +7,8 @@
 #   Version : 1.0
 #
 
+time_threshold=10
+
 TAG_DATA = [  
            ]
 
@@ -127,7 +129,8 @@ while True:
                                     rssi=''.join(c for c in str(struct.unpack("b", pkt[report_pkt_offset -1])) if c in '-0123456789')
                                     if elapsed_time>tag[2] : 
                                         tag[2]=elapsed_time
-                                    logging.debug('Tag %s is back after %i sec. (Max %i). RSSI %s. DATA %s',tag[0],elapsed_time,tag[2],rssi, struct.unpack("b", pkt[report_pkt_offset -2]))
+                                        if (elapsed_time > time_threshold):
+                                            logging.debug('Tag %s is back after %i sec. (Max %i). RSSI %s. DATA %s',tag[0],elapsed_time,tag[2],rssi, struct.unpack("b", pkt[report_pkt_offset -2]))
                                     tag[3]=time.time()   # update lastseen
                                     found=1
                                     
