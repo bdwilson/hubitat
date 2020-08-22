@@ -72,7 +72,7 @@ def listLocations() {
 def deviceHandler(evt) {}
 
 def correctURL () {
-	def msg = ["Yep, this is the right URL, just put it into check_beacon_presence.py URL_HUBITAT. Make sure your location name (next to last element of each array in TAG_DATA) in the script matches the device '<location>-${params.user}'"]
+	def msg = ["Yep, this is the right URL, just put it into check_beacon_presence.py URL_HUBITAT. Make sure your location name (next to last element of each array in TAG_DATA) in the script matches the device '<location>-<user>'"]
 	ifDebug("${msg}")
 	return msg
 }

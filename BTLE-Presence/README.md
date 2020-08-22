@@ -91,7 +91,7 @@ this: http://192.168.1.30/apps/api/414/location/?user=PARAM_NAME&location=PARAM_
 response:
 <code>["Yep, this is the right URL, just put it into check_beacon_presence.py
 URL_HUBITAT. Make sure your location name (next to last element of each array
-in TAG_DATA) in the script matches the device '<location>-<name>'"]</code>
+in TAG_DATA) in the script matches the device 'location-name'"]</code>
 7. Install the url in the python script, then run it as root.  Also you'll want
 to set it up to run as root (see Autorun as Service section
 [here](https://www.domoticz.com/wiki/Presence_detection_%28Bluetooth_4.0_Low_energy_Beacon%29).
