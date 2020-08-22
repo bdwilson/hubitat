@@ -14,6 +14,8 @@ in places that you frequent.
 
 <img src="https://bdwilson.github.io/images/IMG_0BDCE0D2F6F9-1.jpeg" width=300px>
 
+This topic is covered in the Hubitat Community forums <a href="https://community.hubitat.com/t/release-geofency-presence/22788">here</a>
+
 Requirements
 ------------
 To get started you'll need:
@@ -56,4 +58,6 @@ iBeacons or GPS locations in Geofency.
 
 Bugs/Contact Info
 -----------------
+Check the [Hubitat Community Forum](https://community.hubitat.com/t/release-geofency-presence/22788) if you run into issues. 
+
 Bug me on Twitter at [@brianwilson](http://twitter.com/brianwilson) or email me [here](http://cronological.com/comment.php?ref=bubba).
