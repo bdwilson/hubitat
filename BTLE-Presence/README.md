@@ -23,7 +23,7 @@ To get started you'll need:
 - A Linux device with BTLE capabilities - cheapest is [Pi Zero W](https://www.adafruit.com/product/3400), but a beefier Pi works too. I would not recommend virtualizing this with Docker as you need access to the bluetooth stack.
 - Patience - you'll have to figure out what bluetooth device is actually the one you care about - this is a little trial and error and you can use RSSI information to determine how close/far away things are. 
 - Hubitat Hub
-	- [A Virtual Presence Device](https://github.com/ajpri/STApps/blob/master/devicetypes/ajpri/virtual-mobile-presence.src/virtual-mobile-presence.groovy)
+	- [Virtual BTLE Presence Device](https://raw.githubusercontent.com/bdwilson/hubitat/master/virtual-mobile-presence-BTLE.groovy)
 	- [My Hubitat app](https://raw.githubusercontent.com/bdwilson/hubitat/master/BTLE-Presence/BTLE-Presence-app.groovy) assigned to your Virtual Presence Device(s) above
 
 PI installation
@@ -66,7 +66,9 @@ device name in Hubitat). I have a timeout of 30
 seconds for them (if not seen for 30 secs, they get flagged as AWAY), and the
 area І'm running my script from is "Home" (ties to the device location in
 Hubitat), and SWITCH_MODE means it only reports changes to Hubitat.  We don't
-have the URL yet, so move on to the next step to do that.
+have the URL yet, so move on to the next step to do that. **If you leave it in
+REPEAT_MODE, the RSSI of the device will be set as the signal strength in the
+virtual device.**
 <pre>
 TAG_DATA = [
             ["Brian","fe:31:0b:b0:c6:12",30,0,"Home",SWITCH_MODE],
@@ -76,7 +78,7 @@ TAG_DATA = [
 
 Hubitat Installation
 --------------------
-1. Go to Drivers Code and create a new device using [virtual-mobile-presence.groovy](https://github.com/ajpri/STApps/blob/master/devicetypes/ajpri/virtual-mobile-presence.src/virtual-mobile-presence.groovy).
+1. Go to Drivers Code and create a new device using this [Virtual BTLE Presence Device](https://raw.githubusercontent.com/bdwilson/hubitat/master/virtual-mobile-presence-BTLE.groovy).
 2. Go to Devices and create a new virtual device '''name it whatever the location name will be called in
 your script with a - and a USER after it'''. Mine are called "Home-Brian" and "Home-Spawn1".  Network Device ID can be
 '''HOME_VIRTUAL_PRESENCE_1''' for the first. Device Type will be

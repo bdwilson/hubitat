@@ -22,13 +22,15 @@ definition(
     iconUrl: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience.png",
     iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
     iconX3Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
-    importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/BTLE-Presence/BTLE-Presence-app.groovy",
     oauth: true)
 
 
 preferences {
   page(name: "setupScreen")
 }
+
+import groovy.json.JsonSlurper
+import groovy.json.JsonOutput
 
 def setupScreen(){
     state.isDebug = isDebug
@@ -72,19 +74,19 @@ def listLocations() {
 def deviceHandler(evt) {}
 
 def correctURL () {
-	def msg = ["Yep, this is the right URL, just put it into check_beacon_presence.py URL_HUBITAT. Make sure your location name (next to last element of each array in TAG_DATA) in the script matches the device '<location>-<user>'"]
+	def msg = ["Yep, this is the right URL, just put it into check_beacon_presence.py URL_HUBITAT. Make sure your location name (next to last element of each array in TAG_DATA) in the script matches the device '<location>-${params.user}'"]
 	ifDebug("${msg}")
 	return msg
 }
 
 def validCommandsg() {
-	def msg = ["Valid Commands: GET:/listLocations, POST:/location/<user>, GET:/location/<user> (to verify correct URL only)."]
+	def msg = ["Valid Commands: GET:/listLocations, POST:/location/, GET:/location/ (to verify correct URL only)."]
 	ifDebug("${msg}")
 	return msg
 }
 
 def validCommandsp() {
-	def msg = ["You're missing a user: /location/<user>?access_token=....."]
+	def msg = ["You're missing a user: /location/?user=PARAM_NAME&location=PARAM_IDX&cmd=PARAM_CMD&access_token=..."]
 	ifDebug("${msg}")
 	return msg
 }
@@ -109,14 +111,18 @@ def update (devices) {
             // render contentType: "text/html", msg: out, status: 404
         } else {
             if(event == "AWAY"){
-                def msg = "${user} has exited ${location} - turning ${device} off"
+                def msg = "${user} has exited ${location} - turning ${device} off with event ${event}"
                 ifDebug("${msg}")
                 device.off();
                 //render contentType: "text/html", data: msg, status: 200
             } else {
-                def msg = "${user} has entered ${location} - turning ${device} on"
+                def msg = "${user} has entered ${location} - turning ${device} with event ${event}"
                 ifDebug("${msg}")
-                device.on();
+                if (event != "HOME") {
+                   device.on(event)
+                } else {
+                   device.on()
+                }
                 //render contentType: "text/html", msg: out, status: 200
             }
         }
@@ -151,4 +157,3 @@ mappings {
 private ifDebug(msg) {  
     if (msg && state.isDebug)  log.debug 'BTLE Presence: ' + msg  
 }
-
