@@ -50,7 +50,7 @@ hci0:	Type: Primary  Bus: UART
 5. Make sure your test script runs. If not, you may need additional modules.
 Again, check the above install instructions in #1 in case it is helpful. 
 <pre>
-$ sudo ./test_beacon.py
+$ sudo python ./test_beacon.py
 </pre>
 6. If you see a bunch of MAC addresses scrolling by, this all the bluetooth
 devices your system can see. Good luck finding out which one is the BT device
