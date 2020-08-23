@@ -119,17 +119,17 @@ Auto-start on Raspberry Pi
 1. Edit check_beacon_presence.service to point to where you have this packge
 existing on your system.
 2. Copy it; enable it, start it. 
-<code>
-cp check_beacon_presence.service /lib/systemd/system/
-sudo chmod 644 /lib/systemd/system/check_beacon_presence.service
-sudo systemctl daemon-reload
-sudo systemctl enable check_beacon_presence.service
-sudo systemctl start check_beacon_presence.service
-</code>
+<pre>
+$ sudo cp check_beacon_presence.service /lib/systemd/system/
+$ sudo chmod 644 /lib/systemd/system/check_beacon_presence.service
+$ sudo systemctl daemon-reload
+$ sudo systemctl enable check_beacon_presence.service
+$ sudo systemctl start check_beacon_presence.service
+</pre>
 3. Check to see if it's running
-<code>
-sudo systemctl status check_beacon_presence.service -l
-</code>
+<pre>
+$ sudo systemctl status check_beacon_presence.service -l
+</pre>
 
 Bugs/Contact Info
 -----------------
