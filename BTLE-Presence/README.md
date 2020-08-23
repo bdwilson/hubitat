@@ -114,6 +114,23 @@ Amy - AWAY - http://192.168.1.30/apps/api/414/location/?user=Amy&location=Home&c
 Amy - HOME - http://192.168.1.30/apps/api/414/location/?user=Amy&location=Home&cmd=HOME&access_token=806621fc-6d62-42e8-a07c-xxxxxxxxxxxxxx
 </pre>
 
+Auto-start on Raspberry Pi
+---------
+1. Edit check_beacon_presence.service to point to where you have this packge
+existing on your system.
+2. Copy it; enable it, start it. 
+<code>
+cp check_beacon_presence.service /lib/systemd/system/
+sudo chmod 644 /lib/systemd/system/check_beacon_presence.service
+sudo systemctl daemon-reload
+sudo systemctl enable check_beacon_presence.service
+sudo systemctl start check_beacon_presence.service
+</code>
+3. Check to see if it's running
+<code>
+sudo systemctl status check_beacon_presence.service -l
+</code>
+
 Bugs/Contact Info
 -----------------
 There is a [thread on this topic](https://community.hubitat.com/t/release-btle-presence-sensor/48332) in the Hubitat forums. Please check here for help.

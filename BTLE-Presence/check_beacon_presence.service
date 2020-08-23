@@ -1,0 +1,11 @@
+[Unit]
+Description=check_beacon_presence Service
+After=multi-user.target
+
+[Service]
+User=root
+Type=idle
+ExecStart=/usr/local/bin/check_beacon_presence.py
+
+[Install]
+WantedBy=multi-user.target
