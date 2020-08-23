@@ -101,14 +101,14 @@ in TAG_DATA) in the script matches the device 'location-name'"]</code>
 to set it up to run as root (see Autorun as Service section
 [here](https://www.domoticz.com/wiki/Presence_detection_%28Bluetooth_4.0_Low_energy_Beacon%29).
 <pre>
-sudo ./check_beacon_presence.py
+sudo python ./check_beacon_presence.py
 </pre>
 8. You should now have a virtual presence sensor that you can tie to
 Hubitat actions. You can create as many virtual presense sensors as you have
 tags. 
 9.
 <pre>
-$ sudo ./check_beacon_presence.py
+$ sudo python ./check_beacon_presence.py
 Brian - HOME - http://192.168.1.30/apps/api/414/location/?user=Brian&location=Home&cmd=HOME&access_token=806621fc-6d62-42e8-a07c-xxxxxxxxxxxxxx
 Amy - AWAY - http://192.168.1.30/apps/api/414/location/?user=Amy&location=Home&cmd=AWAY&access_token=806621fc-6d62-42e8-a07c-xxxxxxxxxxxxxx
 Amy - HOME - http://192.168.1.30/apps/api/414/location/?user=Amy&location=Home&cmd=HOME&access_token=806621fc-6d62-42e8-a07c-xxxxxxxxxxxxxx
