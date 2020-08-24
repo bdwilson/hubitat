@@ -23,7 +23,7 @@ To get started you'll need:
 - A Linux device with BTLE capabilities - cheapest is [Pi Zero W](https://www.adafruit.com/product/3400), but a beefier Pi works too. I would not recommend virtualizing this with Docker as you need access to the bluetooth stack.
 - Patience - you'll have to figure out what bluetooth device is actually the one you care about - this is a little trial and error and you can use RSSI information to determine how close/far away things are. 
 - Hubitat Hub
-	- [Virtual BTLE Presence Device](https://raw.githubusercontent.com/bdwilson/hubitat/master/virtual-mobile-presence-BTLE.groovy)
+	- [Virtual BTLE Presence Device](https://raw.githubusercontent.com/bdwilson/hubitat/master/BTLE-Presence/virtual-mobile-presence-BTLE.groovy)
 	- [My Hubitat app](https://raw.githubusercontent.com/bdwilson/hubitat/master/BTLE-Presence/BTLE-Presence-app.groovy) assigned to your Virtual Presence Device(s) above
 
 PI installation
@@ -78,7 +78,7 @@ TAG_DATA = [
 
 Hubitat Installation
 --------------------
-1. Go to Drivers Code and create a new device using this [Virtual BTLE Presence Device](https://raw.githubusercontent.com/bdwilson/hubitat/master/virtual-mobile-presence-BTLE.groovy).
+1. Go to Drivers Code and create a new device using this [Virtual BTLE Presence Device](https://raw.githubusercontent.com/bdwilson/hubitat/master/BTLE-Presence/virtual-mobile-presence-BTLE.groovy). 
 2. Go to Devices and create a new virtual device '''name it whatever the location name will be called in
 your script with a - and a USER after it'''. Mine are called "Home-Brian" and "Home-Spawn1".  Network Device ID can be
 '''HOME_VIRTUAL_PRESENCE_1''' for the first. Device Type will be
