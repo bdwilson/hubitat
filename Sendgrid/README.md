@@ -6,3 +6,4 @@ you own your own domain, but it will work with free services like
 Gmail/Outlook, however delivery is not guarenteed.
 
 # Installation
+Go [to the Hubitat Community](https://community.hubitat.com/t/release-sendgrid-email-notification-plugin/48691) for installation instructions & support.
