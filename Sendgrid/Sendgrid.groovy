@@ -29,7 +29,8 @@ preferences {
 }
 
 metadata {
-    definition (name: "Sendgrid", namespace: "brianwilson-hubitat", author: "Brian Wilson") {
+    definition (name: "Sendgrid", namespace: "brianwilson-hubitat", author: "Brian Wilson", 
+			    importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Sendgrid/Sendgrid.groovy") {
         capability "Notification"
         capability "Actuator"
         capability "Speech Synthesis"
