@@ -187,11 +187,11 @@ def PollStation()
                 }
             }
             if (wet == 1) {
-                    sendEvent(name: "water", value: "wet")
-                    sendEvent(name: "switch", value: "on")
+                    sendEvent(name: "water", value: "wet", isStateChange: true)
+                    sendEvent(name: "switch", value: "on", isStateChange: true)
             } else {
-                    sendEvent(name: "water", value: "dry")
-                    sendEvent(name: "switch", value: "off")               
+                    sendEvent(name: "water", value: "dry", isStateChange: true)
+                    sendEvent(name: "switch", value: "off", isStateChange: true)               
             }
             sendEvent(name: "RainForPeriod", value: rain)
 
