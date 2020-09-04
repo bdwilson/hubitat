@@ -6,6 +6,7 @@
 *   Modification History:
 *     26-AUG-2020 - Added options for multiple recipient addresses, option to BCC
 *                   recipients, option to send with HIGH priority.
+*     08-SEP-2020 - Escaped new lines, quotes, double quotes in messages. 
 *
 *   Inspired by original work for SmartThings & Hubitat by: Dan Ogorchock for Pushover.
 *
@@ -77,7 +78,10 @@ def deviceNotification(message) {
         bcc = ',"bcc": [' + newTo + ']'
         newTo = '{"email": "' + settings.from + '"}'
     }
-         
+        
+    message = message.replaceAll("[\'\"{}]", "")
+    message = message.replaceAll("[\n\r]", " ")
+    
     postBody = '{"personalizations": [{"to": [' + newTo + ']' + bcc + '}],"from": {"email": "' + settings.from + '"},' + headers + '"subject": "' + settings.subject + '","content": [{"type": "text/plain", "value": "' + message + '"}]}'
          
     ifDebug("Sending Message: $message [${postBody}]")
