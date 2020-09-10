@@ -79,6 +79,7 @@ import time
 import requests
 import signal
 import threading
+from datetime import datetime
 
 
 LE_META_EVENT = 0x3e
@@ -119,11 +120,13 @@ def le_handle_connection_complete(pkt):
 
 def request_thread(idx,cmd, name):
     try:
+        now = datetime.now()
+        timestamp = now.strftime("%m-%d-%Y %H:%M:%S")
         url = URL_HUBITAT
         url=url.replace('PARAM_IDX',str(idx))
         url=url.replace('PARAM_NAME',str(name))
         url=url.replace('PARAM_CMD',str(cmd))
-        print str(name) + " - " + str(cmd) + " - " + str(url)
+        print str(name) + " - " + str(cmd) + " - " + str(url) + " - " + str(timestamp)
         result = requests.post(url,auth=(HUBITAT_USER, HUBITAT_PASS))
         logging.debug(" %s -> %s" % (threading.current_thread(), result))
     except requests.ConnectionError, e:
