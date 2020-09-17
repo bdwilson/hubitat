@@ -1,11 +1,7 @@
 /**
  *  Camect Connect Child - Motion Disabler
- *  Version: 1.1.0
+ *  Version: 1.2.0
  */
-
-import groovy.time.TimeCategory
-import java.text.SimpleDateFormat
-
 
 definition(
     name: "Camect Connect Child - Motion Disabler",
@@ -17,7 +13,7 @@ definition(
     iconUrl: "",
     iconX2Url: "",
     iconX3Url: "",
-	importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/camect_connect-motion-disabler-child-app.groovy",
+	importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/camect_connect-motion-disabler-child-app.groovy"
 )
 
 preferences {
@@ -25,7 +21,8 @@ preferences {
 }
 
 def pageConfig() {
-    
+    theName = app.label
+    if(theName == null || theName == "") theName = "New Child App"
     dynamicPage(name: "", title: "", install: true, uninstall: true, refreshInterval:0) {
         section("Instructions:", hideable: false, hidden: false) {
 			paragraph "Select optional sensors/locks/contacts that will be used to disable notifications on the selected camera."
@@ -53,7 +50,7 @@ def pageConfig() {
             input "onPresent", "bool", title: "On presence present?", required: true, defaultValue: true
             input "onNotPresent", "bool", title: "On presence not present?", required: true, defaultValue: true
 	    }
-        section("How long to disable camera notifications if detection is found?") {
+        section("How long to disable camera notifications if detection is triggered?") {
             input "seconds", "number", title: "Number of Seconds", required: true, defaultValue: 60, width: 6
         }
         section("Enter the name of your Motion Disabler - this is probably a combination of your camera names you've selected.") {
@@ -69,51 +66,74 @@ def installed() {
 
 def updated() {	
     parent.ifDebug "Updated with settings: ${settings}"
-	unschedule()
+    unsubscribe()
 	initialize()
 }
 
 def initialize() {
     
-    //cameras.each { camera -> 
-    //    parent.ifDebug "CameraID's Selected: ${camera} "
-    //}
+    cameras.each { camera -> 
+        parent.ifDebug "CameraID's Selected: ${camera} "
+    }
     
     if (presence) {
-        if (onPresent) 
+        if (settings.onPresent == true) {
 	        subscribe(presence, "presence.present", genericHandler)
-        if (onNotPresent) 
+            parent.ifDebug "Subscribing to presence present for ${presence} "
+
+        }
+        if (settings.onNotPresent == true) {
             subscribe(presence, "presence.not present", genericHandler)
+            parent.ifDebug "Subscribing to presence not present for ${presence} "
+        }
     }
     if (locks) {
-        if (lockLock) 
-            subscribe(lock, "lock.locked", genericHandler)
-        if (lockUnlock) 
-            subscribe(lock, "lock.unlocked", genericHandler)
+        if (settings.lockLock == true) {
+            subscribe(locks, "lock.locked", genericHandler)
+            parent.ifDebug "Subscribing to locks locked for ${locks} "
+
+        }
+        if (settings.lockUnlock == true) {
+            subscribe(locks, "lock.unlocked", genericHandler)
+            parent.ifDebug "Subscribing to locks unlocked for ${locks} "
+        }
     }
     if (contacts) {
-        if (contactOpen)
-            subscribe(contact, "contact.open", genericHandler)
-        if (contactClose)
-            subscribe(contact, "contact.closed", genericHandler)
+        if (settings.contactOpen == true) {
+            subscribe(contacts, "contact.open", genericHandler)
+            parent.ifDebug "Subscribing to contact open for ${contacts} "
+        }
+        if (settings.contactClose == true) {
+            subscribe(contacts, "contact.closed", genericHandler)
+            parent.ifDebug "Subscribing to contact close for ${contacts} "
+        }
     }
     if (motions) {
-        if (motionActive) 
+        if (settings.motionActive == true) {
             subscribe(motions, "motion.active", genericHandler)
-        if (motionInActive)
+             parent.ifDebug "Subscribing to motion active for ${motions} "
+
+        }
+        if (settings.motionInActive == true) {
             subscribe(motions, "motion.inactive", genericHandler)
+            parent.ifDebug "Subscribing to motion inactive for ${motions} "
+        }
     }
 }
 	
 def genericHandler(evt) {
 	 cameras.each { camera -> 
-        parent.ifDebug "CameraID's Selected in Generic Handler: ${camera} "
-    //}
-    // ${state.data[door].child}
-    //state.cameraList.each { camera ->
-        parent.ifDebug "Received an event for ${evt.displayName} with value: ${evt.value}; Sending disable to camera: ${camera} for ${settings.seconds}"
-        parent.ifDebug "Camera List: ID: ${camera} Name: ${state.cameraList[camera]} "
+        def paramse  = [ Enable:1, Reason:"Hubitat Motion Disabler", CamId:camera]
+        def paramsd  = [ Reason:"Hubitat Motion Disabler", CamId:camera]
+        parent.ifDebug("Motion Disabler App ${app.label} received an event for ${evt.displayName} with value ${evt.value}")
+        parent.sendCommand('/EnableAlert', paramsd)
+        runIn(settings.seconds,enableAlert,[data: [command: "/EnableAlert", camera: camera, params: paramse], overwrite:false])
     }
+}
+
+def enableAlert(data) {
+    //parent.ifDebug("Sending enable for camera ${state.cameraList[data.camera]} (${data.camera})")
+    parent.sendCommand(data.command,data.params)
 }
 
 def prefListDevices(title) {  
@@ -129,3 +149,4 @@ def prefListDevices(title) {
         }
     }           
 }
+

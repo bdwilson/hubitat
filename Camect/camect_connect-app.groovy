@@ -1,6 +1,6 @@
 /**
  *  Camect Connect
- *  Version: 1.1.0
+ *  Version: 1.2.0
  */
 import groovy.json.JsonSlurper
 
@@ -13,7 +13,7 @@ definition(
   iconUrl: "https://raw.githubusercontent.com/redloro/smartthings/master/images/honeywell-security.png",
   iconX2Url: "https://raw.githubusercontent.com/redloro/smartthings/master/images/honeywell-security.png",
   iconX3Url: "https://raw.githubusercontent.com/redloro/smartthings/master/images/honeywell-security.png",
-  importURL: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/camect_connect-app.groovy", 
+  importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/camect_connect-app.groovy",
   singleInstance: true
 )
 
@@ -40,11 +40,8 @@ def page1() {
       input "pass", "password", title: "Password", description: "(ie. first part of email address", required: true, defaultValue: ""
       input "time", "text", title: "Time to keep a motion zone open (in seconds)", required: true, defaultValue: "20"
     }
-    //section("Camect Motion Device Creation") {
-    //   input "enableDiscovery", "bool", title: "Optionally discover Cameras (or add new ones) and Create virtual motion devices. Re-enabling this will only discover new devices, to remove devices, you need to remove the app.", required: false, defaultValue: false
-    //}
 
-    section("<h3>Optional: Hubitat Safety Monitor</h3>") {
+    section("<h3><b>Optional</b>: Hubitat Safety Monitor</h3>") {
       input "enableHSM", "bool", title: "Integrate with Hubitat Safety Monitor", required: true, defaultValue: true
       paragraph("")
     }
@@ -53,15 +50,16 @@ def page1() {
        paragraph("")
     }
         
-    section("<h3>Optional: Camect Virtual Motion Device Creation</h3>"){ 
+    section("<h3><b>Optional</b>: Camect Virtual Motion Device Creation</h3>"){ 
         paragraph("Click the <b>Next</b> button to pick which devices you want to create virtual devices for. Even if you don't want to create virtual motion devices, you need to click Next, don't select any devices, then install. If you wish to remove previously created virtual devices, unselect them on the next page.")
         paragraph("<b>Remember: Virtual Motion Device creation requires the <a href=https://github.com/bdwilson/camect-connector>Camect Connector</a> to be installed and running on a Linux system. If you don't have this, don't select any cameras on the next screen.</b>")
         paragraph("Use the following URL for Camect Connector variable hubitatOAUTHURL if you plan on selecting cameras on the next page: <a href='${uri}'>${uri}</a>")
         paragraph("")
     }
-    section("<h3>Optional: Motion Disabler - THIS IS NOT WORKING YET</h3>") {            
+    section("<h3><b>Optional</b>: Motion Disabler</h3>") {            
         if (state.installed) {
-            paragraph "Configure a motion disabler to disable motion detection for a certain period of time based on certain criteria."
+            paragraph "Configure a motion disabler to disable motion detection for a certain period of time based on certain device criteria in your home. "
+            paragraph "This could be any lock/motion/contact/presence device and you can have overlapping rules or different rules for leaving or arriving. "
             app(name: "CamectMotionDisabler", appName: "Camect Connect Child - Motion Disabler", namespace: "brianwilson-hubitat", title: "Add a Motion Disabler", multiple: true)
         } else {
             paragraph "Please click next to complete installation <b>THEN</b> come back here in order to configure a motion disabler app; this will allow you to disable motion for a given set of cameras, for a certain period of time, based on motion/contact/lock/presence events."
@@ -86,7 +84,6 @@ def installed() {
 }
 
 def subscribeToEvents() {
-  //subscribe(location, null, lanResponseHandler, [filterEvents:false])
   subscribe(location, "hsmStatus", alarmHandler)
 }
 
@@ -98,19 +95,15 @@ def updated() {
   unsubscribe()
   subscribeToEvents()
 
-      
-  //if (settings.enableDiscovery) {
-    //Dont have a reason to have a primary child at this point. may add later?
-    def currentchild = getChildDevices()?.find { it.deviceNetworkId == "${settings.camectCode}"}
-    if (currentchild == null) {
-	  ifDebug("Creating Camect Connect primary child")
-	   addChildDevice("brianwilson-hubitat", "Camect Connect Driver", settings.camectCode)
+ 
+  def currentchild = getChildDevices()?.find { it.deviceNetworkId == "${settings.camectCode}"}
+  if (currentchild == null) {
+      ifDebug("Creating Camect Connect primary child")
+	  addChildDevice("brianwilson-hubitat", "Camect Connect Driver", settings.camectCode)
     }
     createChildDevices(cameras)
     deleteChildDevices(cameras)
 	state.installed = true
-    //runIn(5, discoverChildDevices)
-    //settings.enableDiscovery = false
 }
 
 
@@ -119,7 +112,7 @@ private sendCommand(command, params=[:]) {
     def apiEndpoint = "https://${settings.camectCode}.l.home.camect.com:443"
     def path = "/api${command}"
     def auth = "${settings.user}:${settings.pass}".bytes.encodeBase64()
-    ifDebug("sendCommand: Endpoint: ${apiEndpoint} PATH: ${path} PARAMS: ${params} AUTH: $auth")
+    ifDebug("sendCommand: Endpoint: ${apiEndpoint} PATH: ${path} PARAMS: ${params}")
 
     def request = [
         uri:  apiEndpoint,
@@ -128,20 +121,20 @@ private sendCommand(command, params=[:]) {
         contentType: 'application/json',
         query: params
     ]
+    //ifDebug("http get request: ${request}")
     try {
         httpGet(request) {resp ->
             ifDebug("resp data: ${resp.data}")
             return resp.data
         }
     } catch (e) {  // } catch (groovyx.net.http.HttpResponseException e)  $e.response
-        log.error "error: $e"
+        log.error "error: $e $request"
     }
 }
 
 private jsonEvent() {
     data = new groovy.json.JsonSlurper().parseText(request.body)
     if (data.type == "alert") {
-        ifDebug("data: ${data}")
         def child = getChildDevices()?.find { it.deviceNetworkId == "${data.cam_id}"}
         if (child) {
             child.updateStatus("open", settings.time, data)  // no close event yet.
@@ -174,12 +167,11 @@ def createChildDevices(cameras) {
   cameras?.each { camera -> 
       if (!getChildDevice(camera)) {
           ifDebug("Found new camera: ${state.cameraList[camera]}")
-          addChildDevice("brianwilson-hubitat", "Camect Motion", camera, hub.id, ["name": state.cameraList[camera], label: state.cameraList[camera], completedSetup: true])
-          ifDebug("Added new Camect Motion Device: ${state.cameraList[camera]} (Device ID: $camera)")
+          addChildDevice("brianwilson-hubitat", "Camect Motion and Alerting", camera, hub.id, ["name": state.cameraList[camera], label: state.cameraList[camera], completedSetup: true])
+          ifDebug("Added new Camect Motion and Alerting Device: ${state.cameraList[camera]} (Device ID: $camera)")
       }
   }  
 }
-
 
 def alarmHandler(evt) {
   if (!settings.enableHSM) {
@@ -211,7 +203,7 @@ def prefListDevices(title) {
     state.cameraList = [:]
     def response = sendCommand('/ListCameras')
     for (camera in response.camera) { 
-        ifDebug("Camera Found: ID ${camera.id} Name: ${camera.name}")
+        //ifDebug("Camera Found: ID ${camera.id} Name: ${camera.name}")
         state.cameraList[camera.id] = camera.name
     }
     if (state.cameraList) {
