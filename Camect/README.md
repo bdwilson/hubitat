@@ -11,7 +11,7 @@ Instructions
 ---
 * Import these Drivers: [Camect Connect driver](https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/camect_connect-driver.groovy) and optionally the [motion & alerting driver](https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/camect_connect-motion-driver.groovy) assuming you want virtual motion devices in Hubitat to register when your cameras detect motion. 
 * Import these Apps: [The main Camect Connect App](https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/camect_connect-app.groovy)
-and optionally [Motion Disabler App]((https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/camect_connect-motion-disabler-child-app.groovy) if you wish to selectively disable Camect notifications based on some sensors (presence/contacts/locks/motion/etc)
+and optionally [Motion Disabler App](https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/camect_connect-motion-disabler-child-app.groovy) if you wish to selectively disable Camect notifications based on some sensors (presence/contacts/locks/motion/etc)
 * Install the User App Camect Connect; use the variables you'll need to install the app.
     1. You'll need to then navigate to [https://local.home.camect.com](https://local.home.camect.com) and accept the Terms of Service. You'll end up on your local server and the name will be **xxxxxx**.l.home.camect.com. This beginning part is considered your **Camect Code**. 
     2. You'll then need to determine your username and password - the username in the default case is **admin** and the password is the first part of your email address that you used to register your camect device - for instance, bob@gmail.com would give you the password "bob".
