@@ -1,6 +1,6 @@
 /**
  *  Camect Connect
- *  Version: 1.2.0
+ *  Version: 1.3.0
  */
 import groovy.json.JsonSlurper
 
@@ -25,11 +25,11 @@ preferences {
 
 def page1() {
     state.isDebug = isDebug
-    if(!state.accessToken){	
+    //if(!state.accessToken){	
         //enable OAuth in the app settings or this call will fail
-        createAccessToken()	
-    }
- 	def uri = getFullLocalApiServerUrl() + "/camect/?access_token=${state.accessToken}"
+    //    createAccessToken()	
+   // }
+ 	//def uri = getFullLocalApiServerUrl() + "/camect/?access_token=${state.accessToken}"
     return dynamicPage(name: "page1", install: false, uninstall: true, nextPage: "page2") {
     section("<h2>Camect Connect</h2>") {
       paragraph "<i>Please read the <a href=https://github.com/bdwilson/hubitat/blob/master/Camect/README.md>installation instructions</a> and check the <a href=https://community.hubitat.com/t/release-camect-connect/43837>Hubitat forum</a> if you run into issues.</a></i>"
@@ -52,8 +52,6 @@ def page1() {
         
     section("<h3><b>Optional</b>: Camect Virtual Motion Device Creation</h3>"){ 
         paragraph("Click the <b>Next</b> button to pick which devices you want to create virtual devices for. Even if you don't want to create virtual motion devices, you need to click Next, don't select any devices, then install. If you wish to remove previously created virtual devices, unselect them on the next page.")
-        paragraph("<b>Remember: Virtual Motion Device creation requires the <a href=https://github.com/bdwilson/camect-connector>Camect Connector</a> to be installed and running on a Linux system. If you don't have this, don't select any cameras on the next screen.</b>")
-        paragraph("Use the following URL for Camect Connector variable hubitatOAUTHURL if you plan on selecting cameras on the next page: <a href='${uri}'>${uri}</a>")
         paragraph("")
     }
     section("<h3><b>Optional</b>: Motion Disabler</h3>") {            
@@ -95,7 +93,6 @@ def updated() {
   unsubscribe()
   subscribeToEvents()
 
- 
   def currentchild = getChildDevices()?.find { it.deviceNetworkId == "${settings.camectCode}"}
   if (currentchild == null) {
       ifDebug("Creating Camect Connect primary child")
@@ -105,7 +102,6 @@ def updated() {
     deleteChildDevices(cameras)
 	state.installed = true
 }
-
 
 private sendCommand(command, params=[:]) {
     // Authorization https://community.hubitat.com/t/lametric-time/5000/3
@@ -124,7 +120,7 @@ private sendCommand(command, params=[:]) {
     //ifDebug("http get request: ${request}")
     try {
         httpGet(request) {resp ->
-            ifDebug("resp data: ${resp.data}")
+            //ifDebug("resp data: ${resp.data}")
             return resp.data
         }
     } catch (e) {  // } catch (groovyx.net.http.HttpResponseException e)  $e.response
