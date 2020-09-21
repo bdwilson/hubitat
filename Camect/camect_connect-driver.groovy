@@ -1,6 +1,6 @@
 /**
  *  Hubitat Device Handler: Camect Connect
- *  Version: 1.3.0
+ *  Version: 1.3.1
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -100,24 +100,24 @@ def parse(String description) {
 
 def on() {
     // workaround for bug in API. Should be updated with the commented out code below.
-    parent.cameras?.each { camera ->
-        def params  = [ Enable:1, Reason:"All Cameras", CamId:camera]
-        parent.sendCommand('/EnableAlert', params) 
-        parent.ifDebug("Enabling alerts (All Cameras) for ${camera}")
-    }
-    // def params  = [ Enable:1, Reason:"All Cameras"]
-    // parent.sendCommand('/EnableAlert', params) 
+    //parent.cameras?.each { camera ->
+    //    def params  = [ Enable:1, Reason:"All Cameras", CamId:camera]
+    //    parent.sendCommand('/EnableAlert', params) 
+    //    parent.ifDebug("Enabling alerts (All Cameras) for ${camera}")
+    //}
+    def params  = [ Enable:1, Reason:"All Cameras"]
+    parent.sendCommand('/EnableAlert', params) 
     sendEvent(name: "switch", value: "on", descriptionText: "Enabling alerts for All Cameras")
 }
 def off() {
     // workaround for bug in API. Should be updated with the commented out code below.
-    parent.cameras?.each { camera ->
-        def params  = [ Reason:"All Cameras", CamId:camera]
-        parent.sendCommand('/EnableAlert', params) 
-        parent.ifDebug("Disabling alerts (All Cameras) for ${camera}")
-    }
-    //def params  = [ Reason:"All Cameras"]
-    //parent.sendCommand('/EnableAlert', params) 
+    //parent.cameras?.each { camera ->
+    //    def params  = [ Reason:"All Cameras", CamId:camera]
+    //    parent.sendCommand('/EnableAlert', params) 
+    //    parent.ifDebug("Disabling alerts (All Cameras) for ${camera}")
+    //}
+    def params  = [ Reason:"All Cameras"]
+    parent.sendCommand('/EnableAlert', params) 
     sendEvent(name: "switch", value: "off", descriptionText: "Disabling alerts for All Cameras")
 }
 
