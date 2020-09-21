@@ -80,12 +80,12 @@ def parse(String description) {
                 }
                 break
             case 'mode':
-                if ((response.desc == "HOME") && (parent.currentValue('hsmSetArm') != "disarm")) {
-                    parent.ifDebug("Would have sent HSM Event to DISARM hsmSetArm: current val ${state.alarmSystemStatus}")
+                //if ((response.desc == "HOME") && (parent.currentValue('hsmSetArm') != "disarm")) {
+                //    parent.ifDebug("Would have sent HSM Event to DISARM hsmSetArm: current val ${state.alarmSystemStatus}")
                     // sendLocationEvent(name: "hsmSetArm", value: "disarm")
-                } else if ((response.desc == "DEFAULT") && (parent.currentValue('hsmSetArm') == "disarm")) {
-                    parent.ifDebug("Would have sent HSM Event to go to DEFAULT/ARM hsmSetArm: current val  ${state.alarmSystemStatus}")
-                }
+                //} else if ((response.desc == "DEFAULT") && (parent.currentValue('hsmSetArm') == "disarm")) {
+                //    parent.ifDebug("Would have sent HSM Event to go to DEFAULT/ARM hsmSetArm: current val  ${state.alarmSystemStatus}")
+                //}
                 break
             default:
                 log.warn "Unhandled event: ${response}"
