@@ -68,9 +68,6 @@ def page1() {
 
 def page2() {
     dynamicPage(name: "page2", title: "", install: true, uninstall: true, refreshInterval:0) {
-        section("Instructions:", hideable: false, hidden: false) {
-			paragraph "Select optional sensors/locks/contacts that will be used to disable notifications on the selected camera."
-		}
         section("Select cameras that will be disabled when any of the below are triggered") {
             prefListDevices("Select which cameras to create virtual motion sensors for:") 
         }
