@@ -7,6 +7,7 @@
 *     26-AUG-2020 - Added options for multiple recipient addresses, option to BCC
 *                   recipients, option to send with HIGH priority.
 *     08-SEP-2020 - Escaped new lines, quotes, double quotes in messages. 
+*     22-SEP-2020 - Added From Name as an option - defaults to "Hubitat". 
 *
 *   Inspired by original work for SmartThings & Hubitat by: Dan Ogorchock for Pushover.
 *
@@ -26,6 +27,7 @@
 
 preferences {
     input("apiKey", "text", title: "SendGrid API Key:", description: "", required: true)
+    input("fromName", "text", title: "Sender Name:", description: "Name of sender", defaultValue: "Hubitat", required: true)
     input("from", "text", title: "Sender Address:", description: "An approved address or domain configured within SendGrid", required: true)
     input("to", "text", title: "Recipient Address(es):", description: "Separate multiple emails with a space", required: true)
     input("subject", "text", title: "Subject:", description: "", required: true)
@@ -82,7 +84,7 @@ def deviceNotification(message) {
     message = message.replaceAll("[\'\"{}]", "")
     message = message.replaceAll("[\n\r]", " ")
     
-    postBody = '{"personalizations": [{"to": [' + newTo + ']' + bcc + '}],"from": {"email": "' + settings.from + '"},' + headers + '"subject": "' + settings.subject + '","content": [{"type": "text/plain", "value": "' + message + '"}]}'
+    postBody = '{"personalizations": [{"to": [' + newTo + ']' + bcc + '}],"from": {"email": "' + settings.from + '", "name": "' + settings.fromName + '"},' + headers + '"subject": "' + settings.subject + '","content": [{"type": "text/plain", "value": "' + message + '"}]}'
          
     ifDebug("Sending Message: $message [${postBody}]")
 
