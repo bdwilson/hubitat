@@ -1,6 +1,6 @@
 /**
  *  Camect Connect Child - Motion Disabler
- *  Version: 1.3.0
+ *  Version: 1.3.2
  */
 
 import groovy.time.TimeCategory
@@ -127,8 +127,8 @@ def initialize() {
 	
 def genericHandler(evt) {
 	 cameras.each { camera -> 
-        def paramse  = [ Enable:1, Reason:"Hubitat Motion Disabler", CamId:camera]
-        def paramsd  = [ Reason:"Hubitat Motion Disabler", CamId:camera]
+        def paramse  = [ Enable:1, Reason:"Hubitat Motion Disabler - ${app.label}", CamId:camera]
+        def paramsd  = [ Reason:"Hubitat Motion Disabler - ${app.label}", CamId:camera]
         parent.ifDebug("Motion Disabler App ${app.label} received an event for ${evt.displayName} with value ${evt.value}")
         parent.sendCommand('/EnableAlert', paramsd)
         runIn(settings.seconds,enableAlert,[data: [command: "/EnableAlert", camera: camera, params: paramse], overwrite:false])
