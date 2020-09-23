@@ -1,0 +1,18 @@
+{
+  "packageName": "SendGrid",
+  "author": "Brian Wilson",
+  "minimumHEVersion": "0.0",
+  "documentationLink": "https://community.hubitat.com/t/release-sendgrid-email-notification-plugin/48691",
+  "communityLink": "https://community.hubitat.com/t/release-sendgrid-email-notification-plugin/48691",
+  "dateReleased": "2020-09-22",
+  "drivers": [
+    {
+      "id": "db046226-fe66-4b96-b312-b6db1b497ca5",
+      "name": "Sendgrid",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Sendgrid/Sendgrid.groovy",
+      "required": true,
+      "version": "1.3"
+    }
+  ]
+}

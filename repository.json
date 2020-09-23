@@ -3,6 +3,12 @@
   "gitHubUrl": "https://github.com/bdwilson",
   "packages": [
     {
+      "name": "SendGrid",
+      "category": "Convenience",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Sendgrid/packageManifest.json",
+      "description": "Notification driver for SendGrid Email Service - 100 messages per day on the free plan."
+    },
+    {
       "name": "Smarter Bulbs",
       "category": "Convenience",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/SmarterBulbs/packageManifest.json",
