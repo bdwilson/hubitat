@@ -5,7 +5,7 @@ After=multi-user.target
 [Service]
 User=root
 Type=idle
-WorkingDirector=/home/pi/git/BTLE-Presence
+WorkingDirectory=/home/pi/git/BTLE-Presence
 ExecStart=/home/pi/git/BTLE-Presence/check_beacon_presence.py
 Description=check_beacon_presence Service
 After=multi-user.target
