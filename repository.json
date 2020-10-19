@@ -21,6 +21,12 @@
       "description": "Set presence based on Geofency iOS App"
     },
     {
+      "name": "OwnTracks Presence",
+      "category": "Control",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/packageManifest.json",
+      "description": "Set presence based on OwnTracks iOS/Android App"
+    },
+    {
       "name": "Honeywell Security",
       "category": "Security",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Honeywell/packageManifest.json",
