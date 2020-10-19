@@ -55,7 +55,8 @@ For the example in #2 above, [User] is Brian, so you would have <code>.../xx/loc
 __Settings__. Change the mode at the top to method to __HTTP__ - ___this will
 remove any regions/friends you've configured___.  Also, __disable
 authentication__ (you'll authenticate using the access token in the hubitat URL). 
-In the URL field, copy the URL from above, but __rename the [Name] to be your name to match the person in your hubitat virtual device__.<img src="https://bdwilson.github.io/images/IMG_4809.jpg" width=300px>
+In the URL field, copy the URL from above, but __rename the [Name] to be your name to match the person in your hubitat virtual device__.
+<img src="https://bdwilson.github.io/images/IMG_4809.jpg" width=300px>
 5. Add your Regions or iBeacons (optional) in the app.  In the app, setup your regions and adjust the radius if needed or iBeacons and name them like #2 above (minus the "-Name" part since that will get passed on your URL). 
 6. You should now have a virtual presence sensor that you can tie to Hubitat actions. You can create as many virtual presense sensors as you have
 iBeacons or GPS locations in OwnTracks.
