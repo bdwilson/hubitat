@@ -48,7 +48,7 @@ that you want to control.
 will be your URL to configure in OwnTracks.  It should look something like this
 (without the []):
 https://cloud.hubitat.com/api/xxx-xxx-xx-xxx/apps/xx/location/[User]?access_token=adafae03-0330-4aeb-b15e-xxxxxxxxx.
-For the example in #2 above, [User] is Brian, so you would have <pre>.../xx/location/Brian?access_token=xxxxx</pre>
+For the example in #2 above, [User] is Brian, so you would have <code>.../xx/location/Brian?access_token=xxxxx</code>
 3. Now paste this URL into your browser and make sure you get the following response:
 <code>["Yep, this is the right URL, just put it into OwnTracks Web Hook, set to POST and do a test. Make sure your OwnTracks location name matches the device '<location>-Brian'"]</code>
 4. In the OwnTracks app, click the __(i)__ the main OwnTracks app on the top left, click
