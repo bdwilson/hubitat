@@ -1,6 +1,6 @@
 OwnTracks Presence Updater for Hubitat
 =======
-<br>
+
 [OwnTracks](https://owntracks.org/) is an app for iOS & Android that uses
 either device GPS or Bluetooth LE iBeacons to detect presence. This device driver and SmartApp will allow you to use
 Bluetooth iBeacons or GPS info on your mobile device to set presence in
@@ -31,7 +31,7 @@ Installation
 OwnTracks location name in #8 below is "Home". You can create multiple virtual devices and give them different names after the "-" then you can
 reference them after the location below in #5 and use that new url in #8.  <b>There should be no space before and after the "-" in the device name!</b>
 
-'''OR'''
+__OR__
 
 1. Go to Drivers Code and create a new device using [virtual-mobile-presence.groovy](https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/virtual-mobile-presence.groovy).
 2. Go to Devices and create a new virtual device '''name it whatever the name will be called in OwnTracks with a - and a USER after it'''. Mine are called "Home-Brian" and "Home-Spawn1".  Network Device ID can be
@@ -42,8 +42,7 @@ reference them after the location below in #5 and use that new url in #8.  <b>Th
 [https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/owntracks-presence-app.groovy](https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/owntracks-presence-app.groovy). Save it. Click Oauth.
 
 Configure
-___
-
+---------
 1. Install the User App (Apps -> Add User App) and select all the virtual presense devices you created
 that you want to control. 
 2. Copy the Endpoint URL and alter it to have your name after /location/. This
