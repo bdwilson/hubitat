@@ -51,11 +51,11 @@ https://cloud.hubitat.com/api/xxx-xxx-xx-xxx/apps/xx/location/[User]?access_toke
 For the example in #2 above, [User] is Brian, so you would have <pre>.../xx/location/Brian?access_token=xxxxx</pre>
 3. Now paste this URL into your browser and make sure you get the following response:
 <code>["Yep, this is the right URL, just put it into OwnTracks Web Hook, set to POST and do a test. Make sure your OwnTracks location name matches the device '<location>-Brian'"]</code>
-4. In the OwnTracks app, click the '''(i)''' the main OwnTracks app on the top left, click
-'''Settings'''. Change the mode at the top to  method to HTTP - '''this will
+4. In the OwnTracks app, click the __(i)__ the main OwnTracks app on the top left, click
+__Settings__. Change the mode at the top to  method to HTTP - '''this will
 remove any regions/friends you've configured'''.  Also, disable authentication. 
-In the URL field, copy the URL from above, but '''rename the [Name] to be your
-name to match the person in your hubitat virtual device'''.<img src="https://bdwilson.github.io/images/IMG_4809.jpg" width=300px>
+In the URL field, copy the URL from above, but __rename the [Name] to be your
+name to match the person in your hubitat virtual device__.<img src="https://bdwilson.github.io/images/IMG_4809.jpg" width=300px>
 5. Add your Regions or iBeacons (optional) in the app.  In the app, setup your regions and adjust the radius if needed or iBeacons and name them like #2 above (minus the "-Name" part since that will get passed on your URL). 
 6. You should now have a virtual presence sensor that you can tie to Hubitat actions. You can create as many virtual presense sensors as you have
 iBeacons or GPS locations in OwnTracks.
