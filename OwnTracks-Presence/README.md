@@ -34,10 +34,8 @@ reference them after the location below in #5 and use that new url in #8.  <b>Th
 [https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/owntracks-presence-app.groovy](https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/owntracks-presence-app.groovy). Save it. Click Oauth.
 4. Install the User App and select all the virtual presense devices you created
 that you want to control. 
-5. Copy the Endpoint URL and alter it to have your name after /location/. This will be your URL to configure in OwnTracks.  It should look something like this (without the []): https://cloud.hubitat.com/api/xxx-xxx-xx-xxx/apps/xx/location/[your user]?access_token=adafae03-0330-4aeb-b15e-xxxxxxxxx.  For the example in #2
-above, [your user] is Brian. <b>If  have "Brian?access_token=xxxx</b>
-6. Now paste this URL into your browser and make sure you get the following
-response:
+5. Copy the Endpoint URL and alter it to have your name after /location/. This
+will be your URL to configure in OwnTracks.  It should look something like this (without the []): https://cloud.hubitat.com/api/xxx-xxx-xx-xxx/apps/xx/location/[User]?access_token=adafae03-0330-4aeb-b15e-xxxxxxxxx.  For the example in #2 above, [User] is Brian. <b>If  have "Brian?access_token=xxxx</b> 6. Now paste this URL into your browser and make sure you get the following response:
 <code>["Yep, this is the right URL, just put it into OwnTracks Web Hook, set to POST and do a test. Make sure your OwnTracks location name matches the device '<location>-Brian'"]</code>
 7. In the OwnTracks app, click the '''(i)''' the main OwnTracks app on the top left, click
 '''Settings'''. Change the mode at the top to  method to HTTP - '''this will
