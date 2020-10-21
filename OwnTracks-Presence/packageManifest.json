@@ -11,7 +11,7 @@
       "id": "526022be-bc79-4716-a34d-ef9e0eb7ca3f",
       "name": "Virtual Mobile Presence for Owntracks",
       "namespace": "brianwilson-hubitat",
-      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/virtual-mobile-presence.groovy",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/virtual-mobile-presence-owntracks.groovy",
       "required": true,
       "version": "1.1.0"
     }
