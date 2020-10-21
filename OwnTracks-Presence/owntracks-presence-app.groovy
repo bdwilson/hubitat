@@ -39,8 +39,8 @@ def setupScreen(){
         //enable OAuth in the app settings or this call will fail
         createAccessToken()	
     }
- 	def uri = getFullLocalApiServerUrl() + "/location/[Name]?access_token=${state.accessToken}"
-    def extUri = fullApiServerUrl() + "/[Name]?access_token=${state.accessToken}"
+ 	def uri = getFullLocalApiServerUrl() + "/location/?access_token=${state.accessToken}"
+    def extUri = fullApiServerUrl() + "/?access_token=${state.accessToken}"
     extUri = extUri.replaceAll("null","location")
     return dynamicPage(name: "setupScreen", uninstall: true, install: true){
         section() {
@@ -50,7 +50,7 @@ def setupScreen(){
     		input "presence", "capability.presenceSensor", multiple: true, required: true
     	}
         section(){ 
-            paragraph("Use the following as the base URI for OwnTracks; but follow instructions and rename [Name] to the name of the person part of the virtual presence device: <a href='${extUri}'>${extUri}</a>. If for some reason you want to use the Internal URI it would be <a href='${uri}'>${uri}</a>, however it's inaccessible from outside your home. ")
+            paragraph("Use the following as the base URL for OwnTrack; but make sure the Region & UserID in OwnTracks is configured to match your virtual device <a href='${extUri}'>${extUri}</a>. If for some reason you want to use the Internal URL it would be <a href='${uri}'>${uri}</a>, however it's inaccessible from outside your home. ")
         }
 	    section("") {
        		input "isDebug", "bool", title: "Enable Debug Logging", required: false, multiple: false, defaultValue: false, submitOnChange: true
@@ -66,22 +66,31 @@ def updated() {
 	ifDebug("Updated with settings: ${settings}")
 }
 
+def listLocations() {
+    def resp = []
+    presence.each {
+      ifDebug("RECEIVED: ${it.displayName}, attribute ${it.name}, ID: ${it.id}")
+      resp << [Name: it.displayName, ID: it.id]
+    }
+    return resp
+}
+
 def deviceHandler(evt) {}
 
 def correctURL () {
-	def msg = ["Yep, this is the right URL, just put it into OwnTracks URL. Make sure your Location Name matches the format '[location]-${params.user}'"]
+	def msg = ["Yep, this is the right URL, just put it into OwnTracks URL. Make sure your Location Name matches the format '<location>-${params.user}'"]
 	ifDebug("${msg}")
 	return msg
 }
 
 def validCommandsg() {
-	def msg = ["Valid Commands: POST:/location/<user>, GET:/location/<user> (to verify correct URL only)."]
+	def msg = ["Valid Commands: GET:/listLocations, POST:/location/<user>, GET:/location/<user> (to verify correct URL only)."]
 	ifDebug("${msg}")
 	return msg
 }
 
 def validCommandsp() {
-	def msg = ["You're missing a user: /location/[NAME]?access_token=....."]
+	def msg = ["You're missing a user: /location/<user>?access_token=....."]
 	ifDebug("${msg}")
 	return msg
 }
@@ -94,7 +103,7 @@ def update (devices) {
     data = parseJson(request.body)
     ifDebug("DATA: ${data}")
     if (data._type == "transition") {
-          ifDebug("Received _transition event")
+          ifDebug("Received transition event")
    	      def event = data.event
    	      def user = params.user
           def location = data.desc  
@@ -119,7 +128,28 @@ def update (devices) {
           } else {
                ifDebug("Location not found. You need to make sure you configure the name of your region on OwnTracks to have a location name to match your device name and person in hubitat. It should be named in the format of Location-Person.")
           }
-     }
+     } else if (data._type == "location") {
+          ifDebug("Received location event")
+          def batt = data.batt
+   	      def user = params.user
+          def ssid = data.SSID
+          def bssid = data.BSSID
+          devices?.each { myDevice -> 
+                 def name = myDevice.displayName
+                 def DNI = myDevice.deviceNetworkId
+                 //ifDebug("Found device: ${name} with DNI ${DNI}")
+                 def myLocation = name.split('-')[0]
+                 def myUser = name.split('-')[1]
+                 def found = 0
+                 //ifDebug("MyUser: ${myUser} MyLocation: ${myLocation}")
+                 if (myUser == user) {
+                     myDevice.sendEvent(name: "battery", value: "${batt}")
+                     myDevice.sendEvent(name: "ssid", value: "${ssid}")
+                     myDevice.sendEvent(name: "bssid", value: "${bssid}")
+                 }
+          }
+    }
+    
 }
 
 mappings {
@@ -128,9 +158,14 @@ mappings {
 			GET: "validCommandsg"
 		]
 	}
+    path("/listLocations") {
+        action: [
+            GET: "listLocations"
+        ]
+    }
 	path("/location") {
 		action: [
-            POST: "validCommandsp",
+            POST: "updateLocation",
 			GET: "validCommandsg"
 		]
 	}
@@ -143,5 +178,5 @@ mappings {
 }
 
 private ifDebug(msg) {  
-    if (msg && state.isDebug)  log.debug 'OwnTracks-Presence: ' + msg  
+    if (msg && state.isDebug)  log.debug 'OwnTracks-MultiUser-Presence: ' + msg  
 }

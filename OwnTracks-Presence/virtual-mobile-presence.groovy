@@ -1,36 +1,15 @@
-//Release History
-//		1.0 Oct. 12, 2015
-//			Initial Release
-
+//		- based on original work by Austin Pritchett/ajpri
 
 metadata {
-        definition (name: "Virtual Mobile Presence", namespace: "ajpri", author: "Austin Pritchett") {
+        definition (name: "Virtual Mobile Presence for Owntracks", namespace: "brianwilson-hubitat", author: "Brian Wilson") {
         capability "Switch"
         capability "Refresh"
         capability "Presence Sensor"
 		capability "Sensor"
+        capability "Battery"
+        attribute "ssid", "string"
+        attribute "bssid", "string"    
     }
-
-	// simulator metadata
-	simulator {
-	}
-
-	// UI tile definitions
-	tiles {
-		standardTile("button", "device.switch", width: 2, height: 2, canChangeIcon: false,  canChangeBackground: true) {
-			state "off", label: 'Away', action: "switch.on", icon: "st.Kids.kid10", backgroundColor: "#ffffff", nextState: "on"
-			state "on", label: 'Present', action: "switch.off", icon: "st.Kids.kid10", backgroundColor: "#53a7c0", nextState: "off"
-		}
-		standardTile("refresh", "device.switch", inactiveLabel: false, decoration: "flat") {
-			state "default", label:'', action:"refresh.refresh", icon:"st.secondary.refresh"
-		}
-        standardTile("presence", "device.presence", width: 1, height: 1, canChangeBackground: true) {
-			state("present", labelIcon:"st.presence.tile.mobile-present", backgroundColor:"#53a7c0")
-			state("not present", labelIcon:"st.presence.tile.mobile-not-present", backgroundColor:"#ffffff")
-		}
-		main (["button", "presence"])
-		details(["button", "presence", "refresh"])
-	}
 }
 
 def parse(String description) {
@@ -47,3 +26,17 @@ def off() {
     sendEvent(name: "presence", value: "not present")
 
 }
+
+def arrived() {
+    sendEvent(name: "switch", value: "on")
+    sendEvent(name: "presence", value: "present")
+}
+
+def departed () {
+    sendEvent(name: "switch", value: "off")
+    sendEvent(name: "presence", value: "not present")
+}
+
+def installed () {
+}
+
