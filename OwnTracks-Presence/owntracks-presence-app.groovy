@@ -78,7 +78,7 @@ def listLocations() {
 def deviceHandler(evt) {}
 
 def correctURL () {
-	def msg = ["Yep, this is the right URL, just put it into OwnTracks URL. Make sure your Location Name matches the format '<location>-${params.user}'"]
+	def msg = ["Yep, this is the right URL, just put it into OwnTracks URL. Make sure your Device name matches the format: '[Region Name in OwnTracks]-[UserID From OwnTracks]'"]
 	ifDebug("${msg}")
 	return msg
 }
@@ -166,7 +166,7 @@ mappings {
 	path("/location") {
 		action: [
             POST: "updateLocation",
-			GET: "validCommandsg"
+			GET: "correctURL"
 		]
 	}
     path("/location/:user") {
