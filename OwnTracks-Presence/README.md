@@ -53,9 +53,9 @@ https://cloud.hubitat.com/api/xxx-xxx-xx-xxx/apps/xx/location/Brian?access_token
 __Settings__. Change the mode at the top to method to __HTTP__ - ___this will
 remove any regions/friends you've configured___.  Also, __disable
 authentication__ (you'll authenticate using the access token in the hubitat URL). 
-In the URL field, copy the URL from above. __Make sure the UserID field is set
+In the URL field, copy the URL from above. ___Make sure the UserID field is set
 to the name of your Person from Installation Step 2 (Brian in my case
-below). If UserID field is not there, put your name after the /location/ part in the URL. __
+below). If UserID field is not there, put your name after the /location/ part in the URL.___
 <img src="https://bdwilson.github.io/images/IMG_4809.jpg" width=300px>
 5. Add your Regions or iBeacons (optional) in the app.  In the app, setup your regions and adjust the radius if needed or iBeacons and name them like #2 above (minus the "-Name" part since that will get passed on your URL). 
 6. You should now have a virtual presence sensor that you can tie to Hubitat actions. You can create as many virtual presense sensors as you have
