@@ -1,7 +1,7 @@
 {
   "packageName": "OwnTracks Presence",
   "author": "Brian Wilson",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/OwnTracks-Presence",
   "communityLink": "https://community.hubitat.com/t/release-owntracks-presence/53419",
@@ -13,7 +13,7 @@
       "namespace": "brianwilson-hubitat",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/virtual-mobile-presence-owntracks.groovy",
       "required": true,
-      "version": "1.1.0"
+      "version": "1.1.1"
     }
   ],
   "apps": [
@@ -24,7 +24,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/owntracks-presence-app.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.1.0"
+      "version": "1.1.1"
     }
   ]
 }
