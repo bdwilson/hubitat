@@ -101,7 +101,7 @@ void updateLocation() {
 
 def update (devices) {
     data = parseJson(request.body)
-    ifDebug("DATA: ${data}")
+    ifDebug("DATA: ${data} PARAMS: ${params}")
     if (data._type == "transition") {
           ifDebug("Received transition event")
    	      def event = data.event
@@ -131,17 +131,17 @@ def update (devices) {
      } else if (data._type == "location") {
           ifDebug("Received location event")
           def batt = data.batt
-   	      def user = params.user
+   	  def user = params.user
           def ssid = data.SSID
           def bssid = data.BSSID
           devices?.each { myDevice -> 
                  def name = myDevice.displayName
                  def DNI = myDevice.deviceNetworkId
-                 //ifDebug("Found device: ${name} with DNI ${DNI}")
+                 ifDebug("Found device: ${name} with DNI ${DNI}")
                  def myLocation = name.split('-')[0]
                  def myUser = name.split('-')[1]
                  def found = 0
-                 //ifDebug("MyUser: ${myUser} MyLocation: ${myLocation}")
+                 ifDebug("MyUser: ${myUser} MyLocation: ${myLocation}")
                  if (myUser == user) {
                      myDevice.sendEvent(name: "battery", value: "${batt}")
                      myDevice.sendEvent(name: "ssid", value: "${ssid}")
