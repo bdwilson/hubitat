@@ -20,7 +20,7 @@ To get started you'll need:
 - [OwnTracks](https://owntracks.org/).  
 - An iBeacon (Optional; or you can use GPS in the OwnTracks App). 
 - Hubitat Hub
-	- [A Virtual Presence Device](https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/virtual-mobile-presence.groovy)
+	- [A Virtual Presence OwnTracks Device](https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/virtual-mobile-presence-owntracks.groovy)
 	- [My Hubitat app](https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/owntracks-presence-app.groovy) assigned to your Virtual Presence Device(s) above
 
 Installation
@@ -33,7 +33,7 @@ reference them after the location below in #5 and use that new url in #8.  <b>Th
 
 __OR__
 
-1. Go to Drivers Code and create a new device using [virtual-mobile-presence.groovy](https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/virtual-mobile-presence.groovy).
+1. Go to Drivers Code and create a new device using [virtual-mobile-presence-owntracks.groovy](https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/virtual-mobile-presence-owntracks.groovy).
 2. Go to Devices and create a new virtual device '''name it whatever the name will be called in OwnTracks with a - and a USER after it'''. Mine are called "Home-Brian" and "Home-Spawn1".  Network Device ID can be
 '''HOME_PRESENCE_BRIAN''' for the first. Device Type will be the type you configured in step 1. For this example, mine is named "Home-Brian" and my
 OwnTracks location name in #8 below is "Home". You can create multiple virtual devices and give them different names after the "-" then you can
@@ -43,7 +43,7 @@ reference them after the location below in #5 and use that new url in #8.  <b>Th
 
 Configure
 ---------
-1. Install the User App (Apps -> Add User App) and select all the virtual presense devices you created
+1. Install the User App (Apps -> Add User App) and select all the virtual presense devices you created no
 that you want to control. 
 2. Copy the Endpoint URL. This will be your URL to configure in OwnTracks.  It should look something like this:
 https://cloud.hubitat.com/api/xxx-xxx-xx-xxx/apps/xx/location/?access_token=adafae03-0330-4aeb-b15e-xxxxxxxxx.
