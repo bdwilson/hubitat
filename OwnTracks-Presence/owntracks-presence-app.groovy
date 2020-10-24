@@ -39,8 +39,8 @@ def setupScreen(){
         //enable OAuth in the app settings or this call will fail
         createAccessToken()	
     }
- 	def uri = getFullLocalApiServerUrl() + "/location/?access_token=${state.accessToken}"
-    def extUri = fullApiServerUrl() + "/?access_token=${state.accessToken}"
+ 	def uri = getFullLocalApiServerUrl() + "/location/[USER]?access_token=${state.accessToken}"
+    def extUri = fullApiServerUrl() + "/[USER]?access_token=${state.accessToken}"
     extUri = extUri.replaceAll("null","location")
     return dynamicPage(name: "setupScreen", uninstall: true, install: true){
         section() {
@@ -50,7 +50,7 @@ def setupScreen(){
     		input "presence", "capability.presenceSensor", multiple: true, required: true
     	}
         section(){ 
-            paragraph("Use the following as the base URL for OwnTrack; but make sure the Region & UserID in OwnTracks is configured to match your virtual device <a href='${extUri}'>${extUri}</a>. If for some reason you want to use the Internal URL it would be <a href='${uri}'>${uri}</a>, however it's inaccessible from outside your home. ")
+            paragraph("Use the following as the base URL for OwnTrack; but make sure the Region Name and that you adjust the [USER] in the URL with the correct user matching your virtual device. <a href='${extUri}'>${extUri}</a>. If for some reason you want to use the Internal URL it would be <a href='${uri}'>${uri}</a>, however it's inaccessible from outside your home. ")
         }
 	    section("") {
        		input "isDebug", "bool", title: "Enable Debug Logging", required: false, multiple: false, defaultValue: false, submitOnChange: true
@@ -126,7 +126,7 @@ def update (devices) {
                  }
              }
           } else {
-               ifDebug("Location not found. You need to make sure you configure the name of your region on OwnTracks to have a location name to match your device name and person in hubitat. It should be named in the format of Location-Person.")
+               ifDebug("Location not found. You need to make sure you configure the name of your region on OwnTracks to have a location name to match your device name and person in hubitat. It should be named in the format of Location-${params.user}.")
           }
      } else if (data._type == "location") {
           ifDebug("Received location event")
@@ -165,7 +165,7 @@ mappings {
     }
 	path("/location") {
 		action: [
-            POST: "updateLocation",
+            POST: "validCommandsp",
 			GET: "correctURL"
 		]
 	}
