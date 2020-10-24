@@ -50,7 +50,7 @@ def setupScreen(){
     		input "presence", "capability.presenceSensor", multiple: true, required: true
     	}
         section(){ 
-            paragraph("Use the following as the base URL for OwnTrack; but make sure the Region Name and that you adjust the [USER] in the URL with the correct user matching your virtual device. <a href='${extUri}'>${extUri}</a>. If for some reason you want to use the Internal URL it would be <a href='${uri}'>${uri}</a>, however it's inaccessible from outside your home. ")
+            paragraph("Use the following as the URL for OwnTracks but make that you adjust the [USER] in the URL with the correct user matching your virtual device: <a href='${extUri}'>${extUri}</a>. You will also need to create a region in OwnTracks that matches the beginning part of your virtual device.<br><be>If for some reason you want to use the Internal URL it would be <a href='${uri}'>${uri}</a>, however it's inaccessible from outside your home. ")
         }
 	    section("") {
        		input "isDebug", "bool", title: "Enable Debug Logging", required: false, multiple: false, defaultValue: false, submitOnChange: true
