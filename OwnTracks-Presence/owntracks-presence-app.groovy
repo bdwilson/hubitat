@@ -39,8 +39,8 @@ def setupScreen(){
         //enable OAuth in the app settings or this call will fail
         createAccessToken()	
     }
- 	def uri = getFullLocalApiServerUrl() + "/location/[USER]?access_token=${state.accessToken}"
-    def extUri = fullApiServerUrl() + "/[USER]?access_token=${state.accessToken}"
+ 	def uri = getFullLocalApiServerUrl() + "/location/?access_token=${state.accessToken}"
+    def extUri = fullApiServerUrl() + "/?access_token=${state.accessToken}"
     extUri = extUri.replaceAll("null","location")
     return dynamicPage(name: "setupScreen", uninstall: true, install: true){
         section() {
@@ -50,7 +50,7 @@ def setupScreen(){
     		input "presence", "capability.presenceSensor", multiple: true, required: true
     	}
         section(){ 
-            paragraph("Use the following as the URL for OwnTracks but make that you adjust the [USER] in the URL with the correct user matching your virtual device: <a href='${extUri}'>${extUri}</a>. You will also need to create a region in OwnTracks that matches the beginning part of your virtual device.<br><be>If for some reason you want to use the Internal URL it would be <a href='${uri}'>${uri}</a>, however it's inaccessible from outside your home. ")
+            paragraph("Use the following as the URL for OwnTracks but make that you add your User info after /location/ in the URL with the correct user matching your virtual device: <a href='${extUri}'>${extUri}</a>. You will also need to create a region in OwnTracks that matches the beginning part of your virtual device.<br><br>\n\nIf for some reason you want to use the Internal URL it would be <a href='${uri}'>${uri}</a>, however it's inaccessible from outside your home. ")
         }
 	    section("") {
        		input "isDebug", "bool", title: "Enable Debug Logging", required: false, multiple: false, defaultValue: false, submitOnChange: true
@@ -78,7 +78,7 @@ def listLocations() {
 def deviceHandler(evt) {}
 
 def correctURL () {
-	def msg = ["Yep, this is the right URL, just put it into OwnTracks URL. Make sure your Device name matches the format: '[Region Name in OwnTracks]-[UserID From OwnTracks]'"]
+	def msg = ["Yep, this is the right URL, just put it into OwnTracks URL. Make sure your Device name matches the format: '[Region Name in OwnTracks]-${params.user}'"]
 	ifDebug("${msg}")
 	return msg
 }
