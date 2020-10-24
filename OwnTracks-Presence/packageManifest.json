@@ -5,10 +5,10 @@
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/OwnTracks-Presence",
   "communityLink": "https://community.hubitat.com/t/release-owntracks-presence/53419",
-  "dateReleased": "2020-10-21",
+  "dateReleased": "2020-10-23",
   "drivers": [
     {
-      "id": "526022be-bc79-4716-a34d-ef9e0eb7ca3f",
+      "id": "526022be-bc79-4716-a34d-ef9e0eb7ca3a",
       "name": "Virtual Mobile Presence for Owntracks",
       "namespace": "brianwilson-hubitat",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/virtual-mobile-presence-owntracks.groovy",
@@ -18,7 +18,7 @@
   ],
   "apps": [
     {
-      "id": "5a253fb8-8b55-46ca-8db8-769389b03515",
+      "id": "5a253fb8-8b55-46ca-8db8-769389b03516",
       "name": "OwnTracks Presence App",
       "namespace": "brianwilson-hubitat",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/owntracks-presence-app.groovy",
