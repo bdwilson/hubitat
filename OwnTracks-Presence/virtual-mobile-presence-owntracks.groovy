@@ -10,7 +10,7 @@ metadata {
         capability "Switch"
         capability "Refresh"
         capability "Presence Sensor"
-		capability "Sensor"
+	capability "Sensor"
         capability "Battery"
         attribute "ssid", "string"
         attribute "bssid", "string"    
@@ -21,10 +21,12 @@ def parse(String description) {
 }
 
 def on() {
-	sendEvent(name: "switch", value: "on")
+    sendEvent(name: "switch", value: "on")
     sendEvent(name: "presence", value: "present")
 
 }
+
+def refresh() { }
 
 def off() {
 	sendEvent(name: "switch", value: "off")
