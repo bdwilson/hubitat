@@ -31,6 +31,8 @@ Installation
 OwnTracks location name in #8 below is "Home". You can create multiple virtual devices and give them different names after the "-" then you can
 reference them after the location below in #5 and use that new url in #8.  <b>There should be no space before and after the "-" in the device name!</b>
 
+___NOTE: If you install via HPM and wish to uninstall later, you will need to change the device type of your virtual presence devices to something other than Virtual Mobile Presence for OwnTracks - or remove the devices prior to uninstalling!___
+
 __OR__
 
 1. Go to Drivers Code and create a new device using [virtual-mobile-presence-owntracks.groovy](https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/virtual-mobile-presence-owntracks.groovy).
@@ -47,8 +49,7 @@ Configure
 that you want to control. 
 2. Copy the Endpoint URL. This will be your URL to configure in OwnTracks.  It should look something like this ___but you need to add the same user as above after location when you use this URL below___.  For instance, mine looks like this:
 https://cloud.hubitat.com/api/xxx-xxx-xx-xxx/apps/xx/location/Brian?access_token=adafae03-0330-4aeb-b15e-xxxxxxxxx.
-3. Now paste this URL into your browser and make sure you get the following response:
-<code>["Yep, this is the right URL, just put it into OwnTracks Web Hook, set to POST and do a test. Make sure your OwnTracks location name matches the device '<location>-Brian'"]</code>
+3. Now paste this URL into your browser and make sure you get the following response: <code>["This is the right URL! Add it directly into the OwnTracks URL field and make sure your Hubitat device name matches the format: '[Region Name in OwnTracks]-Brian'"]</code>
 4. In the OwnTracks app, click the __(i)__ the main OwnTracks app on the top left, click
 __Settings__. Change the mode at the top to method to __HTTP__ - ___this will
 remove any regions/friends you've configured___.  Also, __disable

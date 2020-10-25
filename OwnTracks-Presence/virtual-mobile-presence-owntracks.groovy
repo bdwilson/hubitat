@@ -1,5 +1,8 @@
-//		- based on original work by Austin Pritchett/ajpri
-
+/*
+ * Virtual Mobile Presence for Owntracks - based on original work by Austin Pritchett/ajpri
+ *
+ * Version 1.1.2: bdwilson - initial version tracking.
+ */
 metadata {
         definition (
             name: "Virtual Mobile Presence for Owntracks", 
@@ -10,10 +13,11 @@ metadata {
         capability "Switch"
         capability "Refresh"
         capability "Presence Sensor"
-	capability "Sensor"
+	    capability "Sensor"
         capability "Battery"
         attribute "ssid", "string"
         attribute "bssid", "string"    
+		attribute "batteryStatus", "string"
     }
 }
 
