@@ -55,8 +55,7 @@ https://cloud.hubitat.com/api/xxx-xxx-xx-xxx/apps/xx/location/Brian?access_token
 * Change the mode at the top to method to __HTTP__ - ___this will remove any regions/friends you've configured___.   
 * If UserID/Username field exists, you should make this the same as the user configured in the URL. If I leave this field blank, I get an error.
 * __disable authentication__ (you'll authenticate using the access token in the hubitat URL).  
-* In the URL field, copy the URL from above. ___Make sure the name of your Person from Installation Step 2 (Brian in my case below), is added after the /location/ part in the URL.___
-<img src="https://bdwilson.github.io/images/IMG_4809.jpg" width=300px>
+* In the URL field, copy the URL from above. ___Make sure the name of your Person from Installation Step 2 (Brian in my case below), is added after the /location/ part in the URL.___<br><img src="https://bdwilson.github.io/images/IMG_4809.jpg" width=300px>
 5. Add your Regions or iBeacons (optional) in the app.  In the app, setup your regions and adjust the radius if needed or iBeacons and name them like #2 above (minus the "-Name" part since that will get passed on your URL). 
 6. You should now have a virtual presence sensor that you can tie to Hubitat actions. You can create as many virtual presense sensors as you have iBeacons or GPS locations in OwnTracks.
 7. The best way to test this is to have debug logging turned on in the app, set a small radius, then go for a walk. Unfortunately, there is no "test URL" function. 
