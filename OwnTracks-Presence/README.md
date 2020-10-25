@@ -27,9 +27,7 @@ Installation
 --------------------
 1. Install via [HPM](https://community.hubitat.com/t/beta-hubitat-package-manager/38016)
 2. Go to Devices and create a new virtual device '''name it whatever the name will be called in OwnTracks with a - and a USER after it'''. Mine are called "Home-Brian" and "Home-Spawn1".  Network Device ID can be
-'''HOME_PRESENCE_BRIAN''' for the first. Device Type will be the type you configured in step 1. For this example, mine is named "Home-Brian" and my
-OwnTracks location name in #8 below is "Home". You can create multiple virtual devices and give them different names after the "-" then you can
-reference them after the location below in #5 and use that new url in #8.  <b>There should be no space before and after the "-" in the device name!</b>
+'''HOME_PRESENCE_BRIAN''' for the first. Device Type will be the type you configured in step 1 (Virtual Mobile Presence for OwnTracks). For this example, mine is named "Home-Brian" and my OwnTracks location name in #8 below is "Home". You can create multiple virtual devices and give them different names after the "-" then you can reference them after the location below in #5 and use that new url in #8. <b>There should be no space before and after the "-" in the device name!</b>
 
 ___NOTE: If you install via HPM and wish to uninstall later, you will need to change the device type of your virtual presence devices to something other than Virtual Mobile Presence for OwnTracks - or remove the devices prior to uninstalling!___
 
@@ -57,8 +55,8 @@ https://cloud.hubitat.com/api/xxx-xxx-xx-xxx/apps/xx/location/Brian?access_token
 * __disable authentication__ (you'll authenticate using the access token in the hubitat URL).  
 * In the URL field, copy the URL from above. ___Make sure the name of your Person from Installation Step 2 (Brian in my case below), is added after the /location/ part in the URL.___<br><img src="https://bdwilson.github.io/images/IMG_4809.jpg" width=300px>
 5. Add your Regions or iBeacons (optional) in the app.  In the app, setup your regions and adjust the radius if needed or iBeacons and name them like #2 above (minus the "-Name" part since that will get passed on your URL). 
-6. You should now have a virtual presence sensor that you can tie to Hubitat actions. You can create as many virtual presense sensors as you have iBeacons or GPS locations in OwnTracks.
-7. The best way to test this is to have debug logging turned on in the app, set a small radius, then go for a walk. Unfortunately, there is no "test URL" function. 
+6. To test your installation, make sure debug mode is enabled in the Hubitat App. Then go into the OwnTracks app and go back and forth between <b>significant</b> and <b>move</b> a few times and review your logs & virtual devices (you probably want to leave this on <b>significant</b> long-term because of battery life, but can review what these settings do <a href='https://owntracks.org/booklet/features/location'>here</a>). Device presence status should update to reflect correct presence for your devices. ___Note: Not all fields (battery, battery status, SSID, BSSID) will be available from all devices - this is a limitation with OwnTracks."___
+7. You should now have a virtual presence sensor that you can tie to Hubitat actions. You can create as many virtual presense sensors as you have iBeacons or GPS locations in OwnTracks.
 
 Bugs/Contact Info
 -----------------
