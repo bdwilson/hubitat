@@ -50,12 +50,12 @@ that you want to control.
 2. Copy the Endpoint URL. This will be your URL to configure in OwnTracks.  It should look something like this ___but you need to add the same user as above after location when you use this URL below___.  For instance, mine looks like this:
 https://cloud.hubitat.com/api/xxx-xxx-xx-xxx/apps/xx/location/Brian?access_token=adafae03-0330-4aeb-b15e-xxxxxxxxx.
 3. Now paste this URL into your browser and make sure you get the following response: <code>["This is the right URL! Add it directly into the OwnTracks URL field and make sure your Hubitat device name matches the format: '[Region Name in OwnTracks]-Brian'"]</code>
-4. In the OwnTracks app, click the __(i)__ the main OwnTracks app on the top left, click
-__Settings__. Change the mode at the top to method to __HTTP__ - ___this will
-remove any regions/friends you've configured___.  Also, __disable
-authentication__ (you'll authenticate using the access token in the hubitat URL). 
-In the URL field, copy the URL from above. ___Make sure the name of your Person from Installation Step 2 (Brian in my case
-below), is added after the /location/ part in the URL.___
+4. In the OwnTracks app
+* Click the __(i)__ the main OwnTracks app on the top left, click __Settings__. 
+* Change the mode at the top to method to __HTTP__ - ___this will remove any regions/friends you've configured___.   
+* If UserID/Username field exists, you should make this the same as the user configured in the URL
+* __disable authentication__ (you'll authenticate using the access token in the hubitat URL).  
+* In the URL field, copy the URL from above. ___Make sure the name of your Person from Installation Step 2 (Brian in my case below), is added after the /location/ part in the URL.___
 <img src="https://bdwilson.github.io/images/IMG_4809.jpg" width=300px>
 5. Add your Regions or iBeacons (optional) in the app.  In the app, setup your regions and adjust the radius if needed or iBeacons and name them like #2 above (minus the "-Name" part since that will get passed on your URL). 
 6. You should now have a virtual presence sensor that you can tie to Hubitat actions. You can create as many virtual presense sensors as you have
