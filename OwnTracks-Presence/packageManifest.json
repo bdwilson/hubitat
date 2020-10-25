@@ -6,6 +6,7 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/OwnTracks-Presence",
   "communityLink": "https://community.hubitat.com/t/release-owntracks-presence/53419",
   "dateReleased": "2020-10-25",
+  "releaseNotes": "If you're upgrading from an older version in HPM, you may need to remove old driver and apps manaully due to an error on my part. Moving forward, this should not be a requirement.",
   "drivers": [
     {
       "id": "526022be-bc79-4716-a34d-ef9e0eb7ca3f",
