@@ -13,13 +13,13 @@ metadata {
         capability "Switch"
         capability "Refresh"
         capability "Presence Sensor"
-	    capability "Sensor"
+	capability "Sensor"
         capability "Battery"
         }
     
         attribute "ssid", "text"
         attribute "bssid", "text"    
-		attribute "batteryStatus", "text"
+	attribute "batteryStatus", "text"
         attribute "region", "text"
         attribute "user" , "text"
     
