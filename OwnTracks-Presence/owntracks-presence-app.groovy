@@ -85,8 +85,8 @@ def updated() {
 def listLocations() {
     def resp = []
     presence.each {
-      ifDebug("RECEIVED: ${it.displayName}, attribute ${it.name}, ID: ${it.id}")
-      resp << [Name: it.displayName, ID: it.id]
+      ifDebug("RECEIVED: ${it.deviceNetworkId}, attribute ${it.name}, ID: ${it.id}")
+      resp << [Name: it.deviceNetworkId, ID: it.id]
     }
     return resp
 }
@@ -125,7 +125,7 @@ def update (devices) {
    	      def user = params.user
           def location = data.desc  
           def deviceName = location + "-" + user
-          def device = devices.find { it.displayName == deviceName }
+          def device = devices.find { it.deviceNetworkId == deviceName }
    	      ifDebug("event: ${event} device: ${device} location: ${location} user: ${user} deviceName: ${deviceName}")     
  	      if (location){
               if (!device) {
@@ -165,8 +165,8 @@ def update (devices) {
               batteryStatus = "full"
           } 
           devices?.each { myDevice -> 
-                 def name = myDevice.displayName
-                 def DNI = myDevice.deviceNetworkId
+                 def name = myDevice.deviceNetworkId
+                 def DNI = myDevice.displayName
                  ifDebug("Found device: ${name} with DNI ${DNI}")
                  def myLocation = name.split('-')[0]
                  def myUser = name.split('-')[1]
