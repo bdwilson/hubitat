@@ -125,7 +125,7 @@ def update (devices) {
    	      def user = params.user
           def location = data.desc  
           def deviceName = location + "-" + user
-          def device = devices.find { it.displayName == deviceName }
+          def device = devices.find { it.currentValue("region") + "-" + it.currentValue("user") == deviceName }
    	      ifDebug("event: ${event} device: ${device} location: ${location} user: ${user} deviceName: ${deviceName}")     
  	      if (location){
               if (!device) {
@@ -168,8 +168,8 @@ def update (devices) {
                  def name = myDevice.displayName
                  def DNI = myDevice.deviceNetworkId
                  ifDebug("Found device: ${name} with DNI ${DNI}")
-                 def myLocation = name.split('-')[0]
-                 def myUser = name.split('-')[1]
+                 def myLocation = myDevice.currentValue("region")
+                 def myUser = myDevice.currentValue("user")
                  def found = 0
                  ifDebug("MyUser: ${myUser} MyLocation: ${myLocation}")
                  if (myUser == user) {
@@ -237,4 +237,3 @@ def logsOff() {
 private ifDebug(msg) {  
     if (msg && state.isDebug)  log.debug 'OwnTracks-Presence: ' + msg  
 }
-
