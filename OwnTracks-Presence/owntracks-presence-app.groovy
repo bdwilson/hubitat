@@ -94,7 +94,7 @@ def listLocations() {
 def deviceHandler(evt) {}
 
 def correctURL () {
-	def msg = ["This is the right URL! Add it directly into the OwnTracks URL field and make sure your Hubitat device name matches the format: '[Region Name in OwnTracks]-${params.user}'"]
+	def msg = ["This is the right URL! Add it directly into the OwnTracks URL field and make sure your Hubitat device name matches the format: '[Region Name in OwnTracks]-${params.user}' or you've configured a user and region within the preferences of the device."]
 	ifDebug("${msg}")
 	return msg
 }
@@ -119,37 +119,40 @@ def update (devices) {
     data = parseJson(request.body)
     ifDebug("DATA: ${data} PARAMS: ${params}")
     if (data._type == "transition") {
-          // https://owntracks.org/booklet/tech/json/#_typetransition
-          ifDebug("Received transition event")
-   	      def event = data.event
-   	      def user = params.user
-          def location = data.desc  
-          def deviceName = location + "-" + user
-          def device = devices.find { it.currentValue("region") + "-" + it.currentValue("user") == deviceName }
-   	      ifDebug("event: ${event} device: ${device} location: ${location} user: ${user} deviceName: ${deviceName}")     
- 	      if (location){
+	    // https://owntracks.org/booklet/tech/json/#_typetransition
+	    ifDebug("Received transition event")
+	    def event = data.event
+	    def user = params.user
+	    def location = data.desc 
+	    def deviceName = location + "-" + user
+	    def device = devices.find { it.currentValue("region") + "-" + it.currentValue("user") == deviceName }
+	    if (!device) {
+		    device = devices.find { it.displayName == deviceName }
+	    }
+	    ifDebug("event: ${event} device: ${device} location: ${location} user: ${user} deviceName: ${deviceName}")     
+	    if (location) {
               if (!device) {
-			      def msg = ["Error: device (${deviceName}) not found. Make sure a device a virtual mobile presense device exists with Device Name of: ${deviceName} if you expect this to work."]
-			      ifDebug("${msg}")
+		      def msg = ["Error: device (${deviceName}) not found. Make sure a device a virtual mobile presense device exists with Device Name of: ${deviceName} or with device region and user configured if you expect this to work."]
+		      ifDebug("${msg}")
               } else {
-                  if(event == "leave"){
+                  if (event == "leave") {
                       def msg = "${user} has exited ${location} - turning ${device} off"
                       ifDebug("${msg}")
                       device.off()
-                 } else {
-                     def msg = "${user} has entered ${location} - turning ${device} on"
-                     ifDebug("${msg}")
-                     device.on()
-                 }
+                  } else {
+                      def msg = "${user} has entered ${location} - turning ${device} on"
+                      ifDebug("${msg}")
+                      device.on()
+                  }
              }
           } else {
-               ifDebug("Location not found. You need to make sure you configure the name of your region on OwnTracks to have a location name to match your device name and person in hubitat. It should be named in the format of Location-${params.user}.")
+              ifDebug("Location not found. You need to make sure you configure the name of your region on OwnTracks to have a location name to match your device name and person in hubitat. It should be named in the format of Location-${params.user}.")
           }
      } else if (data._type == "location") {
           // https://owntracks.org/booklet/tech/json/#_typelocation
           ifDebug("Received location event")
           def batt = data.batt ?: "0"
-   	      def user = params.user
+   	  def user = params.user
           def ssid = data.SSID ?: "N/A"
           def bssid = data.BSSID ?: "N/A"  
           def batteryStatus = "N/A"
@@ -168,16 +171,21 @@ def update (devices) {
                  def name = myDevice.displayName
                  def DNI = myDevice.deviceNetworkId
                  ifDebug("Found device: ${name} with DNI ${DNI}")
-                 def myLocation = myDevice.currentValue("region")
-                 def myUser = myDevice.currentValue("user")
+                 def myLocation, myUser
+		 if (myDevice.currentValue("region") && myDevice.currentValue("user")) {
+			 myLocation = myDevice.currentValue("region")
+			 myUser = myDevice.currentValue("user")
+		 } else {
+			 myLocation = name.split('-')[0]
+			 myUser = name.split('-')[1]
+		 }
                  def found = 0
                  ifDebug("MyUser: ${myUser} MyLocation: ${myLocation}")
                  if (myUser == user) {
                      myDevice.sendEvent(name: "battery", value: "${batt}")
                      myDevice.sendEvent(name: "ssid", value: "${ssid}")
                      myDevice.sendEvent(name: "bssid", value: "${bssid}")
-                     myDevice.sendEvent(name: "batteryStatus", value: "${batteryStatus}")
-                     
+                     myDevice.sendEvent(name: "batteryStatus", value: "${batteryStatus}")                   
                      // since location is only updated when a transition event is sent, we can force the location
                      // to be updated if debug mode is on.
                      if (state.isDebug) {
@@ -195,7 +203,7 @@ def update (devices) {
                                  ifDebug("${user} exited ${myLocation} (forced because debug mode is on - ${user} did not really transition)")
                                  myDevice.off()
                              }
-                        }
+                         }
                      }
                  }
           }
