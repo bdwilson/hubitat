@@ -5,7 +5,7 @@
  */
 metadata {
 	definition (
-		name: "Virtual Mobile Presence for Owntracks", 
+		name: "OwnTracks Virtual Mobile Presence Driver", 
 		namespace: "brianwilson-hubitat", 
 		author: "Brian Wilson", 
 		importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/virtual-mobile-presence-owntracks.groovy"
