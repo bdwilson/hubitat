@@ -23,8 +23,8 @@ metadata {
 		attribute "user", "text"
 	}
 	preferences { 
-		input name: "region", type: "text", title: "Location/Region to Track", description: "Set Location/Region to track to OwnTracks - if empty, beginning of device name is used", required: false
-		input name: "user", type: "text", title: "User to Track (required if region set)", description: "Set User to track to OwnTracks - if empty, end of device name is used", required: false
+		input name: "region", type: "text", title: "Location/Region to Track", required: true
+		input name: "user", type: "text", title: "User to Track (required if region set)", required: true
 	}
 }
 
@@ -58,10 +58,6 @@ def installed () {
 
 def updated() {
 	state.clear()
-	if (user) {
-		sendEvent(name: "user", value: "${user}")
-	} 
-	if (region) {
-		sendEvent(name: "region", value: "${region}")
-	}
+	sendEvent(name: "user", value: "${user}") 
+	sendEvent(name: "region", value: "${region}")
 }
