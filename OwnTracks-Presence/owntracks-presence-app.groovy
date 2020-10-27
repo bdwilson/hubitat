@@ -46,23 +46,26 @@ def setupScreen(){
     extUri = extUri.replaceAll("null","location")
     return dynamicPage(name: "setupScreen", uninstall: true, install: true){
         section("<h1>OwnTracks Presence</h1>") {
-            paragraph ("Before the step below, go add virtual presence devices for the users you wish to monitor with OwnTracks name them in the format [Location]-[Name] (i.e. Home-Bob) and assign the device type to be <b>Virtual Mobile Presence for Owntracks</b>. If you already have Virtual Presence Devices then you'll need to update them to use the <b>Virtual Mobile Presence for Owntracks</b> device type.")
+	    paragraph ("Please read all the steps below in order to link your presence to an OwnTracks Region")
+	}
+	section("<h2>1. Create OwnTracks Virtual Presence Devices</h2>") {
+            paragraph ("Create a device of type <b>OwnTracks Virtual Mobile Presence Device</b> corresponding to each user and location you wish to monitor with OwnTracks - or update your existing virtual presence devices to use this device type. You will then need to add device preference entries for each device to correspond to the <b>user</b> and <b>region/location</b> that you will configure in OwnTracks.")
         }
-        section ("<h2>Select Virtual Presence sensors to Control</h2>") {
+        section ("<h2>2. Select Virtual Presence sensors to Control</h2>") {
             //paragraph("Allow this app to control these virtual presence devices:")
     		input "presence", "capability.presenceSensor", multiple: true, required: true
     	}
-        section("<h2>Setup URL in OwnTracks App</h2>"){ 
-            paragraph("Use the following as the URL for OwnTracks but make sure that you add <b>your</b> User info after /location/ in the URL with the correct User matching your virtual device: <a href='${extUri}'>${extUri}</a>. You will also need to create a region in OwnTracks that matches the beginning part of your virtual device.")
+        section("<h2>3. Setup URL in OwnTracks App</h2>"){ 
+            paragraph("Use the following as the URL for OwnTracks but make sure that you add <b>your</b> User info after /location/ in the URL with the correct User you configured in your virtual device: <a href='${extUri}'>${extUri}</a>. You will also need to create a region in OwnTracks that matches the region/location configured in your device.")
             paragraph("Detailed installation instructions for OwnTracks can be found <a href='https://github.com/bdwilson/hubitat/tree/master/OwnTracks-Presence#configure'>here</a>.  When you change from HTTP mode from MQTT mode, you will lose your regions & any features you use that take advantage of MQTT (like Friends tracking).")
             paragraph("If for some reason you want to use the Internal URL it would be <a href='${uri}'>${uri}</a>, however it's inaccessible from outside your home. ")
         }
-	    section("<h2>Debug Mode</h2>") {
+	section("<h2>4. Enable Debug Mode</h2>") {
             paragraph("Debug is enabled by default and will disable automatically after 1 hour. Having debug mode enabled will allow your presence device(s) status to be updated without leaving/entering your regions - this will aid in making sure things are working correctly but would generate unnecessary presence updates if enabled long-term.")
        		input "isDebug", "bool", title: "Enable Debug Mode", required: false, multiple: false, defaultValue: true, submitOnChange: true
     	}
-        section("<h2>Testing your installation</h2>") {
-            paragraph("To test your installation, make sure debug mode is enabled, your URL above is configured in OwnTracks (with the addition of your user info after /location), then within OwnTracks create your regions and give them the same names as the beginning part of your virtual presence device. ")
+        section("<h2>5. Testing your installation</h2>") {
+            paragraph("To test your installation, make sure debug mode is enabled, your URL above is configured in OwnTracks (with the addition of your user info after /location), then within OwnTracks create your regions and give them the same names to correspond to your device settings.")
             paragraph("Once created, go back and forth between <b>significant</b> and <b>move</b> a few times and review your logs & virtual devices (you probably want to leave this on <b>significant</b> long-term because of battery life, but can review what these settings do <a href='https://owntracks.org/booklet/features/location'>here</a>). Device presence status should update to reflect correct presence for your devices.")
             paragraph("Not all fields (battery, battery status, SSID, BSSID) will be available from all devices - this is a limitation with OwnTracks.")
         }
@@ -126,13 +129,10 @@ def update (devices) {
 	    def location = data.desc 
 	    def deviceName = location + "-" + user
 	    def device = devices.find { it.currentValue("region") + "-" + it.currentValue("user") == deviceName }
-	    if (!device) {
-		    device = devices.find { it.displayName == deviceName }
-	    }
 	    ifDebug("event: ${event} device: ${device} location: ${location} user: ${user} deviceName: ${deviceName}")     
 	    if (location) {
               if (!device) {
-		      def msg = ["Error: device (${deviceName}) not found. Make sure a device a virtual mobile presense device exists with Device Name of: ${deviceName} or with device region and user configured if you expect this to work."]
+		      def msg = ["Error: device (${deviceName}) not found. Make sure a device a with type: OwnTracks Virtual Mobile Presence Device exists AND is configured with the proper region and user settings."]
 		      ifDebug("${msg}")
               } else {
                   if (event == "leave") {
@@ -146,7 +146,7 @@ def update (devices) {
                   }
              }
           } else {
-              ifDebug("Location not found. You need to make sure you configure the name of your region on OwnTracks to have a location name to match your device name and person in hubitat. It should be named in the format of Location-${params.user}.")
+              ifDebug("Location not found. You need to make sure you configure the name of your region on OwnTracks to match the settings configured in your OwnTracks Virtual Mobile Presence Device.")
           }
      } else if (data._type == "location") {
           // https://owntracks.org/booklet/tech/json/#_typelocation
@@ -171,14 +171,8 @@ def update (devices) {
                  def name = myDevice.displayName
                  def DNI = myDevice.deviceNetworkId
                  ifDebug("Found device: ${name} with DNI ${DNI}")
-                 def myLocation, myUser
-		 if (myDevice.currentValue("region") && myDevice.currentValue("user")) {
-			 myLocation = myDevice.currentValue("region")
-			 myUser = myDevice.currentValue("user")
-		 } else {
-			 myLocation = name.split('-')[0]
-			 myUser = name.split('-')[1]
-		 }
+		 def myLocation = myDevice.currentValue("region")
+		 def myUser = myDevice.currentValue("user")
                  def found = 0
                  ifDebug("MyUser: ${myUser} MyLocation: ${myLocation}")
                  if (myUser == user) {
