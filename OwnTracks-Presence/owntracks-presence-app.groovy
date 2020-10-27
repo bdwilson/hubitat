@@ -173,6 +173,12 @@ def update (devices) {
                  ifDebug("Found device: ${name} with DNI ${DNI}")
 		 def myLocation = myDevice.currentValue("region")
 		 def myUser = myDevice.currentValue("user")
+		 if (!myLocation) {
+			 log.warn "OwnTracks Device ${name} does not have a region/location configured. Please configure it in device settings"
+		 }
+		 if (!myUser) {
+			 log.warn "OwnTracks Device ${name} does not have a user configured. Please configure it in device settings"
+		 }
                  def found = 0
                  ifDebug("MyUser: ${myUser} MyLocation: ${myLocation}")
                  if (myUser == user) {
