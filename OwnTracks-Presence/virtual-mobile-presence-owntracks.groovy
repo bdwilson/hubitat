@@ -1,7 +1,8 @@
 /*
  * Virtual Mobile Presence for Owntracks - based on original work by Austin Pritchett/ajpri
  *
- * Version 1.1.2: bdwilson - initial version tracking.
+ * Version 1.1.3
+ * 
  */
 metadata {
 	definition (

@@ -1,20 +1,20 @@
 {
   "packageName": "OwnTracks Presence",
   "author": "Brian Wilson",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/OwnTracks-Presence",
   "communityLink": "https://community.hubitat.com/t/release-owntracks-presence/53419",
-  "dateReleased": "2020-10-25",
-  "releaseNotes": "If you're upgrading from an older version in HPM, you may need to remove old driver and apps manaully due to an error on my part. Moving forward, this should not be a requirement.",
+  "dateReleased": "2020-10-27",
+  "releaseNotes": "BREAKING CHANGE: We are no longer using device name as a location/region and name identifier - you need to set the identifiers in device settings for each virtual presence device.",
   "drivers": [
     {
       "id": "526022be-bc79-4716-a34d-ef9e0eb7ca3f",
-      "name": "Virtual Mobile Presence for Owntracks",
+      "name": "OwnTracks Virtual Mobile Presence Driver",
       "namespace": "brianwilson-hubitat",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/virtual-mobile-presence-owntracks.groovy",
       "required": true,
-      "version": "1.1.2"
+      "version": "1.1.3"
     }
   ],
   "apps": [
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/owntracks-presence-app.groovy",
       "required": true,
       "oauth": true,
-      "version": "1.1.2"
+      "version": "1.1.3"
     }
   ]
 }

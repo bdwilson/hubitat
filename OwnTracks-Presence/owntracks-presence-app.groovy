@@ -13,7 +13,7 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  * Version 1.1.2: bdwilson - initial version tracking. 
- * 
+ *         1.1.3: bdwilson - moved location/user prefs to device preferences.  
  */
 definition(
     name: "OwnTracks Presence",
