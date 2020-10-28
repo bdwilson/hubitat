@@ -16,6 +16,8 @@ To get started you'll need:
 	- [A Virtual Presence OwnTracks Device](https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/virtual-mobile-presence-owntracks.groovy)
 	- [My Hubitat app](https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/owntracks-presence-app.groovy) assigned to your Virtual Presence Device(s) above
 
+___NOTE: It's not my intention to duplicate what the OwnTracks MQTT server does with friend tracking, so if you have a requirement to use this, then you may need to look at other apps that can do different webhook URL's per region like [Geofency](https://github.com/bdwilson/hubitat/tree/master/Geofency-Presence) or use two apps to perform different tasks in your automations.___
+
 Installation
 --------------------
 1. Install via [HPM](https://community.hubitat.com/t/beta-hubitat-package-manager/38016)
@@ -41,7 +43,7 @@ https://cloud.hubitat.com/api/xxx-xxx-xx-xxx/apps/xx/location/Brian?access_token
 4. Now paste this URL into your browser and make sure you get the following response: <code>["This is the right URL! Add it directly into the OwnTracks URL field and make sure your virtual presence device is configured with the the location/region and user ([User]) within the device preferences."]</code>
 4. In the OwnTracks app
 * Click the __(i)__ the main OwnTracks app on the top left, click __Settings__. 
-* Change the mode at the top to method to __HTTP__ - ___this will remove any regions/friends you've configured___.   
+* Change the mode at the top to method to __HTTP__ - ___this will remove any regions/friends you've configured if you're using MQTT___.   
 * If UserID/Username field exists, you should make this the same as the user configured in the URL. If I leave this field blank, I get an error.
 * __disable authentication__ (you'll authenticate using the access token in the hubitat URL).  
 * In the URL field, copy the URL from above. ___Make sure the name of your User matches the user from installation Step 3 (within the device preferences), is added after the /location/ part in the URL.___<br><img src="https://bdwilson.github.io/images/IMG_4809.jpg" width=300px>
