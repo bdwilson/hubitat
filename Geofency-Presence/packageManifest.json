@@ -14,6 +14,10 @@
       "namespace": "brianwilson-hubitat",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/virtual-mobile-presence.groovy",
       "required": true,
+      "alternateNames": [{
+          "name": "Virtual Mobile Presence",
+          "namespace": "ajpri"
+      }],
       "version": "1.1.1"
     }
   ],
