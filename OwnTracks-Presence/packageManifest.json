@@ -13,7 +13,10 @@
       "name": "OwnTracks Virtual Mobile Presence Driver",
       "namespace": "brianwilson-hubitat",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/virtual-mobile-presence-owntracks.groovy",
-      "required": true,
+      "required": true, 
+      "alternateNames": [{
+          "name": "Virtual Mobile Presence for Owntracks"
+      }],
       "version": "1.1.3.1"
     }
   ],
