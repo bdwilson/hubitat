@@ -1,36 +1,37 @@
-//Release History
-//		1.0 Oct. 12, 2015
-//			Initial Release
-
+/*
+ * Virtual Mobile Presence for Geofency - based on original work by Austin Pritchett/ajpri
+ * 
+ */
 
 metadata {
-        definition (name: "Virtual Mobile Presence", namespace: "ajpri", author: "Austin Pritchett") {
+        definition (name: "Geofency Virtual Mobile Presence Device", 
+					namespace: "brianwilson-hubitat", 
+					author: "Brian Wilson",
+					importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/virtual-mobile-presence.groovy"
+		) {
         capability "Switch"
         capability "Refresh"
         capability "Presence Sensor"
 		capability "Sensor"
+	    attribute "location", "text"
+		attribute "user", "text"
     }
-
-	// simulator metadata
-	simulator {
+	preferences { 
+		input name: "location", type: "text", title: "Location to Track", required: true
+		input name: "user", type: "text", title: "User to Track", required: true
 	}
+}
 
-	// UI tile definitions
-	tiles {
-		standardTile("button", "device.switch", width: 2, height: 2, canChangeIcon: false,  canChangeBackground: true) {
-			state "off", label: 'Away', action: "switch.on", icon: "st.Kids.kid10", backgroundColor: "#ffffff", nextState: "on"
-			state "on", label: 'Present', action: "switch.off", icon: "st.Kids.kid10", backgroundColor: "#53a7c0", nextState: "off"
-		}
-		standardTile("refresh", "device.switch", inactiveLabel: false, decoration: "flat") {
-			state "default", label:'', action:"refresh.refresh", icon:"st.secondary.refresh"
-		}
-        standardTile("presence", "device.presence", width: 1, height: 1, canChangeBackground: true) {
-			state("present", labelIcon:"st.presence.tile.mobile-present", backgroundColor:"#53a7c0")
-			state("not present", labelIcon:"st.presence.tile.mobile-not-present", backgroundColor:"#ffffff")
-		}
-		main (["button", "presence"])
-		details(["button", "presence", "refresh"])
-	}
+def refresh() { }
+
+def arrived() {
+	sendEvent(name: "switch", value: "on")
+	sendEvent(name: "presence", value: "present")
+}
+
+def departed () {
+	sendEvent(name: "switch", value: "off")
+	sendEvent(name: "presence", value: "not present")
 }
 
 def parse(String description) {
@@ -46,4 +47,12 @@ def off() {
 	sendEvent(name: "switch", value: "off")
     sendEvent(name: "presence", value: "not present")
 
+}
+def installed () {
+}
+
+def updated() {
+	state.clear()
+	sendEvent(name: "user", value: "${user}") 
+	sendEvent(name: "location", value: "${location}")
 }

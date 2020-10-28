@@ -43,23 +43,43 @@ def setupScreen(){
     def extUri = fullApiServerUrl() + "/?access_token=${state.accessToken}"
     extUri = extUri.replaceAll("null","location")
     return dynamicPage(name: "setupScreen", uninstall: true, install: true){
-		section ("Allow external service to control these things...") {
+   			section("<h1>Geofency Presence</h1>") {
+            	paragraph ("Please read all the steps below in order to link your presence to a Geofency Location. This integration requires the <a href='https://www.geofency.com/'>Geofency</a> <b>iOS</b> app.")
+			}
+			section("<h2>1. Create Geofency Virtual Presence Devices</h2>") {
+            	paragraph ("Go to <i>Devices -> Add Virtual Device</i> and create a new virtual device of type <b>Geofency Virtual Mobile Presence Device</b> corresponding to each user and location you wish to monitor within Geofency - or update your existing virtual presence devices to use this device type. You will then need to add device preference entries for each device to correspond to both the <b>user</b> and <b>location</b> that you will configure in Geofency.")
+        	}
+        section ("<h2>2. Select Virtual Presence Devices</h2>") {
+            paragraph ("This will allow this App to control the devices you created above")
     		input "presence", "capability.presenceSensor", multiple: true, required: true
     	}
-        section(){ 
-            paragraph("Use the following as the base URI for Geofency; but follow instructions: <a href='${extUri}'>${extUri}</a>. If for some reason you want to use the Internal URI it would be <a href='${uri}'>${uri}</a>, however it's inaccessible from outside your home. ")
+        section("<h2>3. Setup URL in Geofency App</h2>"){ 
+            paragraph("Use the following as the URL for Geofency but make sure that you add <b>your</b> user info after /location/ in the URL using the same <b>user</b> you configured in your virtual device in step 1: <a href='${extUri}'>${extUri}</a>. You will also need to create a location in Geofency that matches the location configured in your device.")
+            paragraph("Detailed installation instructions for Geofency can be found <a href='https://github.com/bdwilson/hubitat/tree/master/Geofency-Presence#Installation'>here</a>.")
+            paragraph("If for some reason you want to use the Internal URL it would be <a href='${uri}'>${uri}</a>, however it's inaccessible from outside your home. ")
         }
-	    section("") {
-       		input "isDebug", "bool", title: "Enable Debug Logging", required: false, multiple: false, defaultValue: false, submitOnChange: true
+		section("<h2>4. Enable Debug Mode</h2>") {
+            paragraph("Debug is enabled by default and will disable automatically after 1 hour. Having debug mode enabled will enable to see your tests made within Geofency")
+       		input "isDebug", "bool", title: "Enable Debug Mode", required: false, multiple: false, defaultValue: true, submitOnChange: true
     	}
+        section("<h2>5. Testing your installation</h2>") {
+            paragraph("To test your installation, make sure debug mode is enabled, your URL above is configured in Geofency location (under Settings -> Webhook but <b>with the addition of your user info after /location/</b>), then within Geofency create your location and name it corresponding to your location in step 1. Also make sure that HTTP Method is set to POST(JSON)")
+            paragraph("Once added, use the <b>Test Connection Entry</b> items under Webhooks to test entering and existing and review your logs & virtual devices events.")
+        }
+
     }
 }
 
 def installed() {
-	ifDebug("Installed with settings: ${settings}")
+    log.warn "debug logging for Geofency: ${state.isDebug == true}"
+    if (state.isDebug) runIn(3600, logsOff)
+    ifDebug("Installed with settings: ${settings}")
+
 }
 
 def updated() {
+    log.warn "debug logging for Geofency: ${state.isDebug == true}"
+    if (state.isDebug) runIn(3600, logsOff)
 	ifDebug("Updated with settings: ${settings}")
 }
 
@@ -75,7 +95,7 @@ def listLocations() {
 def deviceHandler(evt) {}
 
 def correctURL () {
-	def msg = ["Yep, this is the right URL, just put it into Geofency Web Hook, set to POST and do a test. Make sure your Geofency location name matches the device '<location>-${params.user}'"]
+	def msg = ["Yep, this is the right URL, just put it into Geofency Web Hook, set to POST and do a test. Make sure your Geofency location name matches the device location and user (${params.user}) configured in the preferences"]
 	ifDebug("${msg}")
 	return msg
 }
@@ -102,12 +122,14 @@ def update (devices) {
    	def event = data.entry
    	def user = params.user
    	def deviceName = location + "-" + user
-    def device = devices.find { it.displayName == deviceName }
+    //def device = devices.find { it.displayName == deviceName }
+    def device = devices.find { it.currentValue("location") + "-" + it.currentValue("user") == deviceName }
+
    	ifDebug("event: ${event} device: ${device} location: ${location} user: ${user} deviceName: ${deviceName}")
       
  	if (location){
         if (!device) {
-			def msg = ["Error: device (${deviceName}) not found. Make sure a device a virtual mobile presense device exists with Device Name of: ${deviceName} if you expect this to work."]
+            def msg = ["Error: device not found. Make sure a device a with type: Geofency Virtual Mobile Presence Device exists AND is configured with the proper location and user settings."]
 			ifDebug("${msg}")
             // render's aren't working. maybe someone can fix this. 
             // render contentType: "text/html", msg: out, status: 404
@@ -124,7 +146,9 @@ def update (devices) {
                 //render contentType: "text/html", msg: out, status: 200
             }
         }
-     }
+     } else {
+		ifDebug("Location not found. You need to make sure you configure the name of your location on Geofency to match the settings configured in your Geofency Virtual Mobile Presence Device.")
+	 }
 }
 
 mappings {
@@ -152,7 +176,12 @@ mappings {
     }
 }
 
-private ifDebug(msg) {  
-    if (msg && state.isDebug)  log.debug 'Geofency-MultiUser-Presence: ' + msg  
+def logsOff() {
+    log.warn "debug logging for Geofency now disabled..."
+    app.updateSetting("isDebug", [value: "false", type: "bool"])
+    state.isDebug = false 
 }
 
+private ifDebug(msg) {  
+    if (msg && state.isDebug)  log.debug 'Geofency-Presence: ' + msg  
+}

@@ -1,19 +1,20 @@
 {
   "packageName": "Geofency Presence",
   "author": "Brian Wilson",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Geofency-Presence",
   "communityLink": "https://community.hubitat.com/t/release-geofency-presence/22788",
-  "dateReleased": "2020-05-18",
+  "dateReleased": "2020-10-27",
+  "releaseNotes": "BREAKING CHANGE: We are no longer using device name as a combination location  and user identifier - you need to set the identifiers in device settings for each virtual presence device. This means your device name can match whatever you want as some folks keep virtual devices named in a similar fashion.",
   "drivers": [
     {
       "id": "526022be-bc79-4716-a34d-ef9e0eb7ba3a",
-      "name": "Virtual Mobile Presence",
-      "namespace": "ajpri",
+      "name": "Geofency Virtual Mobile Presence Device",
+      "namespace": "brianwilson-hubitat",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/virtual-mobile-presence.groovy",
       "required": true,
-      "version": "1.0.0"
+      "version": "1.1.0"
     }
   ],
   "apps": [
@@ -23,8 +24,8 @@
       "namespace": "brianwilson-hubitat",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/geofency-presence.groovy",
       "required": true,
-      "oauth": false,
-      "version": "1.0.0"
+      "oauth": true,
+      "version": "1.1.0"
     }
   ]
 }
