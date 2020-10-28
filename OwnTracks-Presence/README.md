@@ -1,14 +1,7 @@
 OwnTracks Presence Updater for Hubitat
 =======
 
-[OwnTracks](https://owntracks.org/) is an app for iOS & Android that uses
-either device GPS or Bluetooth LE iBeacons to detect presence. This device driver and SmartApp will allow you to use
-Bluetooth iBeacons or GPS info on your mobile device to set presence in
-Hubitat. This means you can now get accurate presence with or without using GPS
-- depending on if you own an iBeacon or not - and without using a presence
-sensor. It also means you can have many different geofence locations that can
-trigger any number of virtual presense devices (because Hubitat app is limited
-to a single geofence currently). 
+[OwnTracks](https://owntracks.org/) is an app for iOS & Android that uses either device GPS or Bluetooth LE iBeacons to detect presence. This device driver and SmartApp will allow you to use Bluetooth iBeacons or GPS info on your mobile device to set presence in Hubitat. This means you can now get accurate presence with or without using GPS - depending on if you own an iBeacon or not - and without using a presence sensor. It also means you can have many different geofence locations that can trigger any number of virtual presense devices (because Hubitat app is limited to a single geofence currently). 
 
 <img src="https://bdwilson.github.io/images/IMG_4808.jpg" width=300px>
 
