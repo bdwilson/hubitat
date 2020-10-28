@@ -1,7 +1,7 @@
 /*
  * Virtual Mobile Presence for Owntracks - based on original work by Austin Pritchett/ajpri
  *
- * Version 1.1.3
+ * Version 1.1.3.1
  * 
  */
 metadata {
@@ -25,7 +25,7 @@ metadata {
 	}
 	preferences { 
 		input name: "region", type: "text", title: "Location/Region to Track", required: true
-		input name: "user", type: "text", title: "User to Track (required if region set)", required: true
+		input name: "user", type: "text", title: "User to Track", required: true
 	}
 }
 

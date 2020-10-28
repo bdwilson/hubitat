@@ -12,8 +12,9 @@
  *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
  *  for the specific language governing permissions and limitations under the License.
  *
- * Version 1.1.2: bdwilson - initial version tracking. 
- *         1.1.3: bdwilson - moved location/user prefs to device preferences.  
+ *  Version   1.1.2: bdwilson - initial version tracking. 
+ *          1.1.3.1: bdwilson - moved location/user prefs to device preferences (thanks @cjkeenan)
+ *                   updated instructions page, renamed device driver.
  */
 definition(
     name: "OwnTracks Presence",
@@ -46,17 +47,17 @@ def setupScreen(){
     extUri = extUri.replaceAll("null","location")
     return dynamicPage(name: "setupScreen", uninstall: true, install: true){
         section("<h1>OwnTracks Presence</h1>") {
-	    paragraph ("Please read all the steps below in order to link your presence to an OwnTracks Region")
+            paragraph ("Please read all the steps below in order to link your presence to an OwnTracks Region. This integration requires the <a href='https://owntracks.org/'>OwnTracks</a> app.")
 	}
 	section("<h2>1. Create OwnTracks Virtual Presence Devices</h2>") {
-            paragraph ("Create a device of type <b>OwnTracks Virtual Mobile Presence Device</b> corresponding to each user and location you wish to monitor with OwnTracks - or update your existing virtual presence devices to use this device type. You will then need to add device preference entries for each device to correspond to the <b>user</b> and <b>region/location</b> that you will configure in OwnTracks.")
+            paragraph ("Go to <i>Devices -> Add Virtual Device</i> and create a new virtual device of type <b>OwnTracks Virtual Mobile Presence Device</b> corresponding to each user and region/location you wish to monitor within OwnTracks - or update your existing virtual presence devices to use this device type. You will then need to add device preference entries for each device to correspond to both the <b>user</b> and <b>region/location</b> that you will configure in OwnTracks.")
         }
-        section ("<h2>2. Select Virtual Presence sensors to Control</h2>") {
-            //paragraph("Allow this app to control these virtual presence devices:")
+        section ("<h2>2. Select Virtual Presence Devices</h2>") {
+            paragraph ("This will allow this App to control the devices you created above")
     		input "presence", "capability.presenceSensor", multiple: true, required: true
     	}
         section("<h2>3. Setup URL in OwnTracks App</h2>"){ 
-            paragraph("Use the following as the URL for OwnTracks but make sure that you add <b>your</b> User info after /location/ in the URL with the correct User you configured in your virtual device: <a href='${extUri}'>${extUri}</a>. You will also need to create a region in OwnTracks that matches the region/location configured in your device.")
+            paragraph("Use the following as the URL for OwnTracks but make sure that you add <b>your</b> user info after /location/ in the URL using the same <b>user</b> you configured in your virtual device in step 1: <a href='${extUri}'>${extUri}</a>. You will also need to create a region in OwnTracks that matches the region/location configured in your device.")
             paragraph("Detailed installation instructions for OwnTracks can be found <a href='https://github.com/bdwilson/hubitat/tree/master/OwnTracks-Presence#configure'>here</a>.  When you change from HTTP mode from MQTT mode, you will lose your regions & any features you use that take advantage of MQTT (like Friends tracking).")
             paragraph("If for some reason you want to use the Internal URL it would be <a href='${uri}'>${uri}</a>, however it's inaccessible from outside your home. ")
         }
@@ -65,9 +66,9 @@ def setupScreen(){
        		input "isDebug", "bool", title: "Enable Debug Mode", required: false, multiple: false, defaultValue: true, submitOnChange: true
     	}
         section("<h2>5. Testing your installation</h2>") {
-            paragraph("To test your installation, make sure debug mode is enabled, your URL above is configured in OwnTracks (with the addition of your user info after /location), then within OwnTracks create your regions and give them the same names to correspond to your device settings.")
+            paragraph("To test your installation, make sure debug mode is enabled, your URL above is configured in OwnTracks (<b>with the addition of your user info after /location/</b>), then within OwnTracks create your region and name it corresponding to your region/location in step 1.")
             paragraph("Once created, go back and forth between <b>significant</b> and <b>move</b> a few times and review your logs & virtual devices (you probably want to leave this on <b>significant</b> long-term because of battery life, but can review what these settings do <a href='https://owntracks.org/booklet/features/location'>here</a>). Device presence status should update to reflect correct presence for your devices.")
-            paragraph("Not all fields (battery, battery status, SSID, BSSID) will be available from all devices - this is a limitation with OwnTracks.")
+            paragraph("<b>NOTE:</b> Not all fields (battery, battery status, SSID, BSSID) will be available from all devices - this is a limitation with OwnTracks.")
         }
     }
 }
@@ -97,7 +98,7 @@ def listLocations() {
 def deviceHandler(evt) {}
 
 def correctURL () {
-	def msg = ["This is the right URL! Add it directly into the OwnTracks URL field and make sure your Hubitat device name matches the format: '[Region Name in OwnTracks]-${params.user}' or you've configured a user and region within the preferences of the device."]
+	def msg = ["This is the right URL! Add it directly into the OwnTracks URL field and make sure your virtual presence device is configured with the the location/region and user (${params.user}) within the device preferences."]
 	ifDebug("${msg}")
 	return msg
 }
@@ -245,3 +246,4 @@ def logsOff() {
 private ifDebug(msg) {  
     if (msg && state.isDebug)  log.debug 'OwnTracks-Presence: ' + msg  
 }
+
