@@ -13,11 +13,11 @@ metadata {
         capability "Refresh"
         capability "Presence Sensor"
 		capability "Sensor"
-	    attribute "location", "text"
+	    attribute "region", "text"
 		attribute "user", "text"
     }
 	preferences { 
-		input name: "location", type: "text", title: "Location to Track", required: true
+		input name: "region", type: "text", title: "Location to Track", required: true
 		input name: "user", type: "text", title: "User to Track", required: true
 	}
 }
@@ -54,5 +54,5 @@ def installed () {
 def updated() {
 	state.clear()
 	sendEvent(name: "user", value: "${user}") 
-	sendEvent(name: "location", value: "${location}")
+	sendEvent(name: "region", value: "${region}")
 }

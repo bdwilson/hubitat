@@ -123,7 +123,7 @@ def update (devices) {
    	def user = params.user
    	def deviceName = location + "-" + user
     //def device = devices.find { it.displayName == deviceName }
-    def device = devices.find { it.currentValue("location") + "-" + it.currentValue("user") == deviceName }
+    def device = devices.find { it.currentValue("region") + "-" + it.currentValue("user") == deviceName }
 
    	ifDebug("event: ${event} device: ${device} location: ${location} user: ${user} deviceName: ${deviceName}")
       
