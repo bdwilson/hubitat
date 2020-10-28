@@ -6,7 +6,7 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Geofency-Presence",
   "communityLink": "https://community.hubitat.com/t/release-geofency-presence/22788",
   "dateReleased": "2020-10-27",
-  "releaseNotes": "BREAKING CHANGE: We are no longer using device name as a combination location  and user identifier - you need to set the identifiers in device settings for each virtual presence device. This means your device name can match whatever you want as some folks keep virtual devices named in a similar fashion.\n\nWe have also renamed our virtual presence sensor, because of this you may be unable to update. If so, please delete the integration and re-install. You will <b>not</b> lose your virtual presence devices but you may need to change them to generic virtual presence device types..",
+  "releaseNotes": "BREAKING CHANGE: We are no longer using device name as a combination location and user identifier - you need to set the identifiers in device settings for each virtual presence device. This means your device name can match whatever you want as some folks keep virtual devices named in a similar fashion.",
   "drivers": [
     {
       "id": "526022be-bc79-4716-a34d-ef9e0eb7ba3a",
