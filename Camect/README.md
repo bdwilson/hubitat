@@ -3,9 +3,7 @@
 This app will allow you to:
 1. Sync HSM states to set Camect's Home/Default modes
 2. Create virtual Motion devices within Hubitat to represent each camera.
-Motion detected on a camera will be synced to Hubitat. You need a Linux system
-to run the [Camect Connector](https://github.com/bdwilson/camect-connector). This connects to Camect and forwards events to
-Hubitat (still, all communications remains local). 
+Motion detected on a camera will be synced to Hubitat. 
 
 Instructions
 ---
