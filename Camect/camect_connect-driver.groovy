@@ -50,7 +50,12 @@ def initialize() {
  
   try {
         // connect webSocket to weatherflow
-        interfaces.webSocket.connect("wss://${parent.getSetting('camectCode')}.l.home.camect.com/api/event_ws", headers: [ "Authorization": "Basic ${auth}" ])
+        String camectCode = parent.getSetting("camectCode")
+      if (camectCode.length() > 9) {
+          camectCode = camectCode.substring(0, 9)
+      }
+      
+      interfaces.webSocket.connect("wss://${camectCode}.l.home.camect.com/api/event_ws", headers: [ "Authorization": "Basic ${auth}" ])
     } 
     catch (e) {
         log.error "webSocket.connect failed: ${e.message}"
