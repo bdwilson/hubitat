@@ -89,10 +89,14 @@ def updated() {
   unsubscribe()
   subscribeToEvents()
 
-  def currentchild = getChildDevices()?.find { it.deviceNetworkId == "${settings.camectCode}"}
+  if (camectCode.length() > 9) {
+        camectCode = camectCode.substring(0, 9)
+  }
+
+  def currentchild = getChildDevices()?.find { it.deviceNetworkId == "$camectCode"}
   if (currentchild == null) {
       ifDebug("Creating Camect Connect primary child")
-	  addChildDevice("brianwilson-hubitat", "Camect Connect Driver", settings.camectCode)
+	  addChildDevice("brianwilson-hubitat", "Camect Connect Driver", camectCode)
     }
     createChildDevices(cameras)
     deleteChildDevices(cameras)
