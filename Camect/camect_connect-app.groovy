@@ -18,9 +18,8 @@ definition(
 )
 
 preferences {
-	page(name: "page1")
+    page(name: "page1")
     page(name: "page2")
-    
 }
 
 def page1() {
@@ -37,7 +36,7 @@ def page1() {
       paragraph "Your password is the first part of your email address that you used to register your Camect - for instance, bob@gmail.com would login as admin/bob."
       input "camectCode", "text", title: "Camect Home Code", description: "(ie. xxxxx.l.home.camect.com)", required: true
       input "user", "text", title: "Username", description: "(ie. admin)", required: true, defaultValue: "admin"
-      input "pass", "password", title: "Password", description: "(ie. first part of email address", required: true, defaultValue: ""
+      input "pass", "password", title: "Password", description: "(ie. first part of registration email address: [password]@your_email_domain.com)", required: true
       input "time", "text", title: "Time to keep a motion zone open (in seconds)", required: true, defaultValue: "20"
     }
 
@@ -71,7 +70,7 @@ def page2() {
         section("Select cameras that will be disabled when any of the below are triggered") {
             prefListDevices("Select which cameras to create virtual motion sensors for:") 
         }
-	}
+    }
 }
 
 def installed() {
@@ -102,9 +101,9 @@ def updated() {
 
 private sendCommand(command, params=[:]) {
     // Authorization https://community.hubitat.com/t/lametric-time/5000/3
-    def apiEndpoint = "https://${settings.camectCode}.l.home.camect.com:443"
+    def apiEndpoint = "https://${camectCode}.l.home.camect.com:443"
     def path = "/api${command}"
-    def auth = "${settings.user}:${settings.pass}".bytes.encodeBase64()
+    def auth = "${user}:${pass}".bytes.encodeBase64()
     ifDebug("sendCommand: Endpoint: ${apiEndpoint} PATH: ${path} PARAMS: ${params}")
 
     def request = [
@@ -117,7 +116,7 @@ private sendCommand(command, params=[:]) {
     //ifDebug("http get request: ${request}")
     try {
         httpGet(request) {resp ->
-            //ifDebug("resp data: ${resp.data}")
+            ifDebug("resp data: ${resp.data}")
             return resp.data
         }
     } catch (e) {  // } catch (groovyx.net.http.HttpResponseException e)  $e.response
@@ -156,9 +155,9 @@ def deleteChildDevices(cameras) {
 def createChildDevices(cameras) {
   def hub = location.hubs[0]
   def response = sendCommand('/ListCameras')
-    
+
   cameras?.each { camera -> 
-      if (!getChildDevice(camera)) {
+      if (!camera.disabled && !getChildDevice(camera)) {
           ifDebug("Found new camera: ${state.cameraList[camera]}")
           addChildDevice("brianwilson-hubitat", "Camect Motion and Alerting", camera, hub.id, ["name": state.cameraList[camera], label: state.cameraList[camera], completedSetup: true])
           ifDebug("Added new Camect Motion and Alerting Device: ${state.cameraList[camera]} (Device ID: $camera)")
@@ -192,14 +191,26 @@ def alarmHandler(evt) {
   }
 }
 
-def prefListDevices(title) {  
-    state.cameraList = [:]
-    def response = sendCommand('/ListCameras')
-    for (camera in response.camera) { 
-        //ifDebug("Camera Found: ID ${camera.id} Name: ${camera.name}")
-        state.cameraList[camera.id] = camera.name
+def prefListDevices(title) {
+    // allow the user to paste in the full camect id
+    // since this is the first web call, truncate text after the 9th character and store it so later calls can use it
+    if (camectCode.length() > 9) {
+        camectCode = camectCode.substring(0, 9)
     }
+
+    def response = sendCommand('/ListCameras')
+
+    // don't display diabled cameras, and sort the list by camera name - store the result
+    state.cameraList = response.camera.findAll{cam -> !cam.disabled}.sort{cam -> cam.name}
+
     if (state.cameraList) {
+	// why are we stuffing the name into the id field?
+        // if the user changes the name of the camera, it will be confusing
+        // delete this step if possible
+        state.cameraList.each {
+            cam -> cam.id = cam.name
+        }
+	
         section("${title}"){
             input(name: "cameras", type: "enum", required:false, multiple:true, options:state.cameraList)
         }
