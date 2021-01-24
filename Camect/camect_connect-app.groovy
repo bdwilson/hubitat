@@ -1,6 +1,6 @@
 /**
  *  Camect Connect
- *  Version: 1.3.3
+ *  Version: 1.3.4
  */
 import groovy.json.JsonSlurper
 
@@ -90,14 +90,10 @@ def updated() {
   unsubscribe()
   subscribeToEvents()
 
-  if (camectCode.length() > 9) {
-        camectCode = camectCode.substring(0, 9)
-  }
-
-  def currentchild = getChildDevices()?.find { it.deviceNetworkId == "$camectCode"}
+  def currentchild = getChildDevices()?.find { it.deviceNetworkId == "${settings.camectCode}"}
   if (currentchild == null) {
       ifDebug("Creating Camect Connect primary child")
-	  addChildDevice("brianwilson-hubitat", "Camect Connect Driver", camectCode)
+	  addChildDevice("brianwilson-hubitat", "Camect Connect Driver", settings.camectCode)
     }
     createChildDevices(cameras)
     deleteChildDevices(cameras)
