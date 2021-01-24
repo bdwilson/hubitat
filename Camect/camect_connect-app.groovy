@@ -201,7 +201,7 @@ def prefListDevices(title) {
     def response = sendCommand('/ListCameras')
     for (camera in response.camera) { 
         //ifDebug("Camera Found: ID ${camera.id} Name: ${camera.name}")
-	   if (camera.disbled == false) {
+	   if (camera.disabled == false) {
        		state.cameraList[camera.id] = camera.name
 	   }
     }
