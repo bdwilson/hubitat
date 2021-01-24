@@ -1,6 +1,6 @@
 /**
  *  Camect Connect
- *  Version: 1.3.2
+ *  Version: 1.3.3
  */
 import groovy.json.JsonSlurper
 
@@ -201,7 +201,9 @@ def prefListDevices(title) {
     def response = sendCommand('/ListCameras')
     for (camera in response.camera) { 
         //ifDebug("Camera Found: ID ${camera.id} Name: ${camera.name}")
-       state.cameraList[camera.id] = camera.name
+	   if (camera.disbled == false) {
+       		state.cameraList[camera.id] = camera.name
+	   }
     }
     if (state.cameraList) {
         section("${title}"){
