@@ -44,6 +44,13 @@
       "description": "Control your NeoSmart blinds (requires Neosmart hub)"
     },
     {
+      "name": "Toggle API",
+      "category": "Convenience",
+	  "tags": [ "Tools & Utilities" ],
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Toggle-API/packageManifest.json",
+      "description": "Toggle devices that don't support the toggle function"
+    },
+    {
       "name": "Smart Mailbox",
       "category": "Convenience",
 	  "tags": [ "Tools & Utilities" ],

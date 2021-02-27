@@ -1,0 +1,19 @@
+{
+  "packageName": "Toggle API",
+  "author": "Brian Wilson",
+  "version": "1.0.0",
+  "minimumHEVersion": "0.0",
+  "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Toggle-API",
+  "dateReleased": "2021-02-26",
+  "apps": [
+    {
+      "id": "4010a131-6c36-4047-9d62-40036bbd4cb4",
+      "name": "Toggle API App",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Toggle-API/toggle-api-app.groovy",
+      "required": true,
+      "oauth": true,
+      "version": "1.0.0"
+    }
+  ]
+}
