@@ -1,6 +1,6 @@
 /**
  *  Camect Connect Child - Motion Disabler
- *  Version: 1.3.2
+ *  Version: 1.3.5
  */
 
 import groovy.time.TimeCategory
@@ -144,8 +144,9 @@ def prefListDevices(title) {
     state.cameraList = [:]
     def response = parent.sendCommand('/ListCameras')
     for (camera in response.camera) { 
-        //parent.ifDebug("Camera Found: ID ${camera.id} Name: ${camera.name}")
-        state.cameraList[camera.id] = camera.name
+	   if (camera.disabled == false) {
+       		state.cameraList[camera.id] = camera.name
+	   }
     }
     if (state.cameraList) {
         section("${title}"){

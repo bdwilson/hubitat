@@ -1,6 +1,6 @@
 /**
  *  Camect Connect
- *  Version: 1.3.4
+ *  Version: 1.3.5
  */
 import groovy.json.JsonSlurper
 
@@ -25,11 +25,6 @@ preferences {
 
 def page1() {
     state.isDebug = isDebug
-    //if(!state.accessToken){	
-        //enable OAuth in the app settings or this call will fail
-    //    createAccessToken()	
-   // }
- 	//def uri = getFullLocalApiServerUrl() + "/camect/?access_token=${state.accessToken}"
     return dynamicPage(name: "page1", install: false, uninstall: true, nextPage: "page2") {
     section("<h2>Camect Connect</h2>") {
       paragraph "<i>Please read the <a href=https://github.com/bdwilson/hubitat/blob/master/Camect/README.md>installation instructions</a> and check the <a href=https://community.hubitat.com/t/release-camect-connect/43837>Hubitat forum</a> if you run into issues.</a></i>"
@@ -46,7 +41,7 @@ def page1() {
       paragraph("")
     }
     section("Enable Debug?") {
-       input "isDebug", "bool", title: "Enable Debug Logging", required: false, multiple: false, defaultValue: false, submitOnChange: true
+       input "isDebug", "bool", title: "Enable Debug Logging - will turn off after 5 minutes", required: false, multiple: false, defaultValue: false, submitOnChange: true
        paragraph("")
     }
         
@@ -89,6 +84,7 @@ def uninstalled() {
 def updated() {
   unsubscribe()
   subscribeToEvents()
+  if (state.isDebug) runIn(3600, logsOff)
 
   def currentchild = getChildDevices()?.find { it.deviceNetworkId == "${settings.camectCode}"}
   if (currentchild == null) {
@@ -142,14 +138,15 @@ private removeChildDevices() {
 }
 
 def deleteChildDevices(cameras) {
-    state.cameraList?.each { id, name ->
-         if (!cameras?.contains(id)) {
-             if(getChildDevice(id)) {
-                 deleteChildDevice(id)
-                 ifDebug("Removing unselected camera ${name} (${id})")
-             }
+    getAllChildDevices()?.each { 
+        ifDebug("Found Device: ${it.deviceNetworkId}")
+        if (!cameras.contains(it.deviceNetworkId)) {
+            if (state.cameraList.containsKey(it.deviceNetworkId)) {  // need to do this to not delete the parent! 
+                def name = state.cameraList.get(it.deviceNetworkId)
+                deleteChildDevice(it.deviceNetworkId)
+                log.info "Removing unselected camera ${name} (${it.deviceNetworkId})"
+            }
          }
-
      }
 }
 
@@ -159,7 +156,7 @@ def createChildDevices(cameras) {
     
   cameras?.each { camera -> 
       if (!getChildDevice(camera)) {
-          ifDebug("Found new camera: ${state.cameraList[camera]}")
+          log.info "Creating selected camera camera: ${state.cameraList[camera]}"
           addChildDevice("brianwilson-hubitat", "Camect Motion and Alerting", camera, hub.id, ["name": state.cameraList[camera], label: state.cameraList[camera], completedSetup: true])
           ifDebug("Added new Camect Motion and Alerting Device: ${state.cameraList[camera]} (Device ID: $camera)")
       }
@@ -218,6 +215,12 @@ mappings {
             POST: "jsonEvent",
 		]
 	}
+}
+
+def logsOff() {
+    log.warn "debug logging for Camect Connect now disabled..."
+    app.updateSetting("isDebug", [value: "false", type: "bool"])
+    state.isDebug = false 
 }
 
 private ifDebug(msg) {  
