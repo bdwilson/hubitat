@@ -39,6 +39,9 @@ should look something like this ___but you need to add the same user(s) as
 above after location when you use this URL below___.  For instance, mine looks
 like this:
 https://cloud.hubitat.com/api/xxx-xxx-xx-xxx/apps/xx/location/Brian?access_token=adafae03-0330-4aeb-b15e-xxxxxxxxx.
+___Keep in mind, if you replace your hub and restore from a backup your Hubitat
+cloud URL will change! Make sure you adjust all your automations should you
+restore from a backup to a new hub.___
 3. You use the same URL for all of your users, just change the information after /location/ within the URL
 4. Now paste this URL into your browser and make sure you get the following response: <code>["This is the right URL! Add it directly into the OwnTracks URL field and make sure your virtual presence device is configured with the the location/region and user ([User]) within the device preferences."]</code>
 4. In the OwnTracks app
