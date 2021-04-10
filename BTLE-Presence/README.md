@@ -122,6 +122,7 @@ Auto-start on Raspberry Pi
 existing on your system.
 2. Copy it; enable it, start it. 
 <pre>
+$ chmod 755 check_beacon_presence.py 
 $ sudo cp check_beacon_presence.service /lib/systemd/system/
 $ sudo chmod 644 /lib/systemd/system/check_beacon_presence.service
 $ sudo systemctl daemon-reload
