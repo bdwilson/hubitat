@@ -313,8 +313,12 @@ def PollStation()
             }
                // LOGINFO("test: ${resp5.data.Outage[7].'Outage Log'[0]}")
                 
-            state.LastOutage = resp5.data.Outage[7].'Outage Log'[0]
-            sendEvent(name: "Last Outage", value: state.LastOutage, isStateChange: true)
+			if (!resp5.data.Outage[7].'Outage Log'.isEmpty()) { // 'Outage Log'[0]) {
+                    state.LastOutage = resp5.data.Outage[7].'Outage Log'[0]
+             } else {
+                    state.LastOutage = "No outage since outage log was cleared."
+             }
+             sendEvent(name: "Last Outage", value: state.LastOutage, isStateChange: true)
 
             //LOGINFO( "Data: HERE ${SwitchState} ${EngineSwitch} ${BatteryVoltage}")
             //LOGINFO( "Data: HERE2 ${SwitchState} ${EngineState} ${BatteryVoltage} ${RPM} ${Frequency} ${OutputVoltage} ${OutputCurrent} ${OutputPower} ${UtilityVoltage} ${LastService} ${MonitorTime} ${GeneratorTime} ${Fuel30} ${Fuel24}")
