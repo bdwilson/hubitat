@@ -127,11 +127,13 @@ void webSocketStatus(String status){
     if (status.startsWith('failure: ')) {
         log.warn "failure message from web socket ${status}"
         state.connection = 'disconnected'
+        sendEvent(name: "presence", value: "not present")
         reconnectWebSocket()
     } 
     else if (status == 'status: open') {        
         log.info 'webSocket is open'
         state.connection = 'connected'
+        sendEvent(name: "presence", value: "present")
 
         //requestData()
 
@@ -161,3 +163,4 @@ void reconnectWebSocket() {
     log.info "Reconnecting WebSocket in ${state.reconnectDelay} seconds."
     runIn(state.reconnectDelay, initialize, [overwrite: false])
 }
+
