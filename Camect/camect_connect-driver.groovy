@@ -163,4 +163,3 @@ void reconnectWebSocket() {
     log.info "Reconnecting WebSocket in ${state.reconnectDelay} seconds."
     runIn(state.reconnectDelay, initialize, [overwrite: false])
 }
-
