@@ -1,6 +1,6 @@
 /**
  *  Hubitat Device Handler: Camect Connect
- *  Version: 1.3.2
+ *  Version: 1.3.3
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -127,11 +127,13 @@ void webSocketStatus(String status){
     if (status.startsWith('failure: ')) {
         log.warn "failure message from web socket ${status}"
         state.connection = 'disconnected'
+        sendEvent(name: "presence", value: "not present")
         reconnectWebSocket()
     } 
     else if (status == 'status: open') {        
         log.info 'webSocket is open'
         state.connection = 'connected'
+        sendEvent(name: "presence", value: "present")
 
         //requestData()
 

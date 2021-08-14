@@ -80,7 +80,7 @@ Hubitat Installation
 --------------------
 1. Go to Drivers Code and create a new device using this [Virtual BTLE Presence Device](https://raw.githubusercontent.com/bdwilson/hubitat/master/BTLE-Presence/virtual-mobile-presence-BTLE.groovy). 
 2. Go to Devices and create a new virtual device '''name it whatever the location name will be called in
-your script with a - and a USER after it'''. Mine are called "Home-Brian" and "Home-Spawn1".  Network Device ID can be
+your script with a - and a USER after it'''. Mine are called "Home-Brian" and "Home-Amy".  Network Device ID can be
 '''HOME_VIRTUAL_PRESENCE_1''' for the first. Device Type will be
 the type you configured in step 1. For this example, mine is named "Home-Brian" and my
  location name above is "Home". You can create multiple

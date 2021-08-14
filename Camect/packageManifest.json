@@ -42,7 +42,7 @@
       "namespace": "brianwilson-hubitat",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/camect_connect-driver.groovy",
       "required": true,
-      "version": "1.3.2"
+      "version": "1.3.3"
     }
   ]
 }
