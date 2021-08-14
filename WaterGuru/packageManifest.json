@@ -1,0 +1,30 @@
+{
+  "packageName": "WaterGuru Integration",
+  "author": "Brian Wilson",
+  "minimumHEVersion": "0.0",
+  "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/WaterGuru",
+  "communityLink": "https://community.hubitat.com/t/power-failure-recovery-via-rm/4298/12",
+  "dateReleased": "2021-08-14",
+  "version": "1.0.0",
+  "drivers": [
+    {
+      "id": "bdaf0315-2efe-44ca-8e77-75e8d741bce0",
+      "name": "WaterGuru Integration Driver",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/WaterGuru/WaterGuru-Driver.groovy",
+      "required": true,
+      "version": "1.0.0"
+    }
+  ],
+  "apps": [
+    {
+      "id": "58d97fd2-1308-48f5-954a-f71e8106011a",
+      "name": "WaterGuru Integration",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/WaterGuru/WaterGuru-Integration.groovy",
+      "required": true,
+      "oauth": false,
+      "version": "1.0.0"
+    }
+  ]
+}
