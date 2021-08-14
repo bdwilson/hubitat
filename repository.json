@@ -77,6 +77,13 @@
 	  "tags": [ "Motion Control", "Monitoring", "Safety & Security", "LAN" ],
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/packageManifest.json",
       "description": "Allows you to connect and sync HSM and virtual motion devices with your Camect NVR"
+    },
+    {
+      "name": "WaterGuru Integration",
+      "category": "Integrations",
+	  "tags": [ "Pools & Spas", "Temperature & Humidity" ],
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/WaterGuru/packageManifest.json",
+      "description": "Allows you to connect to your pool's WaterGuru device and get Chlorine, pH, flow rate and temperature."
     }
   ]
 }
