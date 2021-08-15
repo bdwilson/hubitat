@@ -59,6 +59,7 @@ def page1() {
     }
     section("") {
        input "isDebug", "bool", title: "Enable Debug Logging", required: false, multiple: false, defaultValue: false, submitOnChange: true
+       input "forceUpdate", "bool", title: "Force all state variables to be updated even if they haven't changed.", required: false, multiple: false, defaultValue: false, submitOnChange: true
     }
   }
 }
@@ -76,7 +77,7 @@ def updated() {
     runIn(5, discoverChildDevices)
     if(startTime1) schedule(startTime1, timedRefresh, [overwrite: false])
 	if(startTime2) schedule(startTime2, timedRefresh, [overwrite: false])
-    state.forceUpdate = true
+  	if (state.isDebug) runIn(3600, logsOff)
 }
 
 def timedRefresh() {
@@ -167,7 +168,7 @@ def discoverChildDevices() {
       rssi = item.pods.rssiInfo.rssi
       item.pods.each { pod ->
           index = pod.refillables.findIndexOf({ it.label == "Cassette" })
-          podStatus = pod.refillables[index].status
+          CassetteStatus = pod.refillables[index].status
           CassettePercent = pod.refillables[index].pctLeft
           CassetteTimeLeft = pod.refillables[index].timeLeftText
           CassetteChecksLeft = pod.refillables[index].amountLeft
@@ -248,8 +249,16 @@ def discoverChildDevices() {
               d.sendEvent(name: "rate", unit: "GPM", value: rate, isStateChange: true)
           }
           state.forceUpdate = false 
+    	  app.updateSetting("forceUpdate", [value: "false", type: "bool"])
+
       } 
   }
+}
+
+def logsOff() {
+    log.warn "debug logging for Camect Connect now disabled..."
+    app.updateSetting("isDebug", [value: "false", type: "bool"])
+    state.isDebug = false
 }
 
 private ifDebug(msg) {  
