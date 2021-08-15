@@ -1,0 +1,546 @@
+[
+    {
+        "id": "c8b5cb27.0f7958",
+        "type": "comment",
+        "z": "ef0c87f6.913598",
+        "name": "Water Guru",
+        "info": "",
+        "x": 90,
+        "y": 3880,
+        "wires": []
+    },
+    {
+        "id": "24c20568.5ee20a",
+        "type": "hubitat device",
+        "z": "ef0c87f6.913598",
+        "deviceLabel": "My Pool",
+        "name": "",
+        "server": "5c988c1a.480b44",
+        "deviceId": "3125",
+        "attribute": "",
+        "sendEvent": true,
+        "x": 100,
+        "y": 3920,
+        "wires": [
+            [
+                "ba544b26.cd7f38",
+                "c6051ef4.6dbec",
+                "d05b8b00.54dea8",
+                "6d0b0ca4.205214",
+                "78b8e054.18cdd",
+                "a3809711.feb418",
+                "77d02398.190fcc",
+                "165a3f35.89f9c1",
+                "16e41681.ac8cb9"
+            ]
+        ]
+    },
+    {
+        "id": "ba544b26.cd7f38",
+        "type": "debug",
+        "z": "ef0c87f6.913598",
+        "name": "WaterGuru",
+        "active": true,
+        "tosidebar": true,
+        "console": true,
+        "tostatus": true,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "payload",
+        "statusType": "auto",
+        "x": 330,
+        "y": 3900,
+        "wires": []
+    },
+    {
+        "id": "c6051ef4.6dbec",
+        "type": "switch",
+        "z": "ef0c87f6.913598",
+        "name": "CassetteChecksLeft",
+        "property": "payload.name",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "CassetteChecksLeft",
+                "vt": "str"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 1,
+        "x": 340,
+        "y": 3960,
+        "wires": [
+            [
+                "5f020ebd.a7b5d",
+                "c768a52f.c43168"
+            ]
+        ]
+    },
+    {
+        "id": "5f020ebd.a7b5d",
+        "type": "switch",
+        "z": "ef0c87f6.913598",
+        "name": "count <= 30",
+        "property": "payload.value",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "lte",
+                "v": "30",
+                "vt": "str"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 1,
+        "x": 550,
+        "y": 3960,
+        "wires": [
+            [
+                "1dba805f.be059"
+            ]
+        ]
+    },
+    {
+        "id": "1dba805f.be059",
+        "type": "throttle",
+        "z": "ef0c87f6.913598",
+        "name": "Limit 1 every 96 hrs",
+        "throttleType": "time",
+        "timeLimit": "96",
+        "timeLimitType": "hours",
+        "countLimit": 0,
+        "blockSize": 0,
+        "locked": false,
+        "x": 750,
+        "y": 3960,
+        "wires": [
+            [
+                "1a6e2782.77e9d8"
+            ]
+        ]
+    },
+    {
+        "id": "1a6e2782.77e9d8",
+        "type": "change",
+        "z": "ef0c87f6.913598",
+        "name": "WaterGuru Checks Left",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "WaterGuru has < 30 checks left.",
+                "tot": "str"
+            },
+            {
+                "t": "set",
+                "p": "data.displayName",
+                "pt": "msg",
+                "to": "Home-B",
+                "tot": "str"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 1010,
+        "y": 3980,
+        "wires": [
+            [
+                "a2e6c716.c6d1d8"
+            ]
+        ]
+    },
+    {
+        "id": "c768a52f.c43168",
+        "type": "function",
+        "z": "ef0c87f6.913598",
+        "name": "global.WaterGuru-CassetteChecksLeft",
+        "func": "global.set('WaterGuru-CassetteChecksLeft',Number(msg.payload.value));\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "x": 610,
+        "y": 4000,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "d05b8b00.54dea8",
+        "type": "switch",
+        "z": "ef0c87f6.913598",
+        "name": "statusMsg",
+        "property": "payload.name",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "statusMsg",
+                "vt": "str"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 1,
+        "x": 310,
+        "y": 4040,
+        "wires": [
+            [
+                "5e79cc3b.7a0124"
+            ]
+        ]
+    },
+    {
+        "id": "5e79cc3b.7a0124",
+        "type": "function",
+        "z": "ef0c87f6.913598",
+        "name": "global.WaterGuru-statusMsg",
+        "func": "global.set('WaterGuru-statusMsg',msg.payload.value);\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "x": 580,
+        "y": 4040,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "6d0b0ca4.205214",
+        "type": "switch",
+        "z": "ef0c87f6.913598",
+        "name": "freeChlorine",
+        "property": "payload.name",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "freeChlorine",
+                "vt": "str"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 1,
+        "x": 310,
+        "y": 4080,
+        "wires": [
+            [
+                "a7e7c488.e06d68"
+            ]
+        ]
+    },
+    {
+        "id": "a7e7c488.e06d68",
+        "type": "function",
+        "z": "ef0c87f6.913598",
+        "name": "global.WaterGuru-freeChlorine",
+        "func": "global.set('WaterGuru-freeChlorine',Number(msg.payload.value));\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "x": 590,
+        "y": 4080,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "78b8e054.18cdd",
+        "type": "switch",
+        "z": "ef0c87f6.913598",
+        "name": "pH",
+        "property": "payload.name",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "pH",
+                "vt": "str"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 1,
+        "x": 290,
+        "y": 4120,
+        "wires": [
+            [
+                "e7e974d9.bd3d68"
+            ]
+        ]
+    },
+    {
+        "id": "e7e974d9.bd3d68",
+        "type": "function",
+        "z": "ef0c87f6.913598",
+        "name": "global.WaterGuru-pH",
+        "func": "global.set('WaterGuru-pH',Number(msg.payload.value));\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "x": 560,
+        "y": 4120,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "a3809711.feb418",
+        "type": "switch",
+        "z": "ef0c87f6.913598",
+        "name": "rate",
+        "property": "payload.name",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "rate",
+                "vt": "str"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 1,
+        "x": 290,
+        "y": 4160,
+        "wires": [
+            [
+                "459931f0.b0a6"
+            ]
+        ]
+    },
+    {
+        "id": "459931f0.b0a6",
+        "type": "function",
+        "z": "ef0c87f6.913598",
+        "name": "global.WaterGuru-rate",
+        "func": "global.set('WaterGuru-rate',Number(msg.payload.value));\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "x": 560,
+        "y": 4160,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "77d02398.190fcc",
+        "type": "switch",
+        "z": "ef0c87f6.913598",
+        "name": "battery",
+        "property": "payload.name",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "battery",
+                "vt": "str"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 1,
+        "x": 300,
+        "y": 4200,
+        "wires": [
+            [
+                "c7984102.4abea"
+            ]
+        ]
+    },
+    {
+        "id": "c7984102.4abea",
+        "type": "function",
+        "z": "ef0c87f6.913598",
+        "name": "global.WaterGuru-battery",
+        "func": "global.set('WaterGuru-battery',Number(msg.payload.value));\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "x": 570,
+        "y": 4200,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "d6c28ab4.b13868",
+        "type": "function",
+        "z": "ef0c87f6.913598",
+        "name": "set msg",
+        "func": "var battery = global.get('WaterGuru-battery')||0;\nvar statusMsg = global.get('WaterGuru-statusMsg')||0;\nvar CassetteChecksLeft = global.get('WaterGuru-CassetteChecksLeft')||0;\nvar freeChlorine = global.get('WaterGuru-freeChlorine')||0;\nvar pH = global.get('WaterGuru-pH')||0;\nvar rate = global.get('WaterGuru-rate')||0;\nvar LastMeasurementHuman = global.get('WaterGuru-LastMeasurementHuman')||0;\nvar temp = global.get('WaterGuru-temperature')||0;\n\nmsg.payload = \"WaterGuru Status report for TIMESTAMP was performed \" + LastMeasurementHuman + \". pH: \" + pH + \" (should be between 7.4 and 7.6), Chlorine: \" + freeChlorine + \" (should be around 3), Flow Rate: \" + rate + \" (8 is normal), Temperature: \" + temp + \", Last status message: \" + statusMsg\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "x": 640,
+        "y": 4380,
+        "wires": [
+            [
+                "83d02694.0a81f8"
+            ]
+        ]
+    },
+    {
+        "id": "165a3f35.89f9c1",
+        "type": "switch",
+        "z": "ef0c87f6.913598",
+        "name": "LastMeasurementHuman",
+        "property": "payload.name",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "LastMeasurementHuman",
+                "vt": "str"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 1,
+        "x": 350,
+        "y": 4240,
+        "wires": [
+            [
+                "1e7e9b65.293545",
+                "b3fa83d4.15928"
+            ]
+        ]
+    },
+    {
+        "id": "1e7e9b65.293545",
+        "type": "function",
+        "z": "ef0c87f6.913598",
+        "name": "global.WaterGuru-LastMeasurementHuman",
+        "func": "global.set('WaterGuru-LastMeasurementHuman',msg.payload.value);\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "x": 690,
+        "y": 4240,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "b3fa83d4.15928",
+        "type": "stoptimer-varidelay",
+        "z": "ef0c87f6.913598",
+        "duration": "15",
+        "durationType": "num",
+        "units": "Second",
+        "payloadtype": "num",
+        "payloadval": "0",
+        "name": "sait 15 secs",
+        "reporting": "every_second",
+        "persist": false,
+        "ignoretimerpass": false,
+        "x": 470,
+        "y": 4380,
+        "wires": [
+            [
+                "d6c28ab4.b13868"
+            ],
+            [],
+            []
+        ]
+    },
+    {
+        "id": "83d02694.0a81f8",
+        "type": "change",
+        "z": "ef0c87f6.913598",
+        "name": "Send to Home-Both",
+        "rules": [
+            {
+                "t": "set",
+                "p": "data.displayName",
+                "pt": "msg",
+                "to": "Home-Both",
+                "tot": "str"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 840,
+        "y": 4380,
+        "wires": [
+            [
+                "f360ddac.e59bb",
+                "ba544b26.cd7f38"
+            ]
+        ]
+    },
+    {
+        "id": "16e41681.ac8cb9",
+        "type": "switch",
+        "z": "ef0c87f6.913598",
+        "name": "temperature",
+        "property": "payload.name",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "temperature",
+                "vt": "str"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 1,
+        "x": 310,
+        "y": 4280,
+        "wires": [
+            [
+                "5d987177.4bbb9"
+            ]
+        ]
+    },
+    {
+        "id": "5d987177.4bbb9",
+        "type": "function",
+        "z": "ef0c87f6.913598",
+        "name": "global.WaterGuru-temperature",
+        "func": "global.set('WaterGuru-temperature',Number(msg.payload.value));\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "x": 590,
+        "y": 4280,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "5c988c1a.480b44",
+        "type": "hubitat config",
+        "z": "",
+        "name": "Hubitat-Main",
+        "usetls": false,
+        "host": "192.168.1.16",
+        "port": "80",
+        "appId": "1354",
+        "nodeRedServer": "http://192.168.1.210:1880",
+        "webhookPath": "/hubitat/webhook",
+        "autoRefresh": true,
+        "useWebsocket": false
+    }
+]

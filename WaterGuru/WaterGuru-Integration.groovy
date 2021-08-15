@@ -76,10 +76,11 @@ def updated() {
     runIn(5, discoverChildDevices)
     if(startTime1) schedule(startTime1, timedRefresh, [overwrite: false])
 	if(startTime2) schedule(startTime2, timedRefresh, [overwrite: false])
+    state.forceUpdate = true
 }
 
 def timedRefresh() {
-	dayOfTheWeekHandler()
+    dayOfTheWeekHandler()
     if (state.daysMatch) {
         updateStatus()
     }
@@ -182,23 +183,23 @@ def discoverChildDevices() {
       }
       d = getChildDevices()?.find { it.deviceNetworkId == "${id}" }
       if (d != null) {
-          if (date != d.currentValue("LastUpdate")) {
+          if (date != d.currentValue("LastUpdate") || state.forceUpdate) {
               state.lastActivity = date
               d.sendEvent(name: "LastUpdate", value: date)
           }
-          if (d.currentValue("battery") != batteryPct) {  
+          if (d.currentValue("battery") != batteryPct || state.forceUpdate) {  
               d.sendEvent(name: "battery", value: batteryPct, isStateChange: true)
           } 
-          if (d.currentValue("batteryStatus") != batteryStatus) {  
+          if (d.currentValue("batteryStatus") != batteryStatus || state.forceUpdate) {  
               d.sendEvent(name: "batteryStatus", value: batteryStatus, isStateChange: true)
           }  
-          if (d.currentValue("CassettePercent") != CassettePercent) {
+          if (d.currentValue("CassettePercent") != CassettePercent || state.forceUpdate) {
               d.sendEvent(name: "CassettePercent", value: CassettePercent, isStateChange: true)
           }
-          if (d.currentValue("temperature") != temp) {
+          if (d.currentValue("temperature") != temp || state.forceUpdate) {
               d.sendEvent(name: "temperature", value: temp, isStateChange: true)
           }
-          if (d.currentValue("CassetteStatus") != CassetteStatus) {  
+          if (d.currentValue("CassetteStatus") != CassetteStatus || state.forceUpdate) {  
               d.sendEvent(name: "CassetteStatus", value: CassetteStatus, isStateChange: true)
               switch (CassetteStatus) {
 			        case "GREEN":
@@ -216,36 +217,37 @@ def discoverChildDevices() {
               }
           }
          
-          if (d.currentValue("CassetteTimeLeft") != CassetteTimeLeft) {  
+          if (d.currentValue("CassetteTimeLeft") != CassetteTimeLeft || state.forceUpdate) {  
               d.sendEvent(name: "CassetteTimeLeft", value: CassetteTimeLeft, isStateChange: true)
           } 
-          if (d.currentValue("LastMeasurementHuman") != LastMeasurementHuman) {  
+          if (d.currentValue("LastMeasurementHuman") != LastMeasurementHuman || state.forceUpdate) {  
               d.sendEvent(name: "LastMeasurementHuman", value: LastMeasurementHuman, isStateChange: true)
           }     
-          if (d.currentValue("LastMeasurement") != LastMeasurement) {  
+          if (d.currentValue("LastMeasurement") != LastMeasurement || state.forceUpdate) {  
               d.sendEvent(name: "LastMeasurement", value: LastMeasurement, isStateChange: true)
           }
-          if (d.currentValue("CassetteChecksLeft") != CassetteChecksLeft) {  
+          if (d.currentValue("CassetteChecksLeft") != CassetteChecksLeft || state.forceUpdate) {  
               d.sendEvent(name: "CassetteChecksLeft", value: CassetteChecksLeft, isStateChange: true)
           }
-          if (d.currentValue("Status") != status) {  
+          if (d.currentValue("Status") != status || state.forceUpdate) {  
               d.sendEvent(name: "Status", value: status, isStateChange: true)
           } 
-          if (d.currentValue("rssi") != rssi) {  
+          if (d.currentValue("rssi") != rssi || state.forceUpdate) {  
               d.sendEvent(name: "rssi", value: rssi, isStateChange: true)
           }     
-          if (d.currentValue("statusMsg") != statusMsg) {  
+          if (d.currentValue("statusMsg") != statusMsg || state.forceUpdate) {  
               d.sendEvent(name: "statusMsg", value: statusMsg, isStateChange: true)
           }
-          if (d.currentValue("freeChlorine") != freeChlorine) {  
+          if (d.currentValue("freeChlorine") != freeChlorine || state.forceUpdate) {  
               d.sendEvent(name: "freeChlorine", value: freeChlorine, isStateChange: true)
           }   
-          if (d.currentValue("pH") != pH) {  
+          if (d.currentValue("pH") != pH || state.forceUpdate) {  
               d.sendEvent(name: "pH", value: pH, isStateChange: true)
           }
-          if (d.currentValue("rate") != rate) {  
+          if (d.currentValue("rate") != rate || state.forceUpdate) {  
               d.sendEvent(name: "rate", unit: "GPM", value: rate, isStateChange: true)
           }
+          state.forceUpdate = false 
       } 
   }
 }
