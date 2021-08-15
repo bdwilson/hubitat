@@ -3,9 +3,9 @@
   "author": "Brian Wilson",
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/WaterGuru",
-  "communityLink": "https://community.hubitat.com/t/power-failure-recovery-via-rm/4298/12",
-  "dateReleased": "2021-08-14",
-  "version": "1.0.0",
+  "communityLink": "https://community.hubitat.com/t/release-waterguru-pool-integration/77922",
+  "dateReleased": "2021-08-15",
+  "version": "1.0.1",
   "drivers": [
     {
       "id": "bdaf0315-2efe-44ca-8e77-75e8d741bce0",
@@ -13,7 +13,7 @@
       "namespace": "brianwilson-hubitat",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/WaterGuru/WaterGuru-Driver.groovy",
       "required": true,
-      "version": "1.0.0"
+      "version": "1.0.1"
     }
   ],
   "apps": [

@@ -1,7 +1,7 @@
 /**
  * WaterGuru Integration App
  * 
- * 1.0.0 - Brian Wilson / bubba@bubba.org
+ * 1.0.1 - Brian Wilson / bubba@bubba.org
  *
  * Assumptions: 
  * 1) You need to use waterguru-flask python code and run it on a server to talk 
@@ -79,6 +79,7 @@ def updated() {
 }
 
 def timedRefresh() {
+	dayOfTheWeekHandler()
     if (state.daysMatch) {
         updateStatus()
     }
