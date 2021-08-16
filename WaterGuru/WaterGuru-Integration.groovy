@@ -1,7 +1,7 @@
 /**
  * WaterGuru Integration App
  * 
- * 1.0.1 - Brian Wilson / bubba@bubba.org
+ * 1.0.2 - Brian Wilson / bubba@bubba.org
  *
  * Assumptions: 
  * 1) You need to use waterguru-flask python code and run it on a server to talk 
@@ -74,6 +74,7 @@ def uninstalled() {
 }
 
 def updated() {
+	unschedule()
     runIn(5, discoverChildDevices)
     if(startTime1) schedule(startTime1, timedRefresh, [overwrite: false])
 	if(startTime2) schedule(startTime2, timedRefresh, [overwrite: false])
