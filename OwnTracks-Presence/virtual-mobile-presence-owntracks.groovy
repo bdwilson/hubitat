@@ -1,7 +1,7 @@
 /*
  * Virtual Mobile Presence for Owntracks - based on original work by Austin Pritchett/ajpri
  *
- * Version 1.1.3.1
+ * Version 1.1.3.2
  * 
  */
 metadata {
@@ -17,11 +17,11 @@ metadata {
 		capability "Sensor"
 		capability "Battery"
         
-		attribute "ssid", "text"
-		attribute "bssid", "text"
-		attribute "batteryStatus", "text"
-		attribute "region", "text"
-		attribute "user", "text"
+		attribute "ssid", "STRING"
+		attribute "bssid", "STRING"
+		attribute "batteryStatus", "STRING"
+		attribute "region", "STRING"
+		attribute "user", "STRING"
 	}
 	preferences { 
 		input name: "region", type: "text", title: "Location/Region to Track", required: true
