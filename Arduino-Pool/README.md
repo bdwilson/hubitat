@@ -29,7 +29,7 @@ quick on/off/on to cycles to go through the modes/colors.
 - [Temperature Sensor](https://www.amazon.com/gp/product/B07QL9PLY9/) -
   Optional Temperature Sensor - You can use either
 [ST_Anything](https://github.com/DanielOgorchock/ST_Anything/blob/master/Arduino/Sketches/ST_Anything_10kThermistor_ESP8266WiFi/ST_Anything_10kThermistor_ESP8266WiFi.ino) using the PS_10KThermistor or [Weewx Pool
-Sensor - this has wiring diagrams for both options](https://github.com/bdwilson/weewx-poolsensor). With this sensor and a Wells D1 Mini, I'm using these settings: Bcoefficient: 3950, Thermistor Nominal (@25C): 11000, Series Resistor: 9900
+Sensor - this has wiring diagrams for both options](https://github.com/bdwilson/weewx-poolsensor). With this sensor and a Wells D1 Mini, I'm using these settings: Bcoefficient: 3950, Thermistor Nominal (@25C): 11000, Series Resistor: 9900. ST_Anything code is available [here](https://github.com/bdwilson/weewx-poolsensor/blob/master/arduino_pool_sensor.ino) - keep in mind this file has settings for a 10K thermistor from [here](https://www.amazon.com/gp/product/B00M1TEFTU/).  
 
 Installation
 --------------------
