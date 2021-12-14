@@ -22,6 +22,8 @@ metadata {
 		attribute "batteryStatus", "STRING"
 		attribute "region", "STRING"
 		attribute "user", "STRING"
+		attribute "lat", "NUMBER"
+		attribute "lon", "NUMBER"
 	}
 	preferences { 
 		input name: "region", type: "text", title: "Location/Region to Track", required: true
