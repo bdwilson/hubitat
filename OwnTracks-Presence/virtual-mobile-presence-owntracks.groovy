@@ -1,7 +1,7 @@
 /*
  * Virtual Mobile Presence for Owntracks - based on original work by Austin Pritchett/ajpri
  *
- * Version 1.1.3.3
+ * Version 1.1.3.4
  * 
  */
 metadata {
@@ -22,6 +22,8 @@ metadata {
 		attribute "batteryStatus", "STRING"
 		attribute "region", "STRING"
 		attribute "user", "STRING"
+		attribute "lat", "NUMBER"
+		attribute "lon", "NUMBER"
 	}
 	preferences { 
 		input name: "region", type: "text", title: "Location/Region to Track", required: true
