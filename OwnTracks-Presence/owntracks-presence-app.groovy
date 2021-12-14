@@ -16,6 +16,7 @@
  *          1.1.3.1: bdwilson - moved location/user prefs to device preferences (thanks @cjkeenan)
  *                   updated instructions page, renamed device driver.
  * 			1.1.3.3: Updated attribute types from TEXT to STRING
+ * 			1.1.3.4: Added lat/lon attributes
  */
 definition(
     name: "OwnTracks Presence",
