@@ -16,6 +16,7 @@
  *          1.1.3.1: bdwilson - moved location/user prefs to device preferences (thanks @cjkeenan)
  *                   updated instructions page, renamed device driver.
  * 			1.1.3.3: Updated attribute types from TEXT to STRING
+ * 			1.1.3.4: Added lat/lon attributes
  */
 definition(
     name: "OwnTracks Presence",
@@ -116,7 +117,7 @@ def validCommandsp() {
 	return msg
 }
 
-void updateLocation() {
+def updateLocation() {
     update(presence)
 }
 
@@ -168,7 +169,9 @@ def update (devices) {
               batteryStatus = "charging"
           } else if (data.bs == 3) {
               batteryStatus = "full"
-          } 
+          }
+          def lat = data.lat ?: 0.0
+          def lon = data.lon ?: 0.0
           devices?.each { myDevice -> 
                  def name = myDevice.displayName
                  def DNI = myDevice.deviceNetworkId
@@ -187,7 +190,9 @@ def update (devices) {
                      myDevice.sendEvent(name: "battery", value: "${batt}")
                      myDevice.sendEvent(name: "ssid", value: "${ssid}")
                      myDevice.sendEvent(name: "bssid", value: "${bssid}")
-                     myDevice.sendEvent(name: "batteryStatus", value: "${batteryStatus}")                   
+                     myDevice.sendEvent(name: "batteryStatus", value: "${batteryStatus}")
+                     myDevice.sendEvent(name: "lat", value: lat)
+                     myDevice.sendEvent(name: "lon", value: lon)
                      // since location is only updated when a transition event is sent, we can force the location
                      // to be updated if debug mode is on.
                      if (state.isDebug) {
@@ -210,7 +215,7 @@ def update (devices) {
                  }
           }
     }
-    
+    render contentType: "application/json", data: JsonOutput.toJson([])
 }
 
 mappings {
