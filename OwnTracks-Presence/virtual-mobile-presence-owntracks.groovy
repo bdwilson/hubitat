@@ -1,7 +1,7 @@
 /*
  * Virtual Mobile Presence for Owntracks - based on original work by Austin Pritchett/ajpri
  *
- * Version 1.1.3.4
+ * Version 1.1.3.5
  * 
  */
 metadata {
@@ -24,6 +24,9 @@ metadata {
 		attribute "user", "STRING"
 		attribute "lat", "NUMBER"
 		attribute "lon", "NUMBER"
+
+        command "arrived"
+        command "departed"
 	}
 	preferences { 
 		input name: "region", type: "text", title: "Location/Region to Track", required: true
@@ -47,13 +50,11 @@ def off() {
 }
 
 def arrived() {
-	sendEvent(name: "switch", value: "on")
-	sendEvent(name: "presence", value: "present")
+	on()
 }
 
 def departed () {
-	sendEvent(name: "switch", value: "off")
-	sendEvent(name: "presence", value: "not present")
+	off()
 }
 
 def installed () {

@@ -10,6 +10,9 @@ metadata {
         capability "Presence Sensor"
 		capability "Sensor"
 		capability "SignalStrength"
+
+        command "arrived"
+        command "departed"
             
     }
 
@@ -36,6 +39,18 @@ metadata {
 }
 
 def parse(String description) {
+}
+
+def arrived(rssi=null) {
+     if (rssi != null) {
+        sendEvent(name: "rssi", value: "${rssi}")
+    }
+    sendEvent(name: "switch", value: "on")
+    sendEvent(name: "presence", value: "present")
+}
+
+def departed() {
+	off()
 }
 
 def on(rssi=null) {

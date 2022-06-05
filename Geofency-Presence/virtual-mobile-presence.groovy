@@ -15,6 +15,8 @@ metadata {
 		capability "Sensor"
 	    attribute "region", "text"
 		attribute "user", "text"
+        command "arrived"
+        command "departed"
     }
 	preferences { 
 		input name: "region", type: "text", title: "Location to Track", required: true

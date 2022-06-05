@@ -1,6 +1,7 @@
 /*
- * Virtual Mobile Presence for Geofency - based on original work by Austin Pritchett/ajpri
- * 
+ * Virtual Mobile Presence for Geofency - based on original work by Austin Pritchett/ajpri and ogiewon.
+ * https://github.com/ogiewon/Hubitat/blob/master/Drivers/virtual-presence-switch.src/virtual-presence-switch.groovy 
+ * https://community.hubitat.com/t/virtual-presence-question/15272/21
  */
 
 metadata {
@@ -10,26 +11,19 @@ metadata {
 					importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Drivers/virtual-mobile-presence.groovy"
 		) {
         capability "Switch"
-        capability "Refresh"
         capability "Presence Sensor"
 		capability "Sensor"
-
+        command "arrived"
+        command "departed"   
     }
 }
 
-def refresh() { }
-
 def arrived() {
-	sendEvent(name: "switch", value: "on")
-	sendEvent(name: "presence", value: "present")
+	on()
 }
 
 def departed () {
-	sendEvent(name: "switch", value: "off")
-	sendEvent(name: "presence", value: "not present")
-}
-
-def parse(String description) {
+	off()
 }
 
 def on() {
