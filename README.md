@@ -3,7 +3,7 @@ Hubitat Contributions
 
 # Like what I do?
 
-[Buy me a coffee](https://www.buymeacoffee.com/brianwilson)
+[Buy me a coffee](https://www.buymeacoffee.com/brianwilson) or buy some [swag](https://www.etsy.com/shop/CronologicalConcepts)
 
 # Installation
 
