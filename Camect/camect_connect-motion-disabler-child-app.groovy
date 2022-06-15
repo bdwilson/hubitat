@@ -1,6 +1,6 @@
 /**
  *  Camect Connect Child - Motion Disabler
- *  Version: 1.3.5
+ *  Version: 1.3.6
  */
 
 import groovy.time.TimeCategory
@@ -29,36 +29,49 @@ def pageConfig() {
     if(theName == null || theName == "") theName = "New Child App"
     dynamicPage(name: "", title: "", install: true, uninstall: true, refreshInterval:0) {
         section("Instructions:", hideable: false, hidden: false) {
-			paragraph "Select optional sensors/locks/contacts that will be used to disable notifications on the selected camera."
+			paragraph "Select optional sensors (locks/contacts/motion/presence) that will be used to disable notifications on the selected camera(s). You likely do not want to select the virtual motion device that Camect Connect has created for the same camera you're selecting or you may get unexpected results."
 		}
-        section("Select cameras that will be disabled when any of the below are triggered") {
-            prefListDevices("Select which cameras to use that will have motion disabled") 
+        state.cameraList = [:]
+        def response = parent.sendCommand('/ListCameras')
+        for (camera in response.camera) { 
+	        if (camera.disabled == false) {
+       		    state.cameraList[camera.id] = camera.name
+	       }
         }
-        section("Which presence sensors?") {
-		    input "contacts", "capability.contactSensor", title: "Contact Sensors(s):", required: false, multiple: true
-            input "contactOpen", "bool", title: "On contact open?", required: true, defaultValue: true
-            input "contactClose", "bool", title: "On contact close?", required: true, defaultValue: true
-	    }
-		section("Which locks?") {
-		    input "locks", "capability.lock", title: "Lock(s):", required: false, multiple: true
-            input "lockUnlock", "bool", title: "On lock unlocked?", required: true, defaultValue: true
-            input "lockLock", "bool", title: "On lock locked?", required: true, defaultValue: true
-	    }
-        section("Which motion sensors?") {
-		    input "motions", "capability.motionSensor", title: "Motion(s):", required: false, multiple: true
-            input "motionActive", "bool", title: "On motion active?", required: true, defaultValue: true
-            input "motionInactive", "bool", title: "On motion inactive?", required: true, defaultValue: true
-	    }
-        section("Which presence sensors?") {
-		    input "presence", "capability.presenceSensor", title: "Presence Sensors(s):", required: false, multiple: true
-            input "onPresent", "bool", title: "On presence present?", required: true, defaultValue: true
-            input "onNotPresent", "bool", title: "On presence not present?", required: true, defaultValue: true
-	    }
-        section("How long to disable camera notifications if detection is triggered?") {
-            input "seconds", "number", title: "Number of Seconds", required: true, defaultValue: 60, width: 6
-        }
-        section("Enter the name of your Motion Disabler - this is probably a combination of your camera names you've selected.") {
-             label title: "Name", required: true
+        if (state.cameraList.size() > 0) {
+            section("Select cameras that will be disabled when any of the below are triggered"){
+                input(name: "cameras", type: "enum", required:false, multiple:true, options:state.cameraList)
+            }  
+            section("Which presence sensors?") {
+		        input "contacts", "capability.contactSensor", title: "Contact Sensors(s):", required: false, multiple: true
+                input "contactOpen", "bool", title: "On contact open?", required: true, defaultValue: true
+                input "contactClose", "bool", title: "On contact close?", required: true, defaultValue: true
+            }
+		    section("Which locks?") {
+		        input "locks", "capability.lock", title: "Lock(s):", required: false, multiple: true
+                input "lockUnlock", "bool", title: "On lock unlocked?", required: true, defaultValue: true
+                input "lockLock", "bool", title: "On lock locked?", required: true, defaultValue: true
+	        }
+            section("Which motion sensors?") {
+		        input "motions", "capability.motionSensor", title: "Motion(s):", required: false, multiple: true
+                input "motionActive", "bool", title: "On motion active?", required: true, defaultValue: true
+                input "motionInactive", "bool", title: "On motion inactive?", required: true, defaultValue: true
+	        }
+            section("Which presence sensors?") {
+		        input "presence", "capability.presenceSensor", title: "Presence Sensors(s):", required: false, multiple: true
+                input "onPresent", "bool", title: "On presence present?", required: true, defaultValue: true
+                input "onNotPresent", "bool", title: "On presence not present?", required: true, defaultValue: true
+	        }
+            section("How long to disable camera notifications if detection is triggered?") {
+                input "seconds", "number", title: "Number of Seconds", required: true, defaultValue: 60, width: 6
+            }
+            section("Enter the name of your Motion Disabler - this is probably a combination of your camera names you've selected.") {
+                label title: "Name", required: true
+            }
+        } else {
+            section("Error") {
+                paragraph("You can't disable motion events if you have no cameras. Add cameras to camect first.")
+            }
         }
 	}
 }
@@ -140,17 +153,3 @@ def enableAlert(data) {
     parent.sendCommand(data.command,data.params)
 }
 
-def prefListDevices(title) {  
-    state.cameraList = [:]
-    def response = parent.sendCommand('/ListCameras')
-    for (camera in response.camera) { 
-	   if (camera.disabled == false) {
-       		state.cameraList[camera.id] = camera.name
-	   }
-    }
-    if (state.cameraList) {
-        section("${title}"){
-            input(name: "cameras", type: "enum", required:false, multiple:true, options:state.cameraList)
-        }
-    }           
-}

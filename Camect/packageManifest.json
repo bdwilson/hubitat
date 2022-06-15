@@ -1,12 +1,12 @@
 {
   "packageName": "Camect Connect",
   "author": "Brian Wilson",
-  "version": "1.3.5",
+  "version": "1.3.6",
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Camect/README.md",
   "communityLink": "https://community.hubitat.com/t/release-camect-connect/43837",
-  "dateReleased": "2021-03-02",
-  "releaseNotes": "Cameras not selected or that no longer exist will be removed when you go through the app again. Only enabled cameras will show for both the disabler app and main connect app.",
+  "dateReleased": "2022-06-14",
+  "releaseNotes": "Fixes for the latest Hubitat version.",
   "apps": [
     {
       "id": "627b5bc7-af07-4dd0-916a-1b36f0e8deee",
@@ -15,7 +15,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/camect_connect-app.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.3.5"
+      "version": "1.3.6"
     },
     {
       "id": "cf6c881c-787a-4945-a98a-16ca874bbfca",
@@ -24,7 +24,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Camect/camect_connect-motion-disabler-child-app.groovy",
       "required": false,
       "oauth": false,
-      "version": "1.3.5"
+      "version": "1.3.6"
     }
   ],
   "drivers": [

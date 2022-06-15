@@ -1,6 +1,6 @@
 /**
  *  Camect Connect
- *  Version: 1.3.5
+ *  Version: 1.3.6
  */
 import groovy.json.JsonSlurper
 
@@ -62,11 +62,25 @@ def page1() {
 }
 
 def page2() {
-    dynamicPage(name: "page2", title: "", install: true, uninstall: true, refreshInterval:0) {
-        section("Select cameras that will be disabled when any of the below are triggered") {
-            prefListDevices("Select which cameras to create virtual motion sensors for:") 
+    return dynamicPage(name: "page2", title: "", install: true, uninstall: false) {
+        state.cameraList = [:]
+        def response = sendCommand('/ListCameras')
+        for (camera in response.camera) { 
+           ifDebug("Camera Found: ID ${camera.id} Name: ${camera.name}")
+	       if (camera.disabled == false) {
+       		    state.cameraList[camera.id] = camera.name
+	       }
         }
-	}
+        if (state.cameraList.size() > 0) {
+            section("Select which cameras to create virtual motion sensors for:") { 
+                input(name: "cameras", type: "enum", required:false, multiple:true, options:state.cameraList)
+            }
+        } else {
+            section("Error") {
+                paragraph("ERROR: Make sure you check your password and your camect code and have cameras enabled.")
+            }
+        }  
+    }
 }
 
 def installed() {
@@ -110,10 +124,10 @@ private sendCommand(command, params=[:]) {
         contentType: 'application/json',
         query: params
     ]
-    //ifDebug("http get request: ${request}")
+    ifDebug("http get request: ${request}")
     try {
         httpGet(request) {resp ->
-            //ifDebug("resp data: ${resp.data}")
+            ifDebug("resp data: ${resp.data}")
             return resp.data
         }
     } catch (e) {  // } catch (groovyx.net.http.HttpResponseException e)  $e.response
@@ -189,26 +203,6 @@ def alarmHandler(evt) {
   }
 }
 
-def prefListDevices(title) {  
-    state.cameraList = [:]
-    def response = sendCommand('/ListCameras')
-    for (camera in response.camera) { 
-        //ifDebug("Camera Found: ID ${camera.id} Name: ${camera.name}")
-	   if (camera.disabled == false) {
-       		state.cameraList[camera.id] = camera.name
-	   }
-    }
-    if (state.cameraList) {
-        section("${title}"){
-            input(name: "cameras", type: "enum", required:false, multiple:true, options:state.cameraList)
-        }
-    } else {
-        section("Error") {
-            paragraph("ERROR: Make sure you check your password and your camect code")
-        }
-    }       
-}
-
 mappings {
 	path("/camect/") {
 		action: [
@@ -226,3 +220,4 @@ def logsOff() {
 private ifDebug(msg) {  
     if (msg && state.isDebug)  log.debug 'Camect Connect: ' + msg  
 }
+
