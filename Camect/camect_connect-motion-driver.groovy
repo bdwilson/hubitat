@@ -69,6 +69,7 @@ def inactive() {
       parent.ifDebug("Motion stopped for ${device.name} (${device.deviceNetworkId})")
       sendEvent (name: "motion", value: "inactive", descriptionText: "Motion Has Stopped")
 
+      date = new Date()
       String newdate = date.format("YYYY-MM-dd HH:mm:ss")    
       sendEvent (name: "timestamp", value: "${newdate}")    
 }
