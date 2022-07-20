@@ -1,6 +1,6 @@
 /**
  *  Hubitat Device Handler: Camect Motion Driver
- *  Version: 1.3.2
+ *  Version: 1.3.2.1
  */
 metadata {
   definition (name: "Camect Motion and Alerting", 
