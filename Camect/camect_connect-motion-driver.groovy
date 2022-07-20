@@ -37,6 +37,11 @@ def updateStatus(state, time, json) {
   }
   // need to parse out objects
   def name = device.name
+
+  TimeZone.getTimeZone('UTC')
+  Date date = new Date()
+  String newdate = date.format("YYYY-MM-dd HH:mm:ss")
+    
   //parent.ifDebug("Scheduling close of ${name} in ${time}")
   unschedule(inactive)
   time = time.toInteger() * 1000
@@ -46,7 +51,7 @@ def updateStatus(state, time, json) {
   sendEvent (name: "LastMessage", value: "${desc}")
   sendEvent (name: "LastURL", value: "${json.url}")
   sendEvent (name: "motion", value: "${newState}", descriptionText: "${desc}")
-  
+  sendEvent (name: "timestamp", value: "${newdate}")
 }
 
 def on() {
@@ -63,4 +68,8 @@ def off() {
 def inactive() {
       parent.ifDebug("Motion stopped for ${device.name} (${device.deviceNetworkId})")
       sendEvent (name: "motion", value: "inactive", descriptionText: "Motion Has Stopped")
+
+      String newdate = date.format("YYYY-MM-dd HH:mm:ss")    
+      sendEvent (name: "timestamp", value: "${newdate}")    
 }
+
