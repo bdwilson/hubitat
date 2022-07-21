@@ -60,7 +60,7 @@ def on() {
         sendEvent(name: "switch", value: "on", descriptionText: "Enabling alerts for ${device.name}")
         date = new Date()
         String newdate = date.format("YYYY-MM-dd HH:mm:ss")
-        sendEvent (name: "timestamp", value: "${newdate}",descriptionText: "${newdate}", displayed: true)       
+        sendEvent (name: "timestamp", value: "${newdate}",descriptionText: "Notifications turned on at ${newdate}", displayed: true)       
 }
 def off() {
         def params  = [ Reason:"${device.name}", CamId:device.deviceNetworkId]
@@ -69,7 +69,7 @@ def off() {
 
         date = new Date()
         String newdate = date.format("YYYY-MM-dd HH:mm:ss")
-        sendEvent (name: "timestamp", value: "${newdate}",descriptionText: "${newdate}", displayed: true)   
+        sendEvent (name: "timestamp", value: "${newdate}",descriptionText: "Notifications turned off at ${newdate}", displayed: true)   
 }
 
 def inactive() {
@@ -80,3 +80,4 @@ def inactive() {
       String newdate = date.format("YYYY-MM-dd HH:mm:ss")
       sendEvent (name: "timestamp", value: "${newdate}",descriptionText: "${newdate}", displayed: true)    
 }
+
