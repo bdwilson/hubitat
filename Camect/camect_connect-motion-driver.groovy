@@ -1,6 +1,6 @@
 /**
  *  Hubitat Device Handler: Camect Motion Driver
- *  Version: 1.3.2.1
+ *  Version: 1.3.2
  */
 metadata {
   definition (name: "Camect Motion and Alerting", 
@@ -51,18 +51,25 @@ def updateStatus(state, time, json) {
   sendEvent (name: "LastMessage", value: "${desc}")
   sendEvent (name: "LastURL", value: "${json.url}")
   sendEvent (name: "motion", value: "${newState}", descriptionText: "${desc}")
-  sendEvent (name: "timestamp", value: "${newdate}")
+  sendEvent (name: "timestamp", value: "${newdate}",descriptionText: "${newdate}", displayed: true)
 }
 
 def on() {
         def params  = [ Enable:1, Reason:"${device.name}", CamId:device.deviceNetworkId]
         parent.sendCommand('/EnableAlert', params) 
         sendEvent(name: "switch", value: "on", descriptionText: "Enabling alerts for ${device.name}")
+        date = new Date()
+        String newdate = date.format("YYYY-MM-dd HH:mm:ss")
+        sendEvent (name: "timestamp", value: "${newdate}",descriptionText: "${newdate}", displayed: true)       
 }
 def off() {
         def params  = [ Reason:"${device.name}", CamId:device.deviceNetworkId]
         parent.sendCommand('/EnableAlert', params) 
         sendEvent(name: "switch", value: "off", descriptionText: "Enabling alerts for ${device.name}")
+
+        date = new Date()
+        String newdate = date.format("YYYY-MM-dd HH:mm:ss")
+        sendEvent (name: "timestamp", value: "${newdate}",descriptionText: "${newdate}", displayed: true)   
 }
 
 def inactive() {
@@ -70,7 +77,6 @@ def inactive() {
       sendEvent (name: "motion", value: "inactive", descriptionText: "Motion Has Stopped")
 
       date = new Date()
-      String newdate = date.format("YYYY-MM-dd HH:mm:ss")    
-      sendEvent (name: "timestamp", value: "${newdate}")    
+      String newdate = date.format("YYYY-MM-dd HH:mm:ss")
+      sendEvent (name: "timestamp", value: "${newdate}",descriptionText: "${newdate}", displayed: true)    
 }
-
