@@ -1,6 +1,7 @@
 /**
  *  Hubitat Device Handler: Camect Motion Driver
- *  Version: 1.3.2
+ *  Version: 1.3.2.1
+ * adding null , [] to LastMessage and object when motion inactive, to allow for conditionals to work properly on inactivity
  */
 metadata {
   definition (name: "Camect Motion and Alerting", 
@@ -74,6 +75,8 @@ def off() {
 
 def inactive() {
       parent.ifDebug("Motion stopped for ${device.name} (${device.deviceNetworkId})")
+      sendEvent (name: "Objects", value: "[]")
+      sendEvent (name: "LastMessage", value: "")  
       sendEvent (name: "motion", value: "inactive", descriptionText: "Motion Has Stopped")
 
       date = new Date()
