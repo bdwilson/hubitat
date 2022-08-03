@@ -1,7 +1,6 @@
 /**
  *  Hubitat Device Handler: Camect Motion Driver
- *  Version: 1.3.2.1
- * adding null , [] to LastMessage and object when motion inactive, to allow for conditionals to work properly on inactivity
+ *  Version: 1.3.2.2
  */
 metadata {
   definition (name: "Camect Motion and Alerting", 
