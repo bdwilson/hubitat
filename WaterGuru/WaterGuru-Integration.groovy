@@ -185,9 +185,9 @@ def discoverChildDevices() {
       }
       d = getChildDevices()?.find { it.deviceNetworkId == "${id}" }
       if (d != null) {
-          if (date != d.currentValue("LastUpdate") || state.forceUpdate) {
+          if (date != d.currentValue("LastUpdated") || state.forceUpdate) {
               state.lastActivity = date
-              d.sendEvent(name: "LastUpdate", value: date)
+              d.sendEvent(name: "LastUpdated", value: date)
           }
           if (d.currentValue("battery") != batteryPct || state.forceUpdate) {  
               d.sendEvent(name: "battery", value: batteryPct, isStateChange: true)
