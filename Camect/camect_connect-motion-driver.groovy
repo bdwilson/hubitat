@@ -1,6 +1,6 @@
 /**
  *  Hubitat Device Handler: Camect Motion Driver
- *  Version: 1.3.2
+ *  Version: 1.3.2.2
  */
 metadata {
   definition (name: "Camect Motion and Alerting", 
@@ -37,6 +37,11 @@ def updateStatus(state, time, json) {
   }
   // need to parse out objects
   def name = device.name
+
+  TimeZone.getTimeZone('UTC')
+  Date date = new Date()
+  String newdate = date.format("YYYY-MM-dd HH:mm:ss")
+    
   //parent.ifDebug("Scheduling close of ${name} in ${time}")
   unschedule(inactive)
   time = time.toInteger() * 1000
@@ -46,21 +51,35 @@ def updateStatus(state, time, json) {
   sendEvent (name: "LastMessage", value: "${desc}")
   sendEvent (name: "LastURL", value: "${json.url}")
   sendEvent (name: "motion", value: "${newState}", descriptionText: "${desc}")
-  
+  sendEvent (name: "timestamp", value: "${newdate}",descriptionText: "${newdate}", displayed: true)
 }
 
 def on() {
         def params  = [ Enable:1, Reason:"${device.name}", CamId:device.deviceNetworkId]
         parent.sendCommand('/EnableAlert', params) 
         sendEvent(name: "switch", value: "on", descriptionText: "Enabling alerts for ${device.name}")
+        date = new Date()
+        String newdate = date.format("YYYY-MM-dd HH:mm:ss")
+        sendEvent (name: "timestamp", value: "${newdate}",descriptionText: "Notifications turned on at ${newdate}", displayed: true)       
 }
 def off() {
         def params  = [ Reason:"${device.name}", CamId:device.deviceNetworkId]
         parent.sendCommand('/EnableAlert', params) 
         sendEvent(name: "switch", value: "off", descriptionText: "Enabling alerts for ${device.name}")
+
+        date = new Date()
+        String newdate = date.format("YYYY-MM-dd HH:mm:ss")
+        sendEvent (name: "timestamp", value: "${newdate}",descriptionText: "Notifications turned off at ${newdate}", displayed: true)   
 }
 
 def inactive() {
       parent.ifDebug("Motion stopped for ${device.name} (${device.deviceNetworkId})")
+      sendEvent (name: "Objects", value: "[]")
+      sendEvent (name: "LastMessage", value: "")  
       sendEvent (name: "motion", value: "inactive", descriptionText: "Motion Has Stopped")
+
+      date = new Date()
+      String newdate = date.format("YYYY-MM-dd HH:mm:ss")
+      sendEvent (name: "timestamp", value: "${newdate}",descriptionText: "${newdate}", displayed: true)    
 }
+
