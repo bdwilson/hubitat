@@ -17,6 +17,7 @@
  *                   updated instructions page, renamed device driver.
  * 			1.1.3.3: Updated attribute types from TEXT to STRING
  * 			1.1.3.4: Added lat/lon attributes
+ *          1.1.3.5: Check for null requests
  */
 definition(
     name: "OwnTracks Presence",
@@ -122,6 +123,9 @@ def updateLocation() {
 }
 
 def update (devices) {
+  if (request.body) { 
+    ifDebug("DBGREQ: ${request}")
+    ifDebug("DBGREQBODY: ${request.body}")
     data = parseJson(request.body)
     ifDebug("DATA: ${data} PARAMS: ${params}")
     if (data._type == "transition") {
@@ -155,7 +159,7 @@ def update (devices) {
           // https://owntracks.org/booklet/tech/json/#_typelocation
           ifDebug("Received location event")
           def batt = data.batt ?: "0"
-   	  def user = params.user
+   	      def user = params.user
           def ssid = data.SSID ?: "N/A"
           def bssid = data.BSSID ?: "N/A"  
           def batteryStatus = "N/A"
@@ -216,6 +220,7 @@ def update (devices) {
           }
     }
     render contentType: "application/json", data: JsonOutput.toJson([])
+  }
 }
 
 mappings {
