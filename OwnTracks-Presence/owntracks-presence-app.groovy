@@ -18,6 +18,7 @@
  * 			1.1.3.3: Updated attribute types from TEXT to STRING
  * 			1.1.3.4: Added lat/lon attributes
  *          1.1.3.5: Check for null requests
+ *          1.1.3.6: Added lastUpdated attribute
  */
 definition(
     name: "OwnTracks Presence",
@@ -139,9 +140,10 @@ def update (devices) {
 	    ifDebug("event: ${event} device: ${device} location: ${location} user: ${user} deviceName: ${deviceName}")     
 	    if (location) {
               if (!device) {
-		      def msg = ["Error: device (${deviceName}) not found. Make sure a device a with type: OwnTracks Virtual Mobile Presence Device exists AND is configured with the proper region and user settings."]
-		      ifDebug("${msg}")
+		          def msg = ["Error: device (${deviceName}) not found. Make sure a device a with type: OwnTracks Virtual Mobile Presence Device exists AND is configured with the proper region and user settings."]
+		          ifDebug("${msg}")
               } else {
+                  lastUpdated(device)
                   if (event == "leave") {
                       def msg = "${user} has exited ${location} - turning ${device} off"
                       ifDebug("${msg}")
@@ -180,17 +182,18 @@ def update (devices) {
                  def name = myDevice.displayName
                  def DNI = myDevice.deviceNetworkId
                  ifDebug("Found device: ${name} with DNI ${DNI}")
-		 def myLocation = myDevice.currentValue("region")
-		 def myUser = myDevice.currentValue("user")
-		 if (!myLocation) {
-			 log.warn "OwnTracks Device ${name} does not have a region/location configured. Please configure it in device settings"
-		 }
-		 if (!myUser) {
-			 log.warn "OwnTracks Device ${name} does not have a user configured. Please configure it in device settings"
-		 }
+		         def myLocation = myDevice.currentValue("region")
+		         def myUser = myDevice.currentValue("user")
+		         if (!myLocation) {
+			         log.warn "OwnTracks Device ${name} does not have a region/location configured. Please configure it in device settings"
+		         }
+		         if (!myUser) {
+			         log.warn "OwnTracks Device ${name} does not have a user configured. Please configure it in device settings"
+		         }
                  def found = 0
                  ifDebug("MyUser: ${myUser} MyLocation: ${myLocation}")
                  if (myUser == user) {
+                     lastUpdated(myDevice)
                      myDevice.sendEvent(name: "battery", value: "${batt}")
                      myDevice.sendEvent(name: "ssid", value: "${ssid}")
                      myDevice.sendEvent(name: "bssid", value: "${bssid}")
@@ -248,6 +251,12 @@ mappings {
     }
 }
 
+def lastUpdated(device) {
+    def date = new Date()
+    date = date.format("MM/dd/yyyy HH:mm:ss")
+    device.sendEvent(name: "lastUpdated", value: date)
+}
+
 def logsOff() {
     log.warn "debug logging for OwnTracks now disabled..."
     app.updateSetting("isDebug", [value: "false", type: "bool"])
@@ -257,4 +266,5 @@ def logsOff() {
 private ifDebug(msg) {  
     if (msg && state.isDebug)  log.debug 'OwnTracks-Presence: ' + msg  
 }
+
 

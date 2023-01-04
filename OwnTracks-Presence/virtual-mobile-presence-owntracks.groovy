@@ -1,7 +1,7 @@
 /*
  * Virtual Mobile Presence for Owntracks - based on original work by Austin Pritchett/ajpri
  *
- * Version 1.1.3.5
+ * Version 1.1.3.6
  * 
  */
 metadata {
@@ -24,6 +24,7 @@ metadata {
 		attribute "user", "STRING"
 		attribute "lat", "NUMBER"
 		attribute "lon", "NUMBER"
+        attribute "lastUpdated", "DATE"
 
         command "arrived"
         command "departed"
@@ -65,3 +66,4 @@ def updated() {
 	sendEvent(name: "user", value: "${user}") 
 	sendEvent(name: "region", value: "${region}")
 }
+
