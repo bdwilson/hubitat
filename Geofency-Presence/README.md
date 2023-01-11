@@ -43,7 +43,7 @@ __OR__
 Configure
 ---------
 1. Install the User App (Apps -> Add User App) and select all the virtual presense devices you created that you want to control with Geofency
-2. Copy the Endpoint URL. This will be your URL to configure in OwnTracks.  It should look something like this ___but you need to add the same user(s) as above after location when you use this URL below___.  For instance, mine looks
+2. Copy the Endpoint URL. This will be your URL to configure in Geofency.  It should look something like this ___but you need to add the same user(s) as above after location when you use this URL below___.  For instance, mine looks
 like this:
 https://cloud.hubitat.com/api/xxx-xxx-xx-xxx/apps/xx/location/Brian?access_token=adafae03-0330-4aeb-b15e-xxxxxxxxx.
 ___Keep in mind, if you replace your hub and restore from a backup your Hubitat
