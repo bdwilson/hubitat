@@ -62,9 +62,10 @@ def setupScreen(){
     		input "presence", "capability.presenceSensor", multiple: true, required: true
     	}
         section("<h2>3. Setup URL in OwnTracks App</h2>"){ 
-            paragraph("Use the following as the URL for OwnTracks but make sure that you add <b>your</b> user info after /location/ in the URL using the same <b>user</b> you configured in your virtual device in step 1: <a href='${extUri}'>${extUri}</a>. You will also need to create a region in OwnTracks that matches the region/location configured in your device.")
+            paragraph("Use the following as the URL for OwnTracks but make sure that you add <b>your</b> user info after /location/ in the URL using the same <b>user</b> you configured in your virtual device in step 1: <a href='${extUri}'>${extUri}</a>") 
+			paragraph("You will also need to create a region in OwnTracks that matches the region/location configured in your device.")
             paragraph("Detailed installation instructions for OwnTracks can be found <a href='https://github.com/bdwilson/hubitat/tree/master/OwnTracks-Presence#configure'>here</a>.  When you change from HTTP mode from MQTT mode, you will lose your regions & any features you use that take advantage of MQTT (like Friends tracking).")
-            paragraph("If for some reason you want to use the Internal URL it would be <a href='${uri}'>${uri}</a>, however it's inaccessible from outside your home. ")
+            paragraph("If for some reason you want to use the Internal URL it would be <a href='${uri}'>${uri}</a> however it's inaccessible from outside your home. ")
         }
 	section("<h2>4. Enable Debug Mode</h2>") {
             paragraph("Debug is enabled by default and will disable automatically after 1 hour. Having debug mode enabled will allow your presence device(s) status to be updated without leaving/entering your regions - this will aid in making sure things are working correctly but would generate unnecessary presence updates if enabled long-term.")
