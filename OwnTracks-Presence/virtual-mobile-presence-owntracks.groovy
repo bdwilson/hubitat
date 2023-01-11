@@ -1,7 +1,7 @@
 /*
  * Virtual Mobile Presence for Owntracks - based on original work by Austin Pritchett/ajpri
  *
- * Version 1.1.3.6
+ * Version 1.1.3.7
  * 
  */
 metadata {
@@ -25,6 +25,7 @@ metadata {
 		attribute "lat", "NUMBER"
 		attribute "lon", "NUMBER"
         attribute "lastUpdated", "DATE"
+		attribute "history", "STRING"
 
         command "arrived"
         command "departed"

@@ -19,6 +19,7 @@
  * 			1.1.3.4: Added lat/lon attributes
  *          1.1.3.5: Check for null requests
  *          1.1.3.6: Added lastUpdated attribute
+ *			1.1.3.7: Added history attribute to store the last 10 locations. 
  */
 definition(
     name: "OwnTracks Presence",
@@ -200,6 +201,22 @@ def update (devices) {
                      myDevice.sendEvent(name: "batteryStatus", value: "${batteryStatus}")
                      myDevice.sendEvent(name: "lat", value: lat)
                      myDevice.sendEvent(name: "lon", value: lon)
+                     // keep location history
+                     def history = myDevice.currentValue("history")
+                     // add current history to front of list
+                     // format: lat,lng,date
+                     def dt = new Date().format("yyyyMMddHHmmss")
+                     history = "${lat},${lon},${dt}\n" + history
+                     // only save last 10 locations
+                     def historyArr = history.split('\n')
+                     if (historyArr.length >= 10) {
+                         history = ""
+                         for(int i = 0; i < 10; i++) {
+                             if (i > 0) history += "\n"
+                             history += historyArr[i]
+                         }                         
+                     }
+                     myDevice.sendEvent(name: "history", value: history)
                      // since location is only updated when a transition event is sent, we can force the location
                      // to be updated if debug mode is on.
                      if (state.isDebug) {
