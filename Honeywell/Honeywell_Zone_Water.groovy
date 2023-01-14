@@ -21,6 +21,10 @@ metadata {
   }
 }
 
+def installed(){
+    sendEvent(name:"water", value:"dry")
+}
+
 def zone(String state) {
   // need to convert open to wet and closed to dry
   def eventMap = [
