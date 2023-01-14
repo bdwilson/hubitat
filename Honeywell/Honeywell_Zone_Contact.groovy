@@ -21,6 +21,10 @@ metadata {
   }
 }
 
+def installed(){
+    sendEvent(name: "contact", value: "closed")
+}
+
 def zone(String state) {
   def descMap = [
     'closed':"Was Closed",
