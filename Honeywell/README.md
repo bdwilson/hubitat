@@ -20,9 +20,8 @@ had better luck copying config.json to a backup file with ST notify IP, then
 editing the file with the correct IP/Port of your Hubitat. If you don't know
 the IP/Port, it will be in the debug logs once you install and attempt to do a
 discovery. Unfortunately, the node proxy will not notify two different devices
-at once. 
-
-Sensor type parameters for config.json are "contact", "motion", "smoke", "water" and "carbonMonoxide".
+at once. Sensor type parameters for config.json are "contact", "motion", "smoke", 
+"water" and "carbonMonoxide".
 
 2) You need the MAC address of the device that is running your Node Proxy
 server. This is a new requirement that wasn't needed for SmartThings. You can
