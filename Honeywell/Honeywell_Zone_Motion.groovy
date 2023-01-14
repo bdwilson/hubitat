@@ -21,6 +21,10 @@ metadata {
   }
 }
 
+def installed(){
+    sendEvent(name:"motion", value:"inactive")
+}
+
 def zone(String state) {
   // need to convert open to active and closed to inactive
   def eventMap = [
