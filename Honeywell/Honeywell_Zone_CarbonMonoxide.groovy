@@ -21,6 +21,10 @@ metadata {
   }
 }
 
+def installed(){
+    sendEvent(name:"carbonMonoxide", value:"clear")
+}
+
 def zone(String state) {
   // need to convert open to detected and closed to clear
   def eventMap = [
