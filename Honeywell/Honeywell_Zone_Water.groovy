@@ -1,5 +1,5 @@
 /**
- *  Hubitat Device Handler: Honeywell Zone Contact
+ *  Hubitat Device Handler: Honeywell Zone Water
  *
  *  Original Author: redloro@gmail.com, updated for Hubitat by bubba@bubba.org
  *
@@ -13,8 +13,8 @@
  *  for the specific language governing permissions and limitations under the License.
  */
 metadata {
-  definition (name: "Honeywell Zone Contact", namespace: "brianwilson-hubitat", author: "bubba@bubba.org") {
-    capability "Contact Sensor"
+  definition (name: "Honeywell Zone Water", namespace: "brianwilson-hubitat", author: "bubba@bubba.org") {
+    capability "Water Sensor"
     capability "Sensor"
 
     command "zone"
@@ -22,16 +22,24 @@ metadata {
 }
 
 def installed(){
-    sendEvent(name: "contact", value: "closed")
+    sendEvent(name:"water", value:"dry")
 }
 
 def zone(String state) {
+  // need to convert open to wet and closed to dry
+  def eventMap = [
+    'closed':"dry",
+    'open':"wet",
+    'alarm':"alarm"
+  ]
+  def newState = eventMap."${state}"
+
   def descMap = [
-    'closed':"Was Closed",
-    'open':"Was Opened",
+    'closed':"No Water Detected",
+    'open':"Water Detected",
     'alarm':"Alarm Triggered"
   ]
   def desc = descMap."${state}"
 
-  sendEvent (name: "contact", value: "${state}", descriptionText: "${desc}")
+  sendEvent (name: "water", value: "${newState}", descriptionText: "${desc}")
 }

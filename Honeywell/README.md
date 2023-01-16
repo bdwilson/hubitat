@@ -20,7 +20,8 @@ had better luck copying config.json to a backup file with ST notify IP, then
 editing the file with the correct IP/Port of your Hubitat. If you don't know
 the IP/Port, it will be in the debug logs once you install and attempt to do a
 discovery. Unfortunately, the node proxy will not notify two different devices
-at once.
+at once. Sensor type parameters for config.json are "contact", "motion", "smoke", 
+"water" and "carbonMonoxide".
 
 2) You need the MAC address of the device that is running your Node Proxy
 server. This is a new requirement that wasn't needed for SmartThings. You can
@@ -42,7 +43,7 @@ but I only have 1 so I can't test it.
 
 # Installation
 
-1) Install the 3 zone drivers and 1 Partition driver into Drivers Code (click
+1) Install the 5 zone drivers and 1 Partition driver into Drivers Code (click
 on each, view raw file, copy and paste, save into Hubitat web gui)
 2) Install the Honewell Security into the Apps Code section (click
 on each, view raw file, copy and paste, save into Hubitat web gui)

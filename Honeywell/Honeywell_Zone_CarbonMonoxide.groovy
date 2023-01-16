@@ -1,5 +1,5 @@
 /**
- *  Hubitat Device Handler: Honeywell Zone Contact
+ *  Hubitat Device Handler: Honeywell Zone Carbon Monoxide
  *
  *  Original Author: redloro@gmail.com, updated for Hubitat by bubba@bubba.org
  *
@@ -13,8 +13,8 @@
  *  for the specific language governing permissions and limitations under the License.
  */
 metadata {
-  definition (name: "Honeywell Zone Contact", namespace: "brianwilson-hubitat", author: "bubba@bubba.org") {
-    capability "Contact Sensor"
+  definition (name: "Honeywell Zone CarbonMonoxide", namespace: "brianwilson-hubitat", author: "bubba@bubba.org") {
+    capability "Carbon Monoxide Detector"
     capability "Sensor"
 
     command "zone"
@@ -22,16 +22,26 @@ metadata {
 }
 
 def installed(){
-    sendEvent(name: "contact", value: "closed")
+    sendEvent(name:"carbonMonoxide", value:"clear")
 }
 
 def zone(String state) {
+  // need to convert open to detected and closed to clear
+  def eventMap = [
+    'closed':"clear",
+    'open':"detected",
+    'alarm':"detected",
+    'tested':"tested"
+  ]
+  def newState = eventMap."${state}"
+
   def descMap = [
-    'closed':"Was Closed",
-    'open':"Was Opened",
-    'alarm':"Alarm Triggered"
+    'closed':"Was Cleared",
+    'open':"Was Detected",
+    'alarm':"Was Detected",
+    'tested':"Was Tested"
   ]
   def desc = descMap."${state}"
 
-  sendEvent (name: "contact", value: "${state}", descriptionText: "${desc}")
+  sendEvent (name: "carbonMonoxide", value: "${newState}", descriptionText: "${desc}")
 }
