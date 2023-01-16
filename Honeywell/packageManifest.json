@@ -1,11 +1,12 @@
 {
   "packageName": "Honeywell Security",
   "author": "Brian Wilson",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Honeywell",
   "communityLink": "https://community.hubitat.com/t/release-envisalink-app-driver-for-vista-ademco-honeywell-alarm-via-smartthings-nodeproxy/9726",
-  "dateReleased": "2020-05-18",
+  "releaseNotes": "Merged pull request that includes support for water detector and carbonmonoxide.",
+  "dateReleased": "2023-01-06",
   "drivers": [
     {
       "id": "6435a2e5-c84b-4abb-80d9-69fbf9d25a6b",
@@ -38,6 +39,22 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Honeywell/Honeywell_Partition.groovy",
       "required": true,
       "version": "1.0.1"
+    },
+    {
+      "id": "89c8bf61-4334-454f-bd1f-be076320504a",
+      "name": "Honeywell Zone Water",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Honeywell/Honeywell_Zone_Water.groovy",
+      "required": true,
+      "version": "1.0"
+    },
+    {
+      "id": "50f2a979-56e2-4a42-842c-723e93f86c36",
+      "name": "Honeywell Zone CarbonMonoxide",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Honeywell/Honeywell_Zone_CarbonMonoxide.groovy",
+      "required": true,
+      "version": "1.0"
     }
   ],
   "apps": [
