@@ -1,7 +1,7 @@
 /**
  * WaterGuru Integration App
  * 
- * 1.0.2 - Brian Wilson / bubba@bubba.org
+ * 1.0.3 - Brian Wilson / bubba@bubba.org
  *
  * Assumptions: 
  * 1) You need to use waterguru-flask python code and run it on a server to talk 
@@ -114,7 +114,8 @@ private sendCommand(command, params=[:]) {
         uri:  settings.URL,
         path: path,
         contentType: 'application/json',
-        query: params
+        query: params, 
+		timeout: 10
     ]
     try {
         httpGet(request) {resp ->
