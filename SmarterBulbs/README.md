@@ -25,7 +25,7 @@ NOTE: Some bulbs DO properly report their status if power comes back and the lig
 
 If you have at least 1 bulb that always shows proper state when power is restored
 ---
-Skip to Step 8 below: Install Smarter Bulbs from this
+Skip to Step 8 below: [Install Smarter Bulbs from this
 repo](https://raw.githubusercontent.com/bdwilson/hubitat/master/SmarterBulbs/SmarterBulbs.groovy) in Apps Code in Hubitat and activate it.
 
 Options when your bulb does NOT report the proper state in Hubitat after power is restored (and you must force a refresh to see the actual state)
