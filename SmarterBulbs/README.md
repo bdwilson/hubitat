@@ -19,9 +19,19 @@ rely on the "SmarterBulbs" hubitat app as well as a "spare" (or canary) bulb tha
 put somewhere that won't interrupt people if it comes on in the middle of the
 night AND the bulb can't be used for other purposes.  
 
+NOTE: Some bulbs DO properly report their status if power comes back and the lights turn on, which means you don't need to jump through all the hoops below to know when power has restored. 
+* Hue bulbs (when configured for use with Hubitat via Cocohue App) - you can also configure power recovery settings in the Hue app and most of the time, these bulbs will handle quick blips without completely turning on after an outage.
+* Sengled Bulbs - using native Hubitat, Sengled drivers (Element Classic, Element Color Plus), most of the time these bulbs would honor last state when power is returned.  I would recomment you use the Hubitat Advanced Zigbee drivers for these bulbs and configure the power state within this driver. This proved to be the best experience for me, however, I still have an issue with Sengled bulbs randomly needing to be re-paired to my hub, no matter what driver I use, so Hue is what I have settled on. 
 
-Options
+If you have at least 1 bulb that always shows proper state when power is restored
 ---
+Skip to Step 8 below: Install Smarter Bulbs from this
+repo](https://raw.githubusercontent.com/bdwilson/hubitat/master/SmarterBulbs/SmarterBulbs.groovy) in Apps Code in Hubitat and activate it.
+
+Options when your bulb does NOT report the proper state in Hubitat after power is restored (and you must force a refresh to see the actual state)
+---
+Update:  If you have a Ring Range Externder v2, these can natively report power outages and restores, so I would use this as my first method to trigger a bulb refresh. You can use RM to configure this bulb refresh.
+
 In order of most accurate/quick/reliable:
 1. <b>Method 1</b>: Modifying apcupsd 
 This method involves Using an APC UPS, and running apcupsd on Linux to monitor
