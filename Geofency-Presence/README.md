@@ -32,26 +32,28 @@ Installation
 1. Install via [HPM](https://community.hubitat.com/t/beta-hubitat-package-manager/38016) - search for keyword "presence"
 2. Go to Devices and create a new virtual device of type ___Geofency Virtual Mobile Presence Device___ for each user and location who you wish to track
 3. Set:
-  * ___Location___ to be the name of the monitored location in Geofency 
-  * ___User___ to be the name entered and saved in HE and added to the webhook (below in configure step)
+  * ___Location___ to be the name of the monitored location in Geofency (call it whatever you want in Geofency, just make sure it matches in HE)
+  * ___User___ to be the name entered and saved in HE and added to the webhook (below in Configure step 2, the example used there is "Brian").
 
 __OR__
 
 1. Go to Drivers Code and create a new device using [virtual-mobile-presence.groovy](https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/virtual-mobile-presence.groovy).
 2. Go to Devices and create a new virtual device of type ___Geofency Virtual Mobile Presence Device___ for each user and location who you wish to track
 3. Set:
-  * ___Location___ to be the name of the monitored location in Geofency 
-  * ___User___ to be the name entered and saved in HE and added to the webhook (below in configure step)
+  * ___Location___ to be the name of the monitored location in Geofency (call it whatever you want in Geofency, just make sure it matches in HE)
+  * ___User___ to be the name entered and saved in HE and added to the webhook (below in Configure step 2, the example used there is "Brian").
 4. Go to Apps Code and create a new App from code [Geofency Presence](https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/geofency-presence.groovy).  Save it. <b>Click Oauth.</b>
 
 Configure
 ---------
 1. Install the User App (Apps -> Add User App) and select all the virtual presense devices you created that you want to control with Geofency
 2. Copy the Endpoint URL. This will be your URL to configure in Geofency.  It
-should look something like this ___but you need to add the same user name from
-step 3 that you entered into HE___.  For instance, mine looks
-like this:
+should look something like this ___need to add the same user/name from step 3
+above that you entered into HE___. For instance, mine is set up with the name
+"Brian" and looks like this:
 https://cloud.hubitat.com/api/xxx-xxx-xx-xxx/apps/xx/location/Brian?access_token=adafae03-0330-4aeb-b15e-xxxxxxxxx.
+(Note the name "Brian" in the URL following "location/" and before
+"?access_token"). 
 ___Keep in mind, if you replace your hub and restore from a backup your Hubitat
 cloud URL will change! Make sure you adjust all your automations should you
 restore from a backup to a new hub.___
