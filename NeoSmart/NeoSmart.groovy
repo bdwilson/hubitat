@@ -47,9 +47,12 @@
  *       1.3.1: moved to open vs. opened. keep version in states.
  *       1.3.2: added config to stop if you change directions vs. changing
  * 				direction.
+ * 		 1.3.3  added position and targetPosition attributes so homebridge will 
+ *              stop complaining. fixes errors, but no idea if they are
+ *              implemented correctŀy.. 16JUN24.
  */
 
-def driverVer() { return "1.3.2" }
+def driverVer() { return "1.3.3" }
 
 metadata {
     definition(name: "Neo Smart Controller", namespace: "brianwilson-hubitat", author: "Bigrizz, Brian Wilson", importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/NeoSmart/NeoSmart.groovy") {
@@ -63,6 +66,9 @@ metadata {
 		command "favorite"
 		command "up"
 		command "down"
+
+        attribute 'targetPosition', 'number'
+        attribute 'position', 'number'
     }
 }
 
@@ -233,6 +239,8 @@ def updateStatus(data) {
     if (logEnable) log.debug "Running updateStatus: status: ${state.lastCmd}, level: ${state.level}, secs: ${state.secs}"
     sendEvent(name: "level", value: "${state.level}", isStateChange: true)
     sendEvent(name: "windowShade", value: "${state.lastCmd}", isStateChange: true)
+    sendEvent(name: "targetPosition", value: "${state.level}", isStateChange: true)
+    sendEvent(name: "position", value: "${state.level}", isStateChange: true)
 }
 
 def stop() {
