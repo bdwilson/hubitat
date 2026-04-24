@@ -9,7 +9,7 @@
   "version": "2.1.0",
   "drivers": [
     {
-      "id": "bdaf0315-2efe-44ca-8e77-75e8d741bce0",
+      "id": "20bad83b-d3db-43f6-ba69-ffa3d6e120ca",
       "name": "WaterGuru Integration Driver",
       "namespace": "brianwilson-hubitat",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/WaterGuru/WaterGuru-Driver.groovy",
@@ -19,7 +19,7 @@
   ],
   "apps": [
     {
-      "id": "58d97fd2-1308-48f5-954a-f71e8106011a",
+      "id": "be813355-ac78-463a-b43f-e2a9bd7869d0",
       "name": "WaterGuru Integration",
       "namespace": "brianwilson-hubitat",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/WaterGuru/WaterGuru-Integration.groovy",
