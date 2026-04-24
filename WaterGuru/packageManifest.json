@@ -4,9 +4,9 @@
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/WaterGuru",
   "communityLink": "https://community.hubitat.com/t/release-waterguru-pool-integration/77922",
-  "dateReleased": "2023-05-29",
-  "releaseNotes": "Added timeout of 10 seconds for requests to the waterguru docker API",
-  "version": "1.0.3",
+  "dateReleased": "2026-04-23",
+  "releaseNotes": "Native Hubitat application; no more docker or python; thx Claude",
+  "version": "2.1.0",
   "drivers": [
     {
       "id": "bdaf0315-2efe-44ca-8e77-75e8d741bce0",
@@ -14,7 +14,7 @@
       "namespace": "brianwilson-hubitat",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/WaterGuru/WaterGuru-Driver.groovy",
       "required": true,
-      "version": "1.0.1"
+      "version": "2.0.0"
     }
   ],
   "apps": [
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/WaterGuru/WaterGuru-Integration.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.0.3"
+      "version": "2.1.0"
     }
   ]
 }

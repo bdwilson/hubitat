@@ -1,18 +1,44 @@
-# WaterGuru Integration Driver
-* You need a WaterGuru pool device.
-* You need a system that can run a Python flask app -
-[waterguru-api](https://github.com/bdwilson/waterguru-api).  There a dockerfile
-so this can easily be done. 
-* Install via HPM or manually using these: [this driver](https://raw.githubusercontent.com/bdwilson/hubitat/master/WaterGuru/WaterGuru-Driver.groovy) and [this app](https://raw.githubusercontent.com/bdwilson/hubitat/master/WaterGuru/WaterGuru-Integration.groovy).
+# WaterGuru Integration for Hubitat (v2.0)
 
-# Caveats / Work in Progress
-* This should really be a native Hubitat App, but I'm not investing the time to
-figure out AWS Cognito + AWS4 Auth in Hubitat - knock yourself out and send me
-pull requests. 
-* This is intentionally limited to 2 polling times per day. I don't want this to get shut down by the vendor for abusing the API. I realize 2 polling times per day isn't great if you're tracking things like temperature, so I'd recommend you go [another route](https://github.com/bdwilson/hubitat/tree/master/Arduino-Pool#Requirements) and consider installing a pool sensor. 
-* This doesn't include any notification options, but I can see many may be
-there - if flow < certain threshold may mean your skimmer is full, if pH is
-below or above a threshold, or free chlorine above or below, if cassette is
-getting low, etc. If you come up with some notification pieces that can be
-integrated in, send me the pull requests. 
-* ~~This should really be a parent/child app setup and the backend API should respond with the statuses of all controllers/faucets/valves vs. one response per valve. I only have 1 faucet so this doesn't impact me as much as it does others. Feel free to fix and send me pull requests but I don't have cycles to spend on this currently.~~ 
+A native Hubitat integration for WaterGuru pool monitoring devices. No external
+server or Python script required — authentication and API calls are handled
+entirely within Hubitat.
+
+## Requirements
+
+* A WaterGuru pool device and account
+* Hubitat hub
+
+## Installation
+
+Install both files via HPM or manually via **Apps Code** and **Drivers Code**:
+
+* [WaterGuru-Integration.groovy](WaterGuru-Integration.groovy) — install as an App
+* [WaterGuru-Driver.groovy](WaterGuru-Driver.groovy) — install as a Driver
+
+Then add the **WaterGuru Integration** app under **Apps**, enter your credentials,
+click **Discover**, select your device(s), and configure your poll interval.
+
+## Features
+
+* Native AWS Cognito SRP authentication — no external Python/Flask server needed
+* Device discovery UI — select which WaterGuru device(s) to create child devices for
+* Configurable poll interval (1, 2, 3, 4, 6, 8, or 12 hours)
+* Optional day-of-week poll filter
+* Tracks: free chlorine, pH, temperature, flow rate, cassette status/life, battery, RSSI, alerts
+
+## Notes
+
+* WaterGuru devices sample a few times per day at most — polling more often than
+  every few hours will not yield additional data.
+* Notifications (low chlorine, high pH, cassette nearly empty, etc.) are not
+  built in. Pull requests welcome.
+
+## Credits
+
+* Original integration by [Brian Wilson](https://github.com/bdwilson)
+* Native SRP authentication approach adapted from
+  [hubitat-xsense-integration](https://github.com/mathewbeall/hubitat-xsense-integration)
+  by Mathew Beall
+* v2.0 rewrite with native Cognito/Lambda auth assisted by
+  [Claude](https://claude.ai) (Anthropic)
