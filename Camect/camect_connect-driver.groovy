@@ -23,7 +23,9 @@ metadata {
 		capability "Sensor"
         capability "Initialize"
 
-    
+        command "Set_AtHome"
+        command "Set_NotAtHome"
+	  
         attribute "camectStatus", "String"
   }
 }
@@ -119,6 +121,19 @@ def off() {
     def params  = [ Reason:"All Cameras"]
     parent.sendCommand('/EnableAlert', params) 
     sendEvent(name: "switch", value: "off", descriptionText: "Disabling alerts for All Cameras")
+}
+
+def Set_AtHome() {
+    parent.sendCommand('/SetOperationMode', [Mode:"HOME"])
+    sendEvent(name: "camectStatus", value: "HOME", descriptionText: "Setting Camect to HOME mode")    
+    parent.sendCommand('/GetHomeInfo')
+ 
+}
+
+def Set_NotAtHome() {
+    parent.sendCommand('/SetOperationMode', [Mode:"DEFAULT"])
+    sendEvent(name: "camectStatus", value: "DEFAULT", descriptionText: "Setting Camect to DEFAULT mode")
+    parent.sendCommand('/GetHomeInfo')  
 }
 
 void webSocketStatus(String status){
