@@ -1,4 +1,4 @@
-# Genmon Generator Monitor — Hubitat Integration (
+# Genmon Generator Monitor — Hubitat Integration
 
 A native Hubitat driver for monitoring and controlling Generac generators via [genmon](https://github.com/jgyates/genmon) - based on [genmon-ha](https://www.github.com/jgyates/genmon-ha)
 
@@ -123,7 +123,7 @@ tail -f /var/log/genhalink.log
 ```
 
 ### Check on the Hubitat community
-- You can try the (Hubitat Community)[https://community.hubitat.com/t/genmon-generator-monitor/164362] if you have issues. This is not supported by the Genmon authort. 
+- You can try the [Hubitat Community](https://community.hubitat.com/t/genmon-generator-monitor/164362) if you have issues. This is not supported by the Genmon authort. 
 
 ## License
 
