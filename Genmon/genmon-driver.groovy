@@ -1,8 +1,8 @@
 /**
  * Genmon Generator Monitor — Hubitat Driver
- * 
+ *
  *   - Converted by Brian Wilson based on https://github.com/jgyates/genmon-ha using Claude Code
- *   - v2.0 - 31MAY26 - Initial Release
+ *   - v2.01 - 021MAY26 - Initial Release
  *
  * Communicates with the genhalink REST API (same backend as the Home
  * Assistant integration).  Maintains a persistent WebSocket connection
@@ -34,8 +34,8 @@ metadata {
     definition(
         name:      "Genmon Generator Monitor",
         namespace: "brianwilson-hubitat",
-	author: "Brian Wilson",
-	importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Genmon/genmon-driver.groovy"
+        author:    "Brian Wilson",
+        importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Genmon/genmon-driver.groovy"
     ) {
         capability "Refresh"
         capability "Sensor"
@@ -44,57 +44,141 @@ metadata {
         capability "Switch"              // on = running, off = stopped
         capability "Initialize"          // tells Hubitat to call initialize() on hub start
 
-        // ── Engine / status ──────────────────────────────────────────────
-        attribute "generatorStatus",      "string"
-        attribute "engineState",          "string"
-        attribute "outputVoltage",        "number"
-        attribute "outputFrequency",      "number"
-        attribute "outputCurrent",        "number"
-        attribute "outputPower",          "number"   // kW
-        attribute "batteryVoltage",       "number"
-        attribute "engineRPM",            "number"
-        attribute "coolantTemperature",   "number"
-        attribute "ambientTemperature",   "number"
+        // ── Engine / status  (path: Status/Engine/...) ───────────────────
+        attribute "engineState",            "string"   // e.g. "Off - Ready", "Running"
+        attribute "switchState",            "string"   // e.g. "Auto", "Manual"
+        attribute "activeAlarms",           "string"   // "No Active Alarms" or description
+        attribute "alarmActive",            "string"   // "true" / "false" derived from above
+        attribute "batteryVoltage",         "number"   // V   Status/Engine/Battery Voltage
+        attribute "engineRPM",             "number"   //     Status/Engine/RPM
+        attribute "outputFrequency",        "number"   // Hz  Status/Engine/Frequency
+        attribute "outputVoltage",          "number"   // V   Status/Engine/Output Voltage
+        attribute "outputCurrent",          "number"   // A   Status/Engine/Output Current
+        attribute "outputPower",            "number"   // kW  Status/Engine/Output Power (Single Phase)
+        attribute "batteryChargerCurrent",  "number"   // mA  Status/Engine/Battery Charger Current
+        attribute "currentL1",             "number"   // A   Status/Engine/Current L1
+        attribute "currentL2",             "number"   // A   Status/Engine/Current L2
+        attribute "activeRotorPoles",       "number"   //     Status/Engine/Active Rotor Poles (Calculated)
 
-        // ── Fuel ─────────────────────────────────────────────────────────
-        attribute "fuelLevel",            "number"
-        attribute "fuelType",             "string"
+        // ── Utility line  (path: Status/Line/...) ────────────────────────
+        attribute "utilityVoltage",         "number"   // V   Status/Line/Utility Voltage
+        attribute "utilityVoltageMax",      "number"   // V   Status/Line/Utility Max Voltage
+        attribute "utilityVoltageMin",      "number"   // V   Status/Line/Utility Min Voltage
+        attribute "utilityThreshold",       "number"   // V   Status/Line/Utility Threshold Voltage
 
-        // ── Runtime ──────────────────────────────────────────────────────
-        attribute "runHours",             "number"
+        // ── Outage  (path: Outage/...) ───────────────────────────────────
+        attribute "systemInOutage",         "string"   //     Outage/System In Outage  ("Yes"/"No")
+        attribute "utilityPowerPresent",    "string"   //     derived: inverse of systemInOutage
+        attribute "outageStatus",           "string"   //     Outage/Status
+        attribute "startupDelay",           "number"   // s   Outage/Startup Delay
+        attribute "utilityVoltageMaximum",  "number"   // V   Outage/Utility Voltage Maximum
+        attribute "utilityVoltageMinimum",  "number"   // V   Outage/Utility Voltage Minimum
 
-        // ── Alarms ───────────────────────────────────────────────────────
-        attribute "alarmActive",          "string"   // "true" / "false"
-        attribute "alarmDescription",     "string"
+        // ── Maintenance — general  (path: Maintenance/...) ───────────────
+        attribute "generatorModel",         "string"   //     Maintenance/Model
+        attribute "controllerDetected",     "string"   //     Maintenance/Controller Detected
+        attribute "nominalRPM",            "number"   // RPM Maintenance/Nominal RPM
+        attribute "ratedKW",               "number"   // kW  Maintenance/Rated kW
+        attribute "fuelType",              "string"   //     Maintenance/Fuel Type
+        attribute "serialNumber",           "string"   //     Maintenance/Generator Serial Number
+        attribute "nominalFrequency",       "number"   // Hz  Maintenance/Nominal Frequency
+        attribute "generatorPhase",         "number"   //     Maintenance/Generator Phase
+        attribute "engineDisplacement",     "string"   //     Maintenance/Engine Displacement
+        attribute "energy30Days",           "number"   // kWh Maintenance/kW Hours in last 30 days
+        attribute "fuelConsumption30Days",  "number"   // gal Maintenance/Fuel Consumption in last 30 days
+        attribute "runHoursLast30Days",     "number"   // h   Maintenance/Run Hours in last 30 days
+        attribute "estimatedFuelInTank",    "number"   // gal Maintenance/Estimated Fuel In Tank
+        attribute "hoursOfFuelRemaining",   "number"   // h   Maintenance/Hours of Fuel Remaining (Estimated 0.50 Load)
+        attribute "hoursOfFuelAtLoad",      "number"   // h   Maintenance/Hours of Fuel Remaining (Current Load)
+        attribute "fuelLevel",             "number"   // %   Maintenance/Fuel Level Sensor
+        attribute "fuelInTank",            "number"   // gal Maintenance/Fuel In Tank (Sensor)
+        attribute "fuelLevelState",        "string"   //     Maintenance/Fuel Level State
 
-        // ── Transfer switch ───────────────────────────────────────────────
-        attribute "transferSwitchState",  "string"   // "Utility" / "Generator"
-        attribute "utilityVoltage",       "number"
+        // ── Maintenance — service  (path: Maintenance/Service/...) ───────
+        attribute "totalRunHours",          "number"   // h   Maintenance/Service/Total Run Hours
+        attribute "hardwareVersion",        "string"   //     Maintenance/Service/Hardware Version
+        attribute "firmwareVersion",        "string"   //     Maintenance/Service/Firmware Version
+        attribute "serviceADue",           "string"   //     Maintenance/Service/Service A Due
+        attribute "serviceBDue",           "string"   //     Maintenance/Service/Service B Due
+        attribute "batteryCheckDue",        "string"   //     Maintenance/Service/Battery Check Due
 
-        // ── Exercise / maintenance ────────────────────────────────────────
-        attribute "exerciseSchedule",     "string"
-        attribute "lastExercise",         "string"
+        // ── Maintenance — controller settings  (Maintenance/Controller Settings/...) ──
+        attribute "ratedMaxPower",          "number"   // kW  Maintenance/Controller Settings/Rated Max Power
+        attribute "nominalLineVoltage",     "number"   // V   Maintenance/Controller Settings/Nominal Line Voltage
+        attribute "calibrateCurrent1",      "number"   //     Maintenance/Controller Settings/Calibrate Current 1
+        attribute "calibrateCurrent2",      "number"   //     Maintenance/Controller Settings/Calibrate Current 2
+        attribute "calibrateVolts",         "number"   //     Maintenance/Controller Settings/Calibrate Volts
 
-        // ── Controller info ───────────────────────────────────────────────
-        attribute "controllerType",       "string"
-        attribute "generatorModel",       "string"
-        attribute "serialNumber",         "string"
-        attribute "firmwareVersion",      "string"
+        // ── Maintenance — exercise  (path: Maintenance/Exercise/...) ─────
+        attribute "exerciseSchedule",       "string"   //     Maintenance/Exercise/Exercise Time
+        attribute "quietMode",             "string"   //     Maintenance/Quiet Mode (if supported)
 
-        // ── Quiet mode ────────────────────────────────────────────────────
-        attribute "quietMode",            "string"   // "On" / "Off"
+        // ── Status logs  (path: Status/Last Log Entries/Logs/...) ────────
+        attribute "lastAlarmLog",           "string"   //     Status/Last Log Entries/Logs/Alarm Log
+        attribute "lastRunLog",            "string"   //     Status/Last Log Entries/Logs/Run Log
+        attribute "lastServiceLog",         "string"   //     Status/Last Log Entries/Logs/Service Log
+
+        // ── Status time  (path: Status/Time/...) ─────────────────────────
+        attribute "monitorTime",            "string"   //     Status/Time/Monitor Time
+        attribute "generatorTime",          "string"   //     Status/Time/Generator Time
+
+        // ── Monitor — generator stats  (Monitor/Generator Monitor Stats/...) ──
+        attribute "monitorHealth",          "string"   //     Monitor/Generator Monitor Stats/Monitor Health
+        attribute "genmonVersion",          "string"   //     Monitor/Generator Monitor Stats/Generator Monitor Version
+        attribute "monitorRunTime",         "string"   //     Monitor/Generator Monitor Stats/Run time
+        attribute "powerLogSize",           "string"   //     Monitor/Generator Monitor Stats/Power log file size
+        attribute "updateAvailable",        "string"   //     Monitor/Generator Monitor Stats/Update Available
+        attribute "updateVersion",          "string"   //     Monitor/Generator Monitor Stats/Update Version
+
+        // ── Monitor — communication stats  (Monitor/Communication Stats/...) ──
+        attribute "crcErrors",             "number"   //     Monitor/Communication Stats/CRC Errors
+        attribute "crcPercentErrors",       "number"   // %   Monitor/Communication Stats/CRC Percent Errors
+        attribute "timeoutErrors",          "string"   //     Monitor/Communication Stats/Timeout Errors
+        attribute "timeoutPercentErrors",   "number"   // %   Monitor/Communication Stats/Timeout Percent Errors
+        attribute "modbusExceptions",       "number"   //     Monitor/Communication Stats/Modbus Exceptions
+        attribute "validationErrors",       "number"   //     Monitor/Communication Stats/Validation Errors
+        attribute "syncErrors",            "number"   //     Monitor/Communication Stats/Sync Errors
+        attribute "invalidData",           "number"   //     Monitor/Communication Stats/Invalid Data
+        attribute "discardedBytes",         "number"   //     Monitor/Communication Stats/Discarded Bytes
+        attribute "commRestarts",           "number"   //     Monitor/Communication Stats/Comm Restarts
+        attribute "packetsPerSecond",       "number"   //     Monitor/Communication Stats/Packets Per Second
+        attribute "averageTransactionTime", "string"   //     Monitor/Communication Stats/Average Transaction Time
+        attribute "modbusTransport",        "string"   //     Monitor/Communication Stats/Modbus Transport
+        attribute "serialDataRate",         "string"   //     Monitor/Communication Stats/Serial Data Rate
+        attribute "packetCount",           "string"   //     Monitor/Communication Stats/Packet Count
+
+        // ── Monitor — platform stats  (Monitor/Platform Stats/...) ───────
+        attribute "cpuUsage",              "number"   // %   Monitor/Platform Stats/CPU Utilization
+        attribute "memoryUtilization",      "number"   // %   Monitor/Platform Stats/Memory Utilization
+        attribute "diskUtilization",        "number"   // %   Monitor/Platform Stats/Disk Utilization
+        attribute "wlanSignalLevel",        "number"   // dBm Monitor/Platform Stats/WLAN Signal Level
+        attribute "wlanSignalQuality",      "string"   //     Monitor/Platform Stats/WLAN Signal Quality
+        attribute "wlanSignalPercent",      "number"   // %   Monitor/Platform Stats/WLAN Signal Percent
+        attribute "wlanSignalNoise",        "number"   // dBm Monitor/Platform Stats/WLAN Signal Noise
+        attribute "wlanESSID",             "string"   //     Monitor/Platform Stats/WLAN ESSID
+        attribute "piModel",               "string"   //     Monitor/Platform Stats/Pi Model
+        attribute "piCpuThrottling",        "string"   //     Monitor/Platform Stats/Pi CPU Frequency Throttling
+        attribute "piArmFrequencyCap",      "string"   //     Monitor/Platform Stats/Pi ARM Frequency Cap
+        attribute "piUndervoltage",         "string"   //     Monitor/Platform Stats/Pi Undervoltage
+        attribute "osName",                "string"   //     Monitor/Platform Stats/OS Name
+        attribute "osVersion",             "string"   //     Monitor/Platform Stats/OS Version
+        attribute "systemUptime",           "string"   //     Monitor/Platform Stats/System Uptime
+        attribute "networkInterfaceUsed",   "string"   //     Monitor/Platform Stats/Network Interface Used
+        attribute "systemTime",            "string"   //     Monitor/Platform Stats/System Time
+        attribute "cpuTemperature",         "number"   // °C  Tiles/CPU Temp/value
+
+        // ── Monitor — weather  (Monitor/Weather/...) ─────────────────────
+        attribute "weatherConditions",      "string"   //     Monitor/Weather/Conditions
+        attribute "currentTemperature",     "number"   // °F  Monitor/Weather/Current Temperature
 
         // ── Connectivity ──────────────────────────────────────────────────
-        attribute "connectionStatus",     "string"   // "connected (ws)" | "connected (poll)" | "error: ..."
-        attribute "lastUpdate",           "string"
+        attribute "connectionStatus",       "string"
+        attribute "lastUpdate",             "string"
 
         // ── Custom commands ───────────────────────────────────────────────
         command "startGenerator"
         command "stopGenerator"
-        command "autoMode"
-        command "manualMode"
-        command "muteAlarm"
-        command "resetAlarm"
+        command "startTransfer"
         command "startExercise"
         command "setQuietModeOn"
         command "setQuietModeOff"
@@ -110,6 +194,9 @@ metadata {
         input name: "pollInterval", type: "enum",     title: "Fallback Poll Interval (when WebSocket is unavailable)",
                                     options: ["5": "5 sec", "10": "10 sec", "30": "30 sec",
                                               "60": "1 min", "300": "5 min"],
+                                    defaultValue: "30"
+        input name: "wsMinInterval", type: "enum",    title: "Minimum interval between WebSocket state updates (genmon pushes very frequently — throttle here to avoid Hubitat event queue overload)",
+                                    options: ["10": "10 sec", "15": "15 sec", "30": "30 sec", "60": "1 min", "120": "2 min"],
                                     defaultValue: "30"
         input name: "logEnable",    type: "bool",     title: "Enable debug logging", defaultValue: false
     }
@@ -129,8 +216,9 @@ def updated() {
 
 def initialize() {
     unschedule()
-    state.wsConnected   = false
-    state.wsAuthPending = false
+    state.wsConnected        = false
+    state.wsAuthPending      = false
+    atomicState.lastWsParsed = 0L
 
     updateDNI()
 
@@ -254,39 +342,63 @@ def reconnectWebSocket() {
 
 // Called by Hubitat for every incoming WebSocket text frame
 def parse(String rawMsg) {
-    if (logEnable) log.debug "Genmon WS recv: ${rawMsg}"
+    try {
+        _parse(rawMsg)
+    } catch (com.hubitat.app.exception.LimitExceededException e) {
+        // Hubitat's event queue is full — silently discard this update.
+        // The throttle below should prevent this in steady state; if it
+        // keeps appearing, increase the "Minimum WS interval" preference.
+        if (logEnable) log.warn "Genmon WS: event queue full, discarding message"
+    } catch (Exception e) {
+        log.warn "Genmon WS: unexpected error in parse — ${e.message}"
+    }
+}
+
+private void _parse(String rawMsg) {
+    if (logEnable) log.debug "Genmon WS recv: ${rawMsg.take(120)}"  // truncate noisy full payloads
 
     def msg
     try { msg = new groovy.json.JsonSlurper().parseText(rawMsg) }
-    catch (Exception e) { log.warn "Genmon WS: failed to parse message — ${e.message}"; return }
+    catch (Exception e) { log.warn "Genmon WS: failed to parse JSON — ${e.message}"; return }
 
     def msgType = msg?.type
 
     if (msgType == "auth_ok") {
         state.wsConnected   = true
         state.wsAuthPending = false
+        atomicState.lastWsParsed = 0L   // force immediate parse on first real update
         log.info "Genmon WS: authenticated — push updates active"
-        unschedule("pollAndReschedule")  // stop polling now that WS is live
+        unschedule("pollAndReschedule")
         unschedule("refresh")
-        sendEvent(name: "connectionStatus", value: "connected (ws)")
+        updateStringIfChanged("connectionStatus", "connected (ws)")
 
     } else if (msgType == "auth_invalid" || (state.wsAuthPending && msgType != "auth_ok")) {
         log.error "Genmon WS: authentication failed — check API key"
         interfaces.webSocket.close()
         state.wsAuthPending = false
-        sendEvent(name: "connectionStatus", value: "error: WS auth failed")
-        startPolling()  // fall back to polling
+        updateStringIfChanged("connectionStatus", "error: WS auth failed")
+        startPolling()
 
     } else if (msgType in ["state_update", "full_state"]) {
         def stateData = msg?.state
-        if (stateData) {
-            parseStatus(stateData)
-            sendEvent(name: "lastUpdate",       value: new Date().toString())
-            sendEvent(name: "connectionStatus", value: "connected (ws)")
+        if (!stateData) return
+
+        // atomicState is thread-safe — concurrent parse() callbacks all read
+        // the same committed value so only one wins the throttle window.
+        def minMs    = (wsMinInterval ?: "30").toLong() * 1000L
+        def nowMs    = now()
+        def lastMs   = (atomicState.lastWsParsed ?: 0L)
+        if ((nowMs - lastMs) < minMs) {
+            // Still within throttle window — drop silently
+            return
         }
+        atomicState.lastWsParsed = nowMs
+
+        parseStatus(stateData)
+        updateStringIfChanged("lastUpdate",       new Date().toString())
+        updateStringIfChanged("connectionStatus", "connected (ws)")
 
     } else if (msgType == "ping") {
-        // Some genhalink versions send heartbeat pings — pong back
         interfaces.webSocket.sendMessage(groovy.json.JsonOutput.toJson([type: "pong"]))
 
     } else {
@@ -351,10 +463,11 @@ private void fetchInfo() {
         httpGet(params) { resp ->
             if (resp.status == 200) {
                 def d = resp.data
-                safeEvent("controllerType",  d?.controller ?: d?.Controller)
-                safeEvent("generatorModel",  d?.model      ?: d?.Model)
-                safeEvent("serialNumber",    d?.serial     ?: d?.SerialNumber)
-                safeEvent("firmwareVersion", d?.firmware   ?: d?.FirmwareVersion)
+                safeEvent("controllerType",  d?.controller       ?: d?.Controller)
+                safeEvent("generatorModel",  d?.model            ?: d?.Model)
+                safeEvent("serialNumber",    d?.serial           ?: d?.SerialNumber)
+                safeEvent("firmwareVersion", d?.firmware         ?: d?.FirmwareVersion)
+                safeEvent("hardwareVersion", d?.hardware_version ?: d?.HardwareVersion ?: d?."Hardware Version")
             }
         }
     } catch (Exception e) {
@@ -363,87 +476,173 @@ private void fetchInfo() {
 }
 
 // ── Status parsing ────────────────────────────────────────────────────────────
+// All paths verified against /api/entities response.
 
 private void parseStatus(Map data) {
     if (!data) return
 
-    def status = deepGet(data, "Status")
-    def engine = deepGet(status, "Engine")
-    def output = deepGet(status, "Line") ?: deepGet(status, "Output")
-    def maint  = deepGet(data, "Maintenance")
-
-    // Generator / engine state
-    def genStatus = extractString(deepGet(engine, "Generator Status") ?: deepGet(status, "Generator Status"))
-    if (genStatus) {
-        sendEvent(name: "generatorStatus", value: genStatus)
-        def running = genStatus?.toLowerCase()?.contains("running")
-        sendEvent(name: "switch", value: running ? "on" : "off")
+    // ── Status/Engine ─────────────────────────────────────────────────
+    def engineState = pathGet(data, "Status/Engine/Engine State")
+    safeStringEvent("engineState", engineState)
+    if (engineState != null) {
+        def es      = engineState.toString()
+        def running = es in ["Running", "Exercising", "Running Manual"]
+        updateStringIfChanged("switch", running ? "on" : "off")
     }
 
-    def engineState = extractString(deepGet(engine, "Engine State") ?: deepGet(engine, "Status"))
-    if (engineState) sendEvent(name: "engineState", value: engineState)
+    safeStringEvent("switchState",      pathGet(data, "Status/Engine/Switch State"))
+    safeNumericEvent("batteryVoltage",  pathGet(data, "Status/Engine/Battery Voltage"),        "V")
+    safeNumericEvent("engineRPM",       pathGet(data, "Status/Engine/RPM"),                    "RPM")
+    safeNumericEvent("outputFrequency", pathGet(data, "Status/Engine/Frequency"),              "Hz")
+    safeNumericEvent("outputVoltage",   pathGet(data, "Status/Engine/Output Voltage"),         "V")
+    safeNumericEvent("outputCurrent",   pathGet(data, "Status/Engine/Output Current"),         "A")
+    safeNumericEvent("batteryChargerCurrent", pathGet(data, "Status/Engine/Battery Charger Current"), "mA")
+    safeNumericEvent("currentL1",       pathGet(data, "Status/Engine/Current L1"),             "A")
+    safeNumericEvent("currentL2",       pathGet(data, "Status/Engine/Current L2"),             "A")
+    safeNumericEvent("activeRotorPoles", pathGet(data, "Status/Engine/Active Rotor Poles (Calculated)"))
 
-    // Electrical output
-    safeNumericEvent("outputVoltage",   deepGet(engine, "Output Voltage")    ?: deepGet(output, "Output Voltage"),   "V")
-    safeNumericEvent("outputFrequency", deepGet(engine, "Output Frequency")  ?: deepGet(output, "Output Frequency"), "Hz")
-    safeNumericEvent("outputCurrent",   deepGet(engine, "Output Current")    ?: deepGet(output, "Output Current"),   "A")
-
-    def powerRaw = deepGet(engine, "Output Power (Single Phase)") ?:
-                   deepGet(engine, "Output Power") ?:
-                   deepGet(output, "Output Power")
+    def powerRaw = pathGet(data, "Status/Engine/Output Power (Single Phase)")
     if (powerRaw != null) {
         def (num, unit) = extractNumeric(powerRaw)
         if (num != null) {
-            def kw = (unit == "W") ? num / 1000.0 : num
-            sendEvent(name: "outputPower", value: kw.round(3), unit: "kW")
-            sendEvent(name: "power",       value: (kw * 1000).round(0), unit: "W")
+            def kw    = (unit == "W") ? num / 1000.0 : num
+            def kwVal = kw.round(3)
+            def wVal  = (kw * 1000).round(0)
+            if (kwVal.toString() != device.currentValue("outputPower")?.toString())
+                sendEvent(name: "outputPower", value: kwVal, unit: "kW")
+            if (wVal.toString() != device.currentValue("power")?.toString())
+                sendEvent(name: "power", value: wVal, unit: "W")
         }
     }
 
-    // Battery / engine internals
-    safeNumericEvent("batteryVoltage",   deepGet(engine, "Battery Voltage"), "V")
-    safeNumericEvent("engineRPM",        deepGet(engine, "RPM"),             "RPM")
+    // Active alarms — path: Status/Engine/System In Alarm
+    def alarmRaw = pathGet(data, "Status/Engine/System In Alarm")
+    def alarmStr = extractString(alarmRaw)
+    def hasAlarm = alarmStr && alarmStr.trim() && alarmStr.trim() != "No Active Alarms"
+    updateStringIfChanged("activeAlarms", alarmStr ?: "No Active Alarms")
+    updateStringIfChanged("alarmActive",  hasAlarm.toString())
 
-    def coolantRaw = deepGet(engine, "Coolant Temp") ?: deepGet(engine, "Engine Temperature")
-    def ambientRaw = deepGet(engine, "Ambient Temp")
-    if (coolantRaw != null) safeNumericEvent("coolantTemperature", coolantRaw, "°F")
-    if (ambientRaw != null) safeNumericEvent("ambientTemperature", ambientRaw, "°F")
-
-    // Utility / transfer
-    safeNumericEvent("utilityVoltage", deepGet(deepGet(status, "Utility"), "Utility Voltage") ?:
-                                       deepGet(status, "Utility Voltage"), "V")
-    def xferState = extractString(deepGet(status, "Transfer Switch State") ?: deepGet(status, "Transfer Switch"))
-    if (xferState) sendEvent(name: "transferSwitchState", value: xferState)
-
-    // Fuel
-    safeNumericEvent("fuelLevel", deepGet(engine, "Fuel Level") ?: deepGet(status, "Fuel Level"), "%")
-
-    // Alarms
-    def alarmDesc = extractString(deepGet(engine, "System In Alarm") ?: deepGet(status, "System In Alarm"))
-    def hasAlarm  = alarmDesc && alarmDesc.trim() && alarmDesc.trim() != "No Active Alarms"
-    sendEvent(name: "alarmActive",      value: hasAlarm.toString())
-    sendEvent(name: "alarmDescription", value: hasAlarm ? alarmDesc : "No Active Alarms")
-
-    // Run hours
-    def runHoursRaw = deepGet(maint, "Run Hours") ?: deepGet(engine, "Run Hours")
-    if (runHoursRaw != null) {
-        def (num, _) = extractNumeric(runHoursRaw)
-        if (num != null) sendEvent(name: "runHours", value: num, unit: "h")
+    // Transfer to generator: derived — frequency > 0 means generator is supplying load
+    def freqRaw = pathGet(data, "Status/Engine/Frequency")
+    if (freqRaw != null) {
+        def (freqNum, _) = extractNumeric(freqRaw)
+        if (freqNum != null) updateStringIfChanged("transferToGenerator", (freqNum > 0) ? "on" : "off")
     }
 
-    // Exercise schedule
-    def exercise = deepGet(maint, "Exercise")
-    def exTime   = extractString(deepGet(exercise, "Exercise Time"))
-    if (exTime) sendEvent(name: "exerciseSchedule", value: exTime)
-    def lastEx   = extractString(deepGet(exercise, "Last Exercise Time"))
-    if (lastEx)  sendEvent(name: "lastExercise", value: lastEx)
+    // ── Status/Line (utility) ─────────────────────────────────────────
+    safeNumericEvent("utilityVoltage",   pathGet(data, "Status/Line/Utility Voltage"),           "V")
+    safeNumericEvent("utilityVoltageMax", pathGet(data, "Status/Line/Utility Max Voltage"),      "V")
+    safeNumericEvent("utilityVoltageMin", pathGet(data, "Status/Line/Utility Min Voltage"),      "V")
+    safeNumericEvent("utilityThreshold",  pathGet(data, "Status/Line/Utility Threshold Voltage"), "V")
 
-    // Quiet mode
-    def quietRaw = deepGet(maint, "Quiet Mode") ?: deepGet(data, "Quiet Mode")
-    if (quietRaw != null) {
-        def quietStr = extractString(quietRaw)
-        if (quietStr) sendEvent(name: "quietMode", value: quietStr)
+    // ── Status/Last Log Entries/Logs ──────────────────────────────────
+    safeStringEvent("lastAlarmLog",   pathGet(data, "Status/Last Log Entries/Logs/Alarm Log"))
+    safeStringEvent("lastRunLog",     pathGet(data, "Status/Last Log Entries/Logs/Run Log"))
+    safeStringEvent("lastServiceLog", pathGet(data, "Status/Last Log Entries/Logs/Service Log"))
+
+    // ── Status/Time ───────────────────────────────────────────────────
+    safeStringEvent("monitorTime",   pathGet(data, "Status/Time/Monitor Time"))
+    safeStringEvent("generatorTime", pathGet(data, "Status/Time/Generator Time"))
+
+    // ── Outage ────────────────────────────────────────────────────────
+    def outageRaw = pathGet(data, "Outage/System In Outage")
+    if (outageRaw != null) {
+        def outageStr = extractString(outageRaw)
+        updateStringIfChanged("systemInOutage",     outageStr)
+        updateStringIfChanged("utilityPowerPresent", (outageStr == "No") ? "true" : "false")
     }
+    safeStringEvent("outageStatus",        pathGet(data, "Outage/Status"))
+    safeNumericEvent("startupDelay",       pathGet(data, "Outage/Startup Delay"),          "s")
+    safeNumericEvent("utilityVoltageMaximum", pathGet(data, "Outage/Utility Voltage Maximum"), "V")
+    safeNumericEvent("utilityVoltageMinimum", pathGet(data, "Outage/Utility Voltage Minimum"), "V")
+
+    // ── Maintenance (general) ─────────────────────────────────────────
+    safeStringEvent("generatorModel",     pathGet(data, "Maintenance/Model"))
+    safeStringEvent("controllerDetected", pathGet(data, "Maintenance/Controller Detected"))
+    safeNumericEvent("nominalRPM",        pathGet(data, "Maintenance/Nominal RPM"),         "RPM")
+    safeNumericEvent("ratedKW",           pathGet(data, "Maintenance/Rated kW"),            "kW")
+    safeStringEvent("fuelType",           pathGet(data, "Maintenance/Fuel Type"))
+    safeStringEvent("serialNumber",       pathGet(data, "Maintenance/Generator Serial Number"))
+    safeNumericEvent("nominalFrequency",  pathGet(data, "Maintenance/Nominal Frequency"),   "Hz")
+    safeStringEvent("generatorPhase",     pathGet(data, "Maintenance/Generator Phase"))
+    safeStringEvent("engineDisplacement", pathGet(data, "Maintenance/Engine Displacement"))
+    safeNumericEvent("energy30Days",      pathGet(data, "Maintenance/kW Hours in last 30 days"), "kWh")
+    safeNumericEvent("fuelConsumption30Days", pathGet(data, "Maintenance/Fuel Consumption in last 30 days"), "gal")
+    safeNumericEvent("runHoursLast30Days",   pathGet(data, "Maintenance/Run Hours in last 30 days"), "h")
+    safeNumericEvent("estimatedFuelInTank",  pathGet(data, "Maintenance/Estimated Fuel In Tank "), "gal")  // trailing space is in the API
+    safeNumericEvent("hoursOfFuelRemaining", pathGet(data, "Maintenance/Hours of Fuel Remaining (Estimated 0.50 Load )"), "h")
+    safeNumericEvent("hoursOfFuelAtLoad",    pathGet(data, "Maintenance/Hours of Fuel Remaining (Current Load)"), "h")
+    safeNumericEvent("fuelLevel",            pathGet(data, "Maintenance/Fuel Level Sensor"), "%")
+    safeNumericEvent("fuelInTank",           pathGet(data, "Maintenance/Fuel In Tank (Sensor)"), "gal")
+    safeStringEvent("fuelLevelState",        pathGet(data, "Maintenance/Fuel Level State"))
+    safeStringEvent("exerciseSchedule",      pathGet(data, "Maintenance/Exercise/Exercise Time"))
+    safeStringEvent("quietMode",             pathGet(data, "Maintenance/Quiet Mode"))
+
+    // ── Maintenance/Service ───────────────────────────────────────────
+    safeNumericEvent("totalRunHours",   pathGet(data, "Maintenance/Service/Total Run Hours"),  "h")
+    safeStringEvent("hardwareVersion",  pathGet(data, "Maintenance/Service/Hardware Version"))
+    safeStringEvent("firmwareVersion",  pathGet(data, "Maintenance/Service/Firmware Version"))
+    safeStringEvent("serviceADue",      pathGet(data, "Maintenance/Service/Service A Due"))
+    safeStringEvent("serviceBDue",      pathGet(data, "Maintenance/Service/Service B Due"))
+    safeStringEvent("batteryCheckDue",  pathGet(data, "Maintenance/Service/Battery Check Due"))
+
+    // ── Maintenance/Controller Settings ──────────────────────────────
+    safeNumericEvent("ratedMaxPower",     pathGet(data, "Maintenance/Controller Settings/Rated Max Power"),     "kW")
+    safeNumericEvent("nominalLineVoltage", pathGet(data, "Maintenance/Controller Settings/Nominal Line Voltage"), "V")
+    safeNumericEvent("calibrateCurrent1", pathGet(data, "Maintenance/Controller Settings/Calibrate Current 1"))
+    safeNumericEvent("calibrateCurrent2", pathGet(data, "Maintenance/Controller Settings/Calibrate Current 2"))
+    safeNumericEvent("calibrateVolts",    pathGet(data, "Maintenance/Controller Settings/Calibrate Volts"))
+
+    // ── Monitor/Generator Monitor Stats ──────────────────────────────
+    safeStringEvent("monitorHealth",  pathGet(data, "Monitor/Generator Monitor Stats/Monitor Health"))
+    safeStringEvent("genmonVersion",  pathGet(data, "Monitor/Generator Monitor Stats/Generator Monitor Version"))
+    safeStringEvent("monitorRunTime", pathGet(data, "Monitor/Generator Monitor Stats/Run time"))
+    safeStringEvent("powerLogSize",   pathGet(data, "Monitor/Generator Monitor Stats/Power log file size"))
+    safeStringEvent("updateAvailable", pathGet(data, "Monitor/Generator Monitor Stats/Update Available"))
+    safeStringEvent("updateVersion",   pathGet(data, "Monitor/Generator Monitor Stats/Update Version"))
+
+    // ── Monitor/Communication Stats ───────────────────────────────────
+    safeNumericEvent("crcErrors",            pathGet(data, "Monitor/Communication Stats/CRC Errors"))
+    safeNumericEvent("crcPercentErrors",     pathGet(data, "Monitor/Communication Stats/CRC Percent Errors"),     "%")
+    safeStringEvent("timeoutErrors",         pathGet(data, "Monitor/Communication Stats/Timeout Errors"))
+    safeNumericEvent("timeoutPercentErrors", pathGet(data, "Monitor/Communication Stats/Timeout Percent Errors"), "%")
+    safeNumericEvent("modbusExceptions",     pathGet(data, "Monitor/Communication Stats/Modbus Exceptions"))
+    safeNumericEvent("validationErrors",     pathGet(data, "Monitor/Communication Stats/Validation Errors"))
+    safeNumericEvent("syncErrors",           pathGet(data, "Monitor/Communication Stats/Sync Errors"))
+    safeNumericEvent("invalidData",          pathGet(data, "Monitor/Communication Stats/Invalid Data"))
+    safeNumericEvent("discardedBytes",       pathGet(data, "Monitor/Communication Stats/Discarded Bytes"))
+    safeNumericEvent("commRestarts",         pathGet(data, "Monitor/Communication Stats/Comm Restarts"))
+    safeNumericEvent("packetsPerSecond",     pathGet(data, "Monitor/Communication Stats/Packets Per Second"))
+    safeStringEvent("averageTransactionTime", pathGet(data, "Monitor/Communication Stats/Average Transaction Time"))
+    safeStringEvent("modbusTransport",       pathGet(data, "Monitor/Communication Stats/Modbus Transport"))
+    safeStringEvent("serialDataRate",        pathGet(data, "Monitor/Communication Stats/Serial Data Rate"))
+    safeStringEvent("packetCount",           pathGet(data, "Monitor/Communication Stats/Packet Count"))
+
+    // ── Monitor/Platform Stats ────────────────────────────────────────
+    safeNumericEvent("cpuUsage",          pathGet(data, "Monitor/Platform Stats/CPU Utilization"),    "%")
+    safeNumericEvent("memoryUtilization", pathGet(data, "Monitor/Platform Stats/Memory Utilization"), "%")
+    safeNumericEvent("diskUtilization",   pathGet(data, "Monitor/Platform Stats/Disk Utilization"),   "%")
+    safeNumericEvent("wlanSignalLevel",   pathGet(data, "Monitor/Platform Stats/WLAN Signal Level"),  "dBm")
+    safeStringEvent("wlanSignalQuality",  pathGet(data, "Monitor/Platform Stats/WLAN Signal Quality"))
+    safeNumericEvent("wlanSignalPercent", pathGet(data, "Monitor/Platform Stats/WLAN Signal Percent"), "%")
+    safeNumericEvent("wlanSignalNoise",   pathGet(data, "Monitor/Platform Stats/WLAN Signal Noise"),  "dBm")
+    safeStringEvent("wlanESSID",          pathGet(data, "Monitor/Platform Stats/WLAN ESSID"))
+    safeStringEvent("piModel",            pathGet(data, "Monitor/Platform Stats/Pi Model"))
+    safeStringEvent("piCpuThrottling",    pathGet(data, "Monitor/Platform Stats/Pi CPU Frequency Throttling"))
+    safeStringEvent("piArmFrequencyCap",  pathGet(data, "Monitor/Platform Stats/Pi ARM Frequency Cap"))
+    safeStringEvent("piUndervoltage",     pathGet(data, "Monitor/Platform Stats/Pi Undervoltage"))
+    safeStringEvent("osName",             pathGet(data, "Monitor/Platform Stats/OS Name"))
+    safeStringEvent("osVersion",          pathGet(data, "Monitor/Platform Stats/OS Version"))
+    safeStringEvent("systemUptime",       pathGet(data, "Monitor/Platform Stats/System Uptime"))
+    safeStringEvent("networkInterfaceUsed", pathGet(data, "Monitor/Platform Stats/Network Interface Used"))
+    safeStringEvent("systemTime",         pathGet(data, "Monitor/Platform Stats/System Time"))
+
+    // ── Monitor/Weather ───────────────────────────────────────────────
+    safeStringEvent("weatherConditions", pathGet(data, "Monitor/Weather/Conditions"))
+    safeNumericEvent("currentTemperature", pathGet(data, "Monitor/Weather/Current Temperature"), "°F")
+
+    // ── Tiles (CPU temp) ──────────────────────────────────────────────
+    safeNumericEvent("cpuTemperature", pathGet(data, "Tiles/CPU Temp/value"), "°C")
 }
 
 // ── Switch capability ─────────────────────────────────────────────────────────
@@ -453,13 +652,11 @@ def off() { stopGenerator()  }
 
 // ── Custom commands ───────────────────────────────────────────────────────────
 
-def startGenerator()  { sendGenmonCommand("start_now") }
-def stopGenerator()   { sendGenmonCommand("stop_now") }
-def autoMode()        { sendGenmonCommand("auto") }
-def manualMode()      { sendGenmonCommand("manual") }
-def muteAlarm()       { sendGenmonCommand("mute") }
-def resetAlarm()      { sendGenmonCommand("faultreset") }
-def startExercise()   { sendGenmonCommand("startexercise") }
+// Commands verified against /api/entities "buttons" definitions
+def startGenerator()  { sendGenmonCommand("setremote=START") }
+def stopGenerator()   { sendGenmonCommand("setremote=STOP") }
+def startTransfer()   { sendGenmonCommand("setremote=STARTTRANSFER") }
+def startExercise()   { sendGenmonCommand("setremote=STARTEXERCISE") }
 def setQuietModeOn()  { sendGenmonCommand("setquiet=on") }
 def setQuietModeOff() { sendGenmonCommand("setquiet=off") }
 
@@ -504,6 +701,21 @@ private Map buildParams(String path) {
 }
 
 // ── Value extraction helpers ──────────────────────────────────────────────────
+
+// Traverse a "/" separated path through nested Maps.
+// e.g. pathGet(data, "Monitor/Communication Stats/CRC Percent Errors")
+private Object pathGet(Object data, String path) {
+    def current = data
+    for (String key : path.tokenize("/")) {
+        if (current instanceof Map) {
+            current = current.get(key)
+        } else {
+            return null
+        }
+        if (current == null) return null
+    }
+    return current
+}
 
 private Object deepGet(Object data, String key) {
     if (data instanceof Map) return data?.get(key)
@@ -556,14 +768,31 @@ private List extractNumeric(Object raw) {
 private void safeNumericEvent(String attr, Object raw, String defaultUnit = null) {
     if (raw == null) return
     def (num, unit) = extractNumeric(raw)
-    if (num != null) {
-        def u = unit ?: defaultUnit
-        if (u) sendEvent(name: attr, value: num, unit: u)
-        else   sendEvent(name: attr, value: num)
-    }
+    if (num == null) return
+    def u        = unit ?: defaultUnit
+    def newVal   = num.toString()
+    def curVal   = device.currentValue(attr)?.toString()
+    if (newVal == curVal) return   // no change — skip sendEvent
+    if (u) sendEvent(name: attr, value: num, unit: u)
+    else   sendEvent(name: attr, value: num)
+}
+
+private void safeStringEvent(String attr, Object raw) {
+    if (raw == null) return
+    def s = extractString(raw)
+    if (s == null) return
+    updateStringIfChanged(attr, s)
+}
+
+private void updateStringIfChanged(String attr, String newVal) {
+    if (newVal == null) return
+    def curVal = device.currentValue(attr)?.toString()
+    if (newVal == curVal) return   // no change — skip sendEvent
+    sendEvent(name: attr, value: newVal)
 }
 
 private void safeEvent(String attr, Object value) {
     if (value == null) return
-    sendEvent(name: attr, value: value.toString())
+    updateStringIfChanged(attr, value.toString())
 }
+
