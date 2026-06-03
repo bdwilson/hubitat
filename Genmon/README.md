@@ -1,4 +1,4 @@
-# Genmon Generator Monitor — Hubitat Integration (
+# Genmon Generator Monitor — Hubitat Integration
 
 A native Hubitat driver for monitoring and controlling Generac generators via [genmon](https://github.com/jgyates/genmon) - based on [genmon-ha](https://www.github.com/jgyates/genmon-ha)
 
@@ -37,10 +37,18 @@ This integration communicates with the **genhalink** addon running on your genmo
 
 ### Step 2: Add the integration in Hubitat
 
+## Option 1 - Manual
+
 1. In another tab, Go into Hubitat -> Drivers Code -> Import URL: https://raw.githubusercontent.com/bdwilson/hubitat/master/Genmon/genmon-driver.groovy -> Save 
 2. Add Device -> Virtual -> Genmon Generator Monitor -> Give it a Name.
 3. Go into your new device -> Preferences -> Enter IP address, leave default port, API Key from other tab, leave HTTPS enabled, I'd suggest websocket minimum threshold to 2m to minimize # of events in Hubitat. 
-4. Initalize. 
+4. Initalize.
+
+## Option 2 - HPM
+1. Open Hubitat Package Manager and Search for Genmon -> Install
+2. Add Device -> Virtual -> Genmon Generator Monitor -> Give it a Name.
+3. Go into your new device -> Preferences -> Enter IP address, leave default port, API Key from other tab, leave HTTPS enabled, I'd suggest websocket minimum threshold to 2m to minimize # of events in Hubitat. 
+4. Initalize.
 
 ## Options
 
@@ -123,7 +131,7 @@ tail -f /var/log/genhalink.log
 ```
 
 ### Check on the Hubitat community
-- You can try the (Hubitat Community)[https://community.hubitat.com/t/genmon-generator-monitor/164362] if you have issues. This is not supported by the Genmon authort. 
+- You can try the [Hubitat Community](https://community.hubitat.com/t/genmon-generator-monitor/164362) if you have issues. This is not supported by the Genmon authort. 
 
 ## License
 
