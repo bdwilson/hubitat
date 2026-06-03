@@ -119,7 +119,7 @@
       "tags": [
         "Monitoring",
         "Safety & Security",
-	"Appliances",
+	"Appliances"
       ],
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Genmon/packageManifest.json",
       "description": "Control your generator via Genmon using Hubitat"
