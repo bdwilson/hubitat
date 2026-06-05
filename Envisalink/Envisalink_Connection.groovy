@@ -127,7 +127,7 @@ def parse(String msg) {
     switch (code) {
         case "%00":
             // Virtual Keypad Update — drives all zone and partition state
-            if (parts.length >= 7) handleKeypadUpdate(parts)
+            if (parts.length >= 6) handleKeypadUpdate(parts)
             break
         case "%FF":
             // Zone Timer Dump — backup mechanism for zone state
@@ -183,22 +183,28 @@ private handleKeypadUpdate(String[] parts) {
             }
         }
     } else if (dscCode == "" && zoneNum > 0) {
-        // A zone is being reported open
+        // A zone is being reported open/faulted
         def key = "${zoneNum}"
         if (state.zones[key] != "open") {
             state.zoneTimers[key] = 0
             state.zones[key] = "open"
             updateZoneChild(zoneNum, "open")
         } else {
-            // Zone already open; increment tick and sweep orphans after 2 ticks
+            // Zone already open; increment its tick counter
             state.zoneTimers[key] = (state.zoneTimers[key] ?: 0) + 1
-            if (state.zoneTimers[key] >= 2) {
+            if (state.zoneTimers[key] == 2) {
+                // Reset so the sweep can fire again on subsequent cycles
                 state.zoneTimers[key] = 0
-                // Close any open zone that hasn't been the active zone recently
+                // Increment timers for ALL other open zones; close those that have
+                // not been reported for 2+ sweeps (i.e. they stopped appearing in %00)
                 new HashMap(state.zones).each { zn, zs ->
-                    if (zs == "open" && zn != key && (state.zoneTimers[zn] ?: 0) >= 2) {
-                        state.zones[zn] = "closed"
-                        updateZoneChild(zn as int, "closed")
+                    if (zs == "open" && zn != key) {
+                        state.zoneTimers[zn] = (state.zoneTimers[zn] ?: 0) + 1
+                        if (state.zoneTimers[zn] >= 2) {
+                            state.zones[zn] = "closed"
+                            state.zoneTimers.remove(zn)
+                            updateZoneChild(zn as int, "closed")
+                        }
                     }
                 }
             }

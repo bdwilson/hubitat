@@ -25,7 +25,6 @@ metadata {
         command "trigger1"
         command "trigger2"
         command "bypass"
-        command "bypass", [[name: "zones*", type: "STRING", description: "Comma-separated zone numbers"]]
         command "partition", [
             [name: "state*", type: "STRING"],
             [name: "alpha*", type: "STRING"]
@@ -64,10 +63,12 @@ def chime()      { parent.chime() }
 def trigger1()   { parent.trigger1() }
 def trigger2()   { parent.trigger2() }
 
-def bypass(String zones) {
-    parent.bypass(zones)
-}
-
+// Called from the device UI button — uses the bypassZones preference
 def bypass() {
     if (settings.bypassZones) parent.bypass(settings.bypassZones)
+}
+
+// Called programmatically (e.g., from Rule Machine) with explicit zones
+def bypass(String zones) {
+    parent.bypass(zones)
 }

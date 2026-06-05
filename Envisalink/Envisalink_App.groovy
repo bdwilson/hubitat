@@ -91,11 +91,11 @@ def updated() {
     def connDev = getOrCreateConnectionDevice()
 
     // Push settings to the connection device
-    connDev.updateSetting("evlAddress",   settings.evlAddress)
-    connDev.updateSetting("evlPort",      [value: settings.evlPort,     type: "number"])
-    connDev.updateSetting("evlPassword",  [value: settings.evlPassword, type: "password"])
-    connDev.updateSetting("securityCode", [value: settings.securityCode, type: "password"])
-    connDev.updateSetting("logEnable",    settings.logEnable ?: false)
+    connDev.updateSetting("evlAddress",   [value: settings.evlAddress,              type: "text"])
+    connDev.updateSetting("evlPort",      [value: settings.evlPort ?: 4025,         type: "number"])
+    connDev.updateSetting("evlPassword",  [value: settings.evlPassword,             type: "password"])
+    connDev.updateSetting("securityCode", [value: settings.securityCode,            type: "password"])
+    connDev.updateSetting("logEnable",    [value: settings.logEnable ?: false,      type: "bool"])
 
     syncZones(connDev)
     connDev.initialize()
@@ -112,15 +112,18 @@ private syncZones(connDev) {
     def zones = []
     for (int i = 1; i <= num; i++) {
         def name = settings["zone${i}Name"]
-        def num2 = settings["zone${i}Num"]
+        def zoneNum = settings["zone${i}Num"]
         def type = settings["zone${i}Type"]
-        if (name && num2 && type) zones << [num: num2 as int, name: name, type: type]
+        if (name && zoneNum && type) zones << [num: zoneNum as int, name: name, type: type]
     }
 
-    ifDebug("Syncing ${zones.size()} zones")
-    connDev.removeAllChildren()
+    ifDebug("Syncing ${zones.size()} zone(s) — adding missing, preserving existing")
+    // Ensure the partition device exists (addPartition is idempotent)
     connDev.addPartition()
+    // Add any zones that don't exist yet (addZone is idempotent)
     zones.each { z -> connDev.addZone(z.num, z.name, z.type) }
+    // Note: zones removed from config are NOT auto-deleted; delete them manually
+    // in the Hubitat devices page if no longer needed.
 }
 
 private int configuredZoneCount() {
