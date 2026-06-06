@@ -108,6 +108,10 @@ def parse(String msg) {
             log.info "EnvisaLink authenticated"
             state.loginState = "authenticated"
             sendEvent(name: "connectionStatus", value: "connected")
+            // Cancel any pending connect() that was scheduled by the telnetStatus callback
+            // triggered by telnetClose() inside connect(). Without this, connect() creates
+            // a self-perpetuating reconnect loop every 10 seconds.
+            unschedule("connect")
             runEvery5Minutes("healthCheck")
             return
         case "FAILED":
@@ -120,6 +124,10 @@ def parse(String msg) {
     }
 
     if (!msg.startsWith("%") && !msg.startsWith("^")) return
+
+    // Strip the trailing checksum character that the EnvisaLink appends to every TPI message
+    // (e.g. the '$' visible at the end of %00 alpha text in debug logs)
+    if (msg.length() > 1) msg = msg[0..-2]
 
     def parts = msg.split(",")
     def code  = parts[0]
