@@ -90,6 +90,7 @@ def uninstalled() {
 def updated() {
     unsubscribe()
     state.lastHSMStatus = null
+    state.lastHSMCmdAt  = null
 
     def connDev = getOrCreateConnectionDevice()
 
@@ -155,12 +156,13 @@ private getOrCreateConnectionDevice() {
 
 def hsmHandler(evt) {
     if (!settings.enableHSM) return
-    // Guard: skip duplicate events and the disarm→disarmed round-trip
+    // state.lastHSMStatus stores STATUS values (armedHome/armedAway/disarmed),
+    // so this guard correctly suppresses the HSM response to our own hsmSetArm events
     if (state.lastHSMStatus == evt.value) return
-    if (state.lastHSMStatus == "disarm" && evt.value == "disarmed") return
 
     ifDebug("HSM event: ${evt.value} (was: ${state.lastHSMStatus})")
-    state.lastHSMStatus = evt.value
+    state.lastHSMStatus = evt.value   // Store STATUS form
+    state.lastHSMCmdAt  = now()       // Mark that we are about to send a panel command
 
     def connDev = getOrCreateConnectionDevice()
     switch (evt.value) {
@@ -174,19 +176,33 @@ def hsmHandler(evt) {
 // Called by the connection device when the partition state changes
 def updatePartitionState(String partState, String alpha) {
     if (!settings.enableHSM) return
-    // Suppress feedback during exit delay
-    if (partState == "arming" || (alpha?.toLowerCase()?.contains("may exit"))) return
+    if (partState == "arming" || alpha?.toLowerCase()?.contains("may exit")) return
 
-    def newHSM = null
-    if (partState in ["armedstay", "armedinstant"])  newHSM = "armHome"
-    else if (partState in ["armedaway", "armedmax"]) newHSM = "armAway"
-    else if (partState == "ready")                   newHSM = "disarm"
+    // Map panel state → HSM status form (armedHome/armedAway/disarmed)
+    def targetStatus = null
+    if (partState in ["armedstay", "armedinstant"])  targetStatus = "armedHome"
+    else if (partState in ["armedaway", "armedmax"]) targetStatus = "armedAway"
+    else if (partState == "ready")                   targetStatus = "disarmed"
+    else return  // notready/alarm/alarmcleared — no HSM action
 
-    if (newHSM && newHSM != state.lastHSMStatus) {
-        ifDebug("Sending hsmSetArm: ${newHSM} (panel: ${partState})")
-        state.lastHSMStatus = newHSM
-        sendLocationEvent(name: "hsmSetArm", value: newHSM)
+    if (targetStatus == state.lastHSMStatus) return  // Already in sync
+
+    // Debounce: after HSM sends us a command (and we forward it to the panel), the
+    // panel state lags for up to ~2 seconds. Ignore stale panel updates during that
+    // window to prevent the re-arm feedback loop.
+    if (state.lastHSMCmdAt) {
+        def elapsed = now() - (state.lastHSMCmdAt as long)
+        if (elapsed < 3000) {
+            ifDebug("Skipping hsmSetArm — cmd sent ${elapsed}ms ago, waiting for panel to settle")
+            return
+        }
     }
+
+    def hsmCmd = [armedHome: "armHome", armedAway: "armAway", disarmed: "disarm"][targetStatus]
+    ifDebug("Sending hsmSetArm: ${hsmCmd} (panel: ${partState})")
+    state.lastHSMStatus = targetStatus
+    state.lastHSMCmdAt  = now()
+    sendLocationEvent(name: "hsmSetArm", value: hsmCmd)
 }
 
 private ifDebug(String msg) {
