@@ -305,12 +305,6 @@ def armInstant() {
 
 def disarm() {
     sendCommand("${settings.securityCode}1")
-    // Send twice for Vista panel reliability
-    runIn(1, "disarmAgain")
-}
-
-def disarmAgain() {
-    sendCommand("${settings.securityCode}1")
 }
 
 def chime() {
