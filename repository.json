@@ -47,6 +47,15 @@
       "description": "Integration with Honeywell Vista/Envisalink Alarm Systems (requires external node-proxy server)"
     },
     {
+      "name": "Honeywell Vista Envisalink TPI Alarm Integration ",
+      "category": "Security",
+      "tags": [
+        "Safety & Security"
+      ],
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Envisalink/packageManifest.json",
+      "description": "Integration with Honeywell Vista/Envisalink Alarm Systems (Native)"
+    },
+    {
       "name": "Neosmart Blinds",
       "category": "Control",
       "tags": [
