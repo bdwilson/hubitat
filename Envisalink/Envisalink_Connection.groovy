@@ -15,10 +15,13 @@
  *  Unless required by applicable law or agreed to in writing, software distributed under the
  *  License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
  *  either express or implied.
+ *
+ *  Version: 2.0.1
  */
 
 metadata {
-    definition(name: "Envisalink Connection", namespace: "bdwilson", author: "bdwilson") {
+    definition(name: "Envisalink Connection", namespace: "bdwilson", author: "bdwilson",
+               importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Envisalink/Envisalink_Connection.groovy") {
         capability "Initialize"
 
         command "connect"

@@ -12,6 +12,8 @@
  *  except in compliance with the License. You may obtain a copy of the License at:
  *
  *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Version: 2.0.1
  */
 
 definition(
@@ -22,7 +24,8 @@ definition(
     category: "My Apps",
     iconUrl: "",
     iconX2Url: "",
-    singleInstance: true
+    singleInstance: true,
+    importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Envisalink/Envisalink_App.groovy"
 )
 
 preferences {

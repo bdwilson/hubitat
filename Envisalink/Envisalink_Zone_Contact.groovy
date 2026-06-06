@@ -7,10 +7,13 @@
  *  except in compliance with the License. You may obtain a copy of the License at:
  *
  *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Version: 2.0.1
  */
 
 metadata {
-    definition(name: "Envisalink Zone Contact", namespace: "bdwilson", author: "bdwilson") {
+    definition(name: "Envisalink Zone Contact", namespace: "bdwilson", author: "bdwilson",
+               importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Envisalink/Envisalink_Zone_Contact.groovy") {
         capability "Contact Sensor"
         capability "Sensor"
 
