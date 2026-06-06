@@ -147,10 +147,14 @@ def parse(String msg) {
         case "^00":
             ifDebug("Poll response — connection alive")
             break
-        // %01 zone state change and %02 partition state change are intentionally
-        // not processed; all state is derived from %00 as in the STNP plugin
+        case "%01":
+        case "%02":
+        case "%03":
+            // Zone state change, partition state change, and CID events are intentionally
+            // not processed — all state is derived from %00, matching the STNP plugin behaviour
+            break
         default:
-            ifDebug("Unhandled TPI code: ${code}")
+            ifDebug("Unrecognised TPI code: ${code}")
     }
 }
 
