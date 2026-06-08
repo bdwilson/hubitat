@@ -182,8 +182,13 @@ private handleKeypadUpdate(String[] parts) {
     def partChild = getChildDevice("${device.id}_P1")
     if (partChild) partChild.partition(partState, alpha)
 
-    // Notify parent app for HSM sync
-    parent?.updatePartitionState(partState, alpha)
+    // Notify parent app for HSM sync — suppressed briefly after sending a command
+    // to avoid the re-arm feedback loop caused by panel state lag after disarm/arm
+    if (!state.cmdSentAt || (now() - (state.cmdSentAt as long)) >= 3000) {
+        parent?.updatePartitionState(partState, alpha)
+    } else {
+        ifDebug("Suppressing partition update — cmd sent ${now() - (state.cmdSentAt as long)}ms ago")
+    }
 
     // Zone state machine
     def zoneNum = safeInt(userOrZone, 0)
@@ -299,18 +304,22 @@ private sendCommand(String cmd) {
 }
 
 def armAway() {
+    state.cmdSentAt = now()
     sendCommand("${settings.securityCode}2")
 }
 
 def armStay() {
+    state.cmdSentAt = now()
     sendCommand("${settings.securityCode}3")
 }
 
 def armInstant() {
+    state.cmdSentAt = now()
     sendCommand("${settings.securityCode}7")
 }
 
 def disarm() {
+    state.cmdSentAt = now()
     sendCommand("${settings.securityCode}1")
 }
 
