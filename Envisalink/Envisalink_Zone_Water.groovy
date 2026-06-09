@@ -19,6 +19,10 @@ metadata {
 
         command "zone", [[name: "state*", type: "STRING"]]
     }
+
+    preferences {
+        input name: "txtEnable", type: "bool", title: "Enable description text logging", defaultValue: true
+    }
 }
 
 def installed() {
@@ -27,8 +31,9 @@ def installed() {
 
 // Called by parent connection driver with state: "closed", "open", or "alarm"
 def zone(String state) {
-    def eventMap = [closed: "dry", open: "wet",   alarm: "wet"]
+    def eventMap = [closed: "dry", open: "wet", alarm: "wet"]
     def descMap  = [closed: "No Water Detected", open: "Water Detected", alarm: "Alarm Triggered"]
-    sendEvent(name: "water", value: eventMap[state] ?: state,
-              descriptionText: descMap[state] ?: state)
+    def desc = descMap[state] ?: state
+    sendEvent(name: "water", value: eventMap[state] ?: state, descriptionText: "${device.displayName}: ${desc}")
+    if (txtEnable) log.info "${device.displayName}: ${desc}"
 }

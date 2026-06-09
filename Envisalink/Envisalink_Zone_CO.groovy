@@ -19,6 +19,10 @@ metadata {
 
         command "zone", [[name: "state*", type: "STRING"]]
     }
+
+    preferences {
+        input name: "txtEnable", type: "bool", title: "Enable description text logging", defaultValue: true
+    }
 }
 
 def installed() {
@@ -29,6 +33,7 @@ def installed() {
 def zone(String state) {
     def eventMap = [closed: "clear", open: "detected", alarm: "detected", tested: "tested"]
     def descMap  = [closed: "Was Cleared", open: "CO Detected", alarm: "CO Detected", tested: "Was Tested"]
-    sendEvent(name: "carbonMonoxide", value: eventMap[state] ?: state,
-              descriptionText: descMap[state] ?: state)
+    def desc = descMap[state] ?: state
+    sendEvent(name: "carbonMonoxide", value: eventMap[state] ?: state, descriptionText: "${device.displayName}: ${desc}")
+    if (txtEnable) log.info "${device.displayName}: ${desc}"
 }
