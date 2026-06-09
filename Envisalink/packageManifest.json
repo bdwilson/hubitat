@@ -1,11 +1,11 @@
 {
   "packageName": "Envisalink Security (Native TPI)",
   "author": "Brian Wilson",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "minimumHEVersion": "2.2.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Envisalink",
   "communityLink": "https://community.hubitat.com/t/release-envisalink-app-driver-for-vista-ademco-honeywell-alarm-via-smartthings-nodeproxy/9726",
-  "releaseNotes": "2.0.2: Fix HSM re-arm feedback loop after disarm via driver-level debounce. 2.0.1: Initial release — native EnvisaLink TPI integration, no SmartThings Node Proxy required.",
+  "releaseNotes": "2.0.3: Add description text logging preference to all zone drivers. 2.0.2: Fix HSM re-arm feedback loop after disarm via driver-level debounce. 2.0.1: Initial release — native EnvisaLink TPI integration, no SmartThings Node Proxy required.",
   "dateReleased": "2026-06-09",
   "drivers": [
     {
@@ -14,7 +14,7 @@
       "namespace": "bdwilson",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Envisalink/Envisalink_Connection.groovy",
       "required": true,
-      "version": "2.0.2"
+      "version": "2.0.3"
     },
     {
       "id": "a1b2c3d4-0001-0001-0001-000000000002",
@@ -22,7 +22,7 @@
       "namespace": "bdwilson",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Envisalink/Envisalink_Partition.groovy",
       "required": true,
-      "version": "2.0.2"
+      "version": "2.0.3"
     },
     {
       "id": "a1b2c3d4-0001-0001-0001-000000000003",
@@ -30,7 +30,7 @@
       "namespace": "bdwilson",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Envisalink/Envisalink_Zone_Contact.groovy",
       "required": true,
-      "version": "2.0.2"
+      "version": "2.0.3"
     },
     {
       "id": "a1b2c3d4-0001-0001-0001-000000000004",
@@ -38,7 +38,7 @@
       "namespace": "bdwilson",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Envisalink/Envisalink_Zone_Motion.groovy",
       "required": true,
-      "version": "2.0.2"
+      "version": "2.0.3"
     },
     {
       "id": "a1b2c3d4-0001-0001-0001-000000000005",
@@ -46,7 +46,7 @@
       "namespace": "bdwilson",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Envisalink/Envisalink_Zone_Smoke.groovy",
       "required": true,
-      "version": "2.0.2"
+      "version": "2.0.3"
     },
     {
       "id": "a1b2c3d4-0001-0001-0001-000000000006",
@@ -54,7 +54,7 @@
       "namespace": "bdwilson",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Envisalink/Envisalink_Zone_Water.groovy",
       "required": true,
-      "version": "2.0.2"
+      "version": "2.0.3"
     },
     {
       "id": "a1b2c3d4-0001-0001-0001-000000000007",
@@ -62,7 +62,7 @@
       "namespace": "bdwilson",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Envisalink/Envisalink_Zone_CO.groovy",
       "required": true,
-      "version": "2.0.2"
+      "version": "2.0.3"
     }
   ],
   "apps": [
@@ -73,7 +73,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Envisalink/Envisalink_App.groovy",
       "required": true,
       "oauth": false,
-      "version": "2.0.2"
+      "version": "2.0.3"
     }
   ]
 }
