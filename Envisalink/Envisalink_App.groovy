@@ -13,7 +13,7 @@
  *
  *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Version: 2.0.1
+ *  Version: 2.0.2
  */
 
 definition(
@@ -155,9 +155,9 @@ private getOrCreateConnectionDevice() {
 
 def hsmHandler(evt) {
     if (!settings.enableHSM) return
-    // Guard: skip duplicate events and the disarm→disarmed round-trip
+    // state.lastHSMStatus stores STATUS values (armedHome/armedAway/disarmed),
+    // so this guard correctly suppresses the HSM response to our own hsmSetArm events
     if (state.lastHSMStatus == evt.value) return
-    if (state.lastHSMStatus == "disarm" && evt.value == "disarmed") return
 
     ifDebug("HSM event: ${evt.value} (was: ${state.lastHSMStatus})")
     state.lastHSMStatus = evt.value
@@ -174,19 +174,21 @@ def hsmHandler(evt) {
 // Called by the connection device when the partition state changes
 def updatePartitionState(String partState, String alpha) {
     if (!settings.enableHSM) return
-    // Suppress feedback during exit delay
-    if (partState == "arming" || (alpha?.toLowerCase()?.contains("may exit"))) return
+    if (partState == "arming" || alpha?.toLowerCase()?.contains("may exit")) return
 
-    def newHSM = null
-    if (partState in ["armedstay", "armedinstant"])  newHSM = "armHome"
-    else if (partState in ["armedaway", "armedmax"]) newHSM = "armAway"
-    else if (partState == "ready")                   newHSM = "disarm"
+    // Map panel state → HSM status form (armedHome/armedAway/disarmed)
+    def targetStatus = null
+    if (partState in ["armedstay", "armedinstant"])  targetStatus = "armedHome"
+    else if (partState in ["armedaway", "armedmax"]) targetStatus = "armedAway"
+    else if (partState == "ready")                   targetStatus = "disarmed"
+    else return  // notready/alarm/alarmcleared — no HSM action
 
-    if (newHSM && newHSM != state.lastHSMStatus) {
-        ifDebug("Sending hsmSetArm: ${newHSM} (panel: ${partState})")
-        state.lastHSMStatus = newHSM
-        sendLocationEvent(name: "hsmSetArm", value: newHSM)
-    }
+    if (targetStatus == state.lastHSMStatus) return  // Already in sync
+
+    def hsmCmd = [armedHome: "armHome", armedAway: "armAway", disarmed: "disarm"][targetStatus]
+    ifDebug("Sending hsmSetArm: ${hsmCmd} (panel: ${partState})")
+    state.lastHSMStatus = targetStatus
+    sendLocationEvent(name: "hsmSetArm", value: hsmCmd)
 }
 
 private ifDebug(String msg) {
