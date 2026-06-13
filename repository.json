@@ -132,6 +132,17 @@
       ],
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Genmon/packageManifest.json",
       "description": "Control your generator via Genmon using Hubitat"
+    },
+    {
+      "name": "Volvo Connect",
+      "category": "Integrations",
+      "tags": [
+        "Automobiles",
+        "Safety & Security",
+        "Presence & Location"
+      ],
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Volvo/packageManifest.json",
+      "description": "Native Hubitat integration for Volvo vehicles — lock/unlock, battery/fuel level, electric range, charging status, and GPS location via the Volvo Connected Vehicle API."
     }
   ]
 }

@@ -1,0 +1,31 @@
+{
+  "packageName": "Volvo Connect",
+  "author": "Brian Wilson",
+  "minimumHEVersion": "0.0",
+  "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Volvo",
+  "communityLink": "",
+  "dateReleased": "2026-06-13",
+  "releaseNotes": "Initial release — lock/unlock, battery/fuel level, electric and fuel range, charging status, GPS location via Volvo Connected Vehicle API",
+  "version": "1.0.0",
+  "drivers": [
+    {
+      "id": "a3f7c291-5e84-4b12-9d63-7c08e1f45a20",
+      "name": "Volvo Vehicle Driver",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Volvo/Volvo-Driver.groovy",
+      "required": true,
+      "version": "1.0.0"
+    }
+  ],
+  "apps": [
+    {
+      "id": "b8d92e47-1a63-4f85-bc71-3e50d7a82c94",
+      "name": "Volvo Connect",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Volvo/Volvo-Connect-App.groovy",
+      "required": true,
+      "oauth": true,
+      "version": "1.0.0"
+    }
+  ]
+}
