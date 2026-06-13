@@ -68,7 +68,15 @@ def mainPage() {
             input "clientSecret",  "password", title: "Client Secret",   required: false, submitOnChange: true
         }
 
-        section("<b>Step 3</b>") {
+        section("<b>Step 3 — Select which APIs you subscribed to</b>") {
+            paragraph "In the Volvo developer portal, your app must subscribe to each API individually. " +
+                      "Check only the ones you have subscribed to — requesting scopes for an unsubscribed API will fail authorization.\n\n" +
+                      "<b>Connected Vehicle API</b> is required and always included. It covers lock/unlock, fuel level, and door status."
+            input "hasEnergyApi",   "bool", title: "I subscribed to the Energy API (EV battery level, charging status, electric range)",    defaultValue: false, submitOnChange: true
+            input "hasLocationApi", "bool", title: "I subscribed to the Location API (GPS latitude/longitude)",                             defaultValue: false, submitOnChange: true
+        }
+
+        section("<b>Step 4</b>") {
             paragraph "Click Next to authorize with Volvo and select your vehicle."
         }
     }
@@ -154,8 +162,8 @@ def appButtonHandler(btn) {
 // =================== OAuth2 / PKCE ===================
 
 private void buildPkce() {
-    // Only regenerate if we don't have one pending
-    if (!state.codeVerifier) {
+    // Regenerate on every page view so the challenge always matches the current link
+    if (true) {
         def chars = (('A'..'Z') + ('a'..'z') + ('0'..'9') + ['-', '_', '.', '~'])
         def sb = new StringBuilder(64)
         64.times { sb.append(chars[(int)(Math.random() * chars.size())]) }
@@ -171,19 +179,27 @@ private String codeChallenge(String verifier) {
 
 private String buildAuthUrl(String callbackUrl) {
     def challenge = codeChallenge(state.codeVerifier)
-    def scopes = [
+
+    // Core: Connected Vehicle API scopes (always required)
+    def scopeList = [
         "openid",
         "conve:vehicle_relation",
         "conve:fuel_status",
         "conve:lock_status",
         "conve:lock",
         "conve:unlock",
-        "conve:doors_status",
-        "energy:battery_charge_level",
-        "energy:electric_range",
-        "energy:recharge_status",
-        "location:read"
-    ].join("%20")
+        "conve:command_accessibility",
+        "conve:doors_status"
+    ]
+    // Optional: Energy API — only if user has subscribed
+    if (settings.hasEnergyApi) {
+        scopeList += ["energy:battery_charge_level", "energy:electric_range", "energy:recharge_status"]
+    }
+    // Optional: Location API — only if user has subscribed
+    if (settings.hasLocationApi) {
+        scopeList += ["location:read"]
+    }
+    def scopes = scopeList.join("%20")
 
     return "https://volvoid.eu.volvocars.com/as/authorization.oauth2" +
         "?response_type=code" +
