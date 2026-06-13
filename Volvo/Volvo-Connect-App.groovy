@@ -164,12 +164,19 @@ def appButtonHandler(btn) {
 private void buildPkce() {
     // Regenerate on every page view so the challenge always matches the current link
     if (true) {
-        def chars = (('A'..'Z') + ('a'..'z') + ('0'..'9') + ['-', '_', '.', '~'])
-        def sb = new StringBuilder(64)
-        64.times { sb.append(chars[(int)(Math.random() * chars.size())]) }
-        state.codeVerifier = sb.toString()
-        ifDebug("Generated new PKCE code_verifier")
+        state.codeVerifier = randomToken(64)
+        // CSRF guard: a one-time value echoed back by Volvo and verified in the callback.
+        // Prevents an attacker from replaying our callback URL with their own auth code.
+        state.oauthState = randomToken(32)
+        ifDebug("Generated new PKCE code_verifier and oauth state")
     }
+}
+
+private String randomToken(int len) {
+    def chars = (('A'..'Z') + ('a'..'z') + ('0'..'9') + ['-', '_', '.', '~'])
+    def sb = new StringBuilder(len)
+    len.times { sb.append(chars[(int)(Math.random() * chars.size())]) }
+    return sb.toString()
 }
 
 private String codeChallenge(String verifier) {
@@ -206,6 +213,7 @@ private String buildAuthUrl(String callbackUrl) {
         "&client_id=${java.net.URLEncoder.encode(settings.clientId, 'UTF-8')}" +
         "&redirect_uri=${java.net.URLEncoder.encode(callbackUrl, 'UTF-8')}" +
         "&scope=${scopes}" +
+        "&state=${java.net.URLEncoder.encode(state.oauthState, 'UTF-8')}" +
         "&code_challenge=${challenge}" +
         "&code_challenge_method=S256"
 }
@@ -220,6 +228,13 @@ def oauthCallback() {
         log.error "Volvo OAuth error: ${state.authError}"
         return render(contentType: "text/html", data: "<h2>Authorization failed: ${state.authError}</h2><p>Return to the Hubitat app and try again.</p>")
     }
+    // CSRF guard: reject callbacks whose state doesn't match the one we issued.
+    if (!params.state || params.state != state.oauthState) {
+        state.authError = "State mismatch — ignoring unsolicited callback"
+        log.warn "Volvo OAuth: state mismatch (got '${params.state}'), rejecting callback"
+        return render(contentType: "text/html", data: "<h2>Authorization rejected: state mismatch.</h2><p>Start the authorization again from the Hubitat app.</p>")
+    }
+    state.oauthState = null  // single-use
     if (!code) {
         state.authError = "No code received in callback"
         return render(contentType: "text/html", data: "<h2>Authorization failed: no code received.</h2>")
