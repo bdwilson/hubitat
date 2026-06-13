@@ -50,24 +50,40 @@ mappings {
 def mainPage() {
     if (!state.accessToken) createAccessToken()
 
+    def callbackUrl = getCallbackUrl()
+
     return dynamicPage(name: "mainPage", install: false, uninstall: true, nextPage: "authPage") {
-        section("<b>Volvo Developer Credentials</b>") {
-            paragraph "Register an application at <a href='https://developer.volvocars.com' target='_blank'>developer.volvocars.com</a> and enter your credentials below."
+        section("<b>Step 1 — Create your Volvo app with this Redirect URI</b>") {
+            paragraph "When you create an application at <a href='https://developer.volvocars.com' target='_blank'>developer.volvocars.com</a>, " +
+                      "it will ask for a <b>Redirect URI</b>. Use this exact URL:"
+            paragraph "<code>${callbackUrl}</code>"
+            paragraph "<i>Volvo requires an HTTPS redirect URI — this is your hub's cloud callback URL. " +
+                      "If your hub is not registered with the Hubitat cloud, this will not work.</i>"
+        }
+
+        section("<b>Step 2 — Enter your Volvo Developer Credentials</b>") {
+            paragraph "After creating the app, copy its credentials here."
             input "vccApiKey",     "text",     title: "VCC API Key",     required: true,  submitOnChange: true
             input "clientId",      "text",     title: "Client ID",       required: true,  submitOnChange: true
             input "clientSecret",  "password", title: "Client Secret",   required: false, submitOnChange: true
         }
 
-        section("<b>Next Step</b>") {
+        section("<b>Step 3</b>") {
             paragraph "Click Next to authorize with Volvo and select your vehicle."
         }
     }
 }
 
+// Volvo requires an HTTPS redirect URI, so we use the hub's cloud callback URL.
+private String getCallbackUrl() {
+    if (!state.accessToken) createAccessToken()
+    return "${getFullApiServerUrl()}/callback?access_token=${state.accessToken}"
+}
+
 def authPage() {
     if (!state.accessToken) createAccessToken()
 
-    def callbackUrl = "${getFullLocalApiServerUrl()}/callback?access_token=${state.accessToken}"
+    def callbackUrl = getCallbackUrl()
     def isAuthorized = state.volvoRefreshToken != null
 
     return dynamicPage(name: "authPage", install: isAuthorized, uninstall: true) {
@@ -193,7 +209,7 @@ def oauthCallback() {
         return render(contentType: "text/html", data: "<h2>Authorization failed: no code received.</h2>")
     }
 
-    def callbackUrl = "${getFullLocalApiServerUrl()}/callback?access_token=${state.accessToken}"
+    def callbackUrl = getCallbackUrl()
     def ok = exchangeCode(code, callbackUrl)
     if (ok) {
         discoverVehicles()
