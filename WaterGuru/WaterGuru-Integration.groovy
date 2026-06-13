@@ -1,7 +1,7 @@
 /**
  * WaterGuru Integration App
  *
- * 2.1.0 - Brian Wilson / bubba@bubba.org
+ * 2.2.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration — no external Python/Flask server required.
  * Authenticates directly with AWS Cognito (SRP flow) and calls the
@@ -11,6 +11,9 @@
  *  - Discover available WaterGuru devices from the app UI
  *  - Select which device(s) to create child devices for
  *  - Configurable poll interval (1–12 hours)
+ *  - Change-driven notifications (2.2.0): chemistry range alerts on new
+ *    samples, status transitions, low cassette/battery thresholds, quiet
+ *    hours, recovery alerts. Polling alone never triggers a notification.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at:
@@ -89,6 +92,29 @@ def mainPage() {
                     options: ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
             }
 
+            section("<b>Notifications</b>") {
+                paragraph "Notifications are change-driven: a poll by itself never sends anything. " +
+                          "Chemistry is only evaluated when a <i>new sample</i> arrives (the measurement timestamp changes). " +
+                          "Temperature and flow are included in messages as context but never trigger one."
+                input "notifyDevices", "capability.notification",
+                    title: "Send notifications to", multiple: true, required: false, submitOnChange: true
+                if (settings.notifyDevices) {
+                    input "btnTestNotify", "button", title: "Send Test Notification", width: 4
+                    input "phMin", "decimal", title: "pH low alert threshold",            defaultValue: 7.2, required: false, width: 6
+                    input "phMax", "decimal", title: "pH high alert threshold",           defaultValue: 7.8, required: false, width: 6
+                    input "clMin", "decimal", title: "Free chlorine low alert (ppm)",     defaultValue: 1.0, required: false, width: 6
+                    input "clMax", "decimal", title: "Free chlorine high alert (ppm)",    defaultValue: 3.0, required: false, width: 6
+                    input "checksLeftThreshold", "number", title: "Cassette checks-left warning at or below", defaultValue: 10, required: false, width: 6
+                    input "batteryThreshold",    "number", title: "Battery % warning at or below",            defaultValue: 20, required: false, width: 6
+                    input "notifyOnNewSample", "bool", title: "Send a digest for every new sample (pH, chlorine, temp, flow)", defaultValue: false, required: false
+                    input "notifyRecovery",    "bool", title: "Also notify when conditions return to normal",                 defaultValue: false, required: false
+                    input "quietStart", "time", title: "Quiet hours start (optional)", required: false, width: 6, submitOnChange: true
+                    input "quietEnd",   "time", title: "Quiet hours end",              required: settings.quietStart != null, width: 6
+                    paragraph "<i>Alerts during quiet hours are held and delivered when quiet hours end.</i>"
+                    input "notificationsPaused", "bool", title: "Pause all notifications", defaultValue: false, required: false
+                }
+            }
+
             section("<b>Options</b>") {
                 input "isDebug",     "bool", title: "Enable Debug Logging",                                       required: false, defaultValue: false, submitOnChange: true
                 input "forceUpdate", "bool", title: "Force all state variables to be updated even if unchanged.", required: false, defaultValue: false, submitOnChange: true
@@ -101,6 +127,9 @@ def appButtonHandler(btn) {
     if (btn == "btnDiscover") {
         state.discoveryError = null
         discoverDevicesForUI()
+    } else if (btn == "btnTestNotify") {
+        // Bypasses pause and quiet hours so routing can always be verified
+        settings.notifyDevices?.each { it.deviceNotification("WaterGuru test notification from Hubitat") }
     }
 }
 
@@ -141,6 +170,7 @@ def updated() {
         if (!selected.contains(child.deviceNetworkId)) {
             log.debug "WaterGuru: removing deselected device ${child.displayName} (${child.deviceNetworkId})"
             deleteChildDevice(child.deviceNetworkId)
+            if (state.notifyState) state.notifyState.remove(child.deviceNetworkId)
         }
     }
 
@@ -633,9 +663,206 @@ private void processWaterGuruData(def response) {
             d.sendEvent(name: "pH", value: pH, isStateChange: true)
         if (d.currentValue("rate") != rate || force)
             d.sendEvent(name: "rate", unit: "GPM", value: rate, isStateChange: true)
+
+        evaluateNotifications(id, name, [
+            lastMeasurement : LastMeasurement,
+            status          : status,
+            statusMsg       : statusMsg,
+            cassetteStatus  : CassetteStatus,
+            batteryStatus   : batteryStatus,
+            checksLeft      : CassetteChecksLeft,
+            batteryPct      : batteryPct,
+            pH              : pH,
+            freeChlorine    : freeChlorine,
+            temp            : temp,
+            rate            : rate,
+            alerts          : item.alerts?.collect { "${it.status}: ${it.text}".toString() } ?: []
+        ])
     }
 
     if (force) app.updateSetting("forceUpdate", [value: "false", type: "bool"])
+}
+
+// =================== Notifications ===================
+//
+// Change-driven, never poll-driven:
+//  - Chemistry (pH / free chlorine) is only evaluated when LastMeasurement
+//    changes, i.e. the device actually took a new sample.
+//  - Status / cassette / battery status alerts fire only on the transition
+//    edge (GREEN -> non-GREEN), not while the condition persists.
+//  - Checks-left and battery % thresholds are edge-triggered and re-arm only
+//    after the value climbs back above threshold (replacement).
+//  - Temperature and flow are context in the message body, never a trigger.
+//  - The first poll after install records a baseline and stays silent.
+//  - All triggers from one poll are coalesced into a single message.
+
+private void evaluateNotifications(String id, String name, Map cur) {
+    if (!settings.notifyDevices) return
+
+    def ns   = state.notifyState ?: [:]
+    def prev = ns[id]
+    boolean firstPoll = (prev == null)
+    if (firstPoll) prev = [:]
+
+    def alerts     = []
+    def recoveries = []
+
+    // A changed measurement timestamp is the only reliable "new reading" signal
+    boolean newSample = !firstPoll && cur.lastMeasurement && cur.lastMeasurement != prev.lastMeasurement
+
+    def phLo = (settings.phMin != null ? settings.phMin : 7.2) as BigDecimal
+    def phHi = (settings.phMax != null ? settings.phMax : 7.8) as BigDecimal
+    def clLo = (settings.clMin != null ? settings.clMin : 1.0) as BigDecimal
+    def clHi = (settings.clMax != null ? settings.clMax : 3.0) as BigDecimal
+
+    boolean phOut = cur.pH != null           && ((cur.pH as BigDecimal) < phLo || (cur.pH as BigDecimal) > phHi)
+    boolean clOut = cur.freeChlorine != null && ((cur.freeChlorine as BigDecimal) < clLo || (cur.freeChlorine as BigDecimal) > clHi)
+
+    boolean phAlerted = prev.phAlerted ?: false
+    boolean clAlerted = prev.clAlerted ?: false
+
+    if (firstPoll) {
+        // Baseline pre-existing out-of-range conditions silently
+        phAlerted = phOut
+        clAlerted = clOut
+    } else if (newSample) {
+        if (settings.notifyOnNewSample)
+            alerts << "new sample — pH ${cur.pH}, free chlorine ${cur.freeChlorine} ppm"
+        if (phOut && !phAlerted)  { alerts << "pH ${cur.pH} is outside ${phLo}–${phHi}"; phAlerted = true }
+        if (!phOut && phAlerted)  { recoveries << "pH back in range (${cur.pH})"; phAlerted = false }
+        if (clOut && !clAlerted)  { alerts << "free chlorine ${cur.freeChlorine} ppm is outside ${clLo}–${clHi} ppm"; clAlerted = true }
+        if (!clOut && clAlerted)  { recoveries << "free chlorine back in range (${cur.freeChlorine} ppm)"; clAlerted = false }
+    }
+
+    if (!firstPoll) {
+        if (cur.status != prev.status) {
+            if (cur.status && cur.status != "GREEN") {
+                def detail = (cur.statusMsg && cur.statusMsg != "None") ? " — ${cur.statusMsg.trim().replace('\n', '; ')}" : ""
+                alerts << "status is ${cur.status}${detail}"
+            } else if (prev.status && prev.status != "GREEN") {
+                recoveries << "status back to GREEN"
+            }
+        }
+        if (cur.cassetteStatus != prev.cassetteStatus) {
+            if (cur.cassetteStatus && cur.cassetteStatus != "GREEN")
+                alerts << "cassette status is ${cur.cassetteStatus}"
+            else if (prev.cassetteStatus && prev.cassetteStatus != "GREEN")
+                recoveries << "cassette status back to GREEN"
+        }
+        if (cur.batteryStatus != prev.batteryStatus) {
+            if (cur.batteryStatus && cur.batteryStatus != "GREEN")
+                alerts << "battery status is ${cur.batteryStatus}"
+            else if (prev.batteryStatus && prev.batteryStatus != "GREEN")
+                recoveries << "battery status back to GREEN"
+        }
+        // Device alert texts we haven't reported before
+        def seen = prev.alertsSeen ?: []
+        ((cur.alerts ?: []) - seen).each { alerts << "device alert — ${it}" }
+    }
+
+    int checksThr = (settings.checksLeftThreshold != null ? settings.checksLeftThreshold : 10) as int
+    int battThr   = (settings.batteryThreshold   != null ? settings.batteryThreshold   : 20) as int
+
+    boolean checksArmed = prev.containsKey("checksArmed") ? prev.checksArmed : true
+    boolean battArmed   = prev.containsKey("battArmed")   ? prev.battArmed   : true
+
+    if (cur.checksLeft != null) {
+        int v = cur.checksLeft as int
+        if (firstPoll) {
+            checksArmed = v > checksThr
+        } else if (checksArmed && v <= checksThr) {
+            alerts << "only ${v} cassette checks left"
+            checksArmed = false
+        } else if (!checksArmed && v > checksThr + 5) {
+            // value jumped back up: cassette was replaced
+            checksArmed = true
+            recoveries << "cassette replaced (${v} checks left)"
+        }
+    }
+    if (cur.batteryPct != null) {
+        int v = cur.batteryPct as int
+        if (firstPoll) {
+            battArmed = v > battThr
+        } else if (battArmed && v <= battThr) {
+            alerts << "battery low (${v}%)"
+            battArmed = false
+        } else if (!battArmed && v > battThr + 5) {
+            battArmed = true
+            recoveries << "battery replaced (${v}%)"
+        }
+    }
+
+    def lines = []
+    lines.addAll(alerts)
+    if (settings.notifyRecovery) lines.addAll(recoveries)
+    if (lines) {
+        def ctx = []
+        if (cur.temp != null) ctx << "temp ${cur.temp}°"
+        if (cur.rate != null) ctx << "flow ${cur.rate} GPM"
+        def context = ctx ? " (${ctx.join(', ')})" : ""
+        sendWgNotification("WaterGuru ${name}: ${lines.join('; ')}${context}")
+    }
+
+    ns[id] = [
+        lastMeasurement : cur.lastMeasurement,
+        status          : cur.status,
+        cassetteStatus  : cur.cassetteStatus,
+        batteryStatus   : cur.batteryStatus,
+        phAlerted       : phAlerted,
+        clAlerted       : clAlerted,
+        checksArmed     : checksArmed,
+        battArmed       : battArmed,
+        alertsSeen      : cur.alerts ?: []
+    ]
+    state.notifyState = ns
+}
+
+private void sendWgNotification(String msg) {
+    if (settings.notificationsPaused) {
+        ifDebug("Notifications paused; suppressing: ${msg}")
+        return
+    }
+    if (inQuietHours()) {
+        def pending = state.pendingNotify ?: []
+        pending << msg
+        state.pendingNotify = pending
+        scheduleQuietFlush()
+        ifDebug("Quiet hours; queued: ${msg}")
+        return
+    }
+    ifDebug("Sending notification: ${msg}")
+    settings.notifyDevices?.each { it.deviceNotification(msg) }
+}
+
+private boolean inQuietHours() {
+    if (!settings.quietStart || !settings.quietEnd) return false
+    def nowD = new Date()
+    def s = timeToday(settings.quietStart, location.timeZone)
+    def e = timeToday(settings.quietEnd, location.timeZone)
+    if (!e.after(s)) {
+        // window crosses midnight (e.g. 22:00 – 07:00)
+        return !nowD.before(s) || nowD.before(e)
+    }
+    return !nowD.before(s) && nowD.before(e)
+}
+
+private void scheduleQuietFlush() {
+    def e = timeToday(settings.quietEnd, location.timeZone)
+    if (!e.after(new Date())) e = new Date(e.time + 86400000L)
+    runOnce(e, "flushPendingNotifications")
+}
+
+def flushPendingNotifications() {
+    def pending = state.pendingNotify ?: []
+    if (!pending) return
+    state.pendingNotify = []
+    if (settings.notificationsPaused) {
+        ifDebug("Notifications paused; dropping ${pending.size()} queued message(s)")
+        return
+    }
+    def msg = pending.join("\n")
+    ifDebug("Flushing ${pending.size()} queued notification(s)")
+    settings.notifyDevices?.each { it.deviceNotification(msg) }
 }
 
 def logsOff() {
