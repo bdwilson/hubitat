@@ -1,0 +1,19 @@
+{
+  "packageName": "Genmon Generator Monitor",
+  "author": "Brian Wilson",
+  "version": "2.0.1",
+  "minimumHEVersion": "0.0",
+  "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Genmon",
+  "communityLink": "https://community.hubitat.com/t/genmon-generator-monitor/164362",
+  "dateReleased": "2026-06-02",
+  "drivers": [
+    {
+      "id": "8f3c2c9e-4c0b-4c8e-9c3e-7b6d2e4f91ab",
+      "name": "Genmon Generator Monitor",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Genmon/genmon-driver.groovy",
+      "required": true,
+      "version": "2.0.1"
+    }
+  ]
+}
