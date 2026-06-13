@@ -214,6 +214,7 @@ private String buildAuthUrl(String callbackUrl) {
         "&redirect_uri=${java.net.URLEncoder.encode(callbackUrl, 'UTF-8')}" +
         "&scope=${scopes}" +
         "&state=${java.net.URLEncoder.encode(state.oauthState, 'UTF-8')}" +
+        "&response_mode=pi.flow" +
         "&code_challenge=${challenge}" +
         "&code_challenge_method=S256"
 }
