@@ -53,22 +53,34 @@ def mainPage() {
     def callbackUrl = getCallbackUrl()
 
     return dynamicPage(name: "mainPage", install: false, uninstall: true, nextPage: "authPage") {
-        section("<b>Step 1 — Create your Volvo app with this Redirect URI</b>") {
+        section("<b>Step 1 — Choose callback type</b>") {
+            input "useLocalCallback", "bool",
+                title: "Use my hub's LOCAL address for the callback (more private)",
+                description: "Recommended if your hub serves HTTPS locally. The redirect URI's access token then only works on your home network. You must authorize while on your LAN.",
+                defaultValue: false, submitOnChange: true
+        }
+
+        section("<b>Step 2 — Create your Volvo app with this Redirect URI</b>") {
             paragraph "When you create an application at <a href='https://developer.volvocars.com' target='_blank'>developer.volvocars.com</a>, " +
                       "it will ask for a <b>Redirect URI</b>. Use this exact URL:"
             paragraph "<code>${callbackUrl}</code>"
-            paragraph "<i>Volvo requires an HTTPS redirect URI — this is your hub's cloud callback URL. " +
-                      "If your hub is not registered with the Hubitat cloud, this will not work.</i>"
+            if (settings.useLocalCallback) {
+                paragraph "<i>This is your hub's local callback. Volvo requires HTTPS — this only works if your hub is reachable over HTTPS on your LAN. " +
+                          "You must complete authorization from a device on your home network.</i>"
+            } else {
+                paragraph "<i>Volvo requires an HTTPS redirect URI — this is your hub's cloud callback URL. " +
+                          "If your hub is not registered with the Hubitat cloud, this will not work.</i>"
+            }
         }
 
-        section("<b>Step 2 — Enter your Volvo Developer Credentials</b>") {
+        section("<b>Step 3 — Enter your Volvo Developer Credentials</b>") {
             paragraph "After creating the app, copy its credentials here."
             input "vccApiKey",     "text",     title: "VCC API Key",     required: true,  submitOnChange: true
             input "clientId",      "text",     title: "Client ID",       required: true,  submitOnChange: true
             input "clientSecret",  "password", title: "Client Secret",   required: false, submitOnChange: true
         }
 
-        section("<b>Step 3 — Select which APIs you subscribed to</b>") {
+        section("<b>Step 4 — Select which APIs you subscribed to</b>") {
             paragraph "In the Volvo developer portal, your app must subscribe to each API individually. " +
                       "Check only the ones you have subscribed to — requesting scopes for an unsubscribed API will fail authorization.\n\n" +
                       "<b>Connected Vehicle API</b> is required and always included. It covers lock/unlock, fuel level, and door status."
@@ -76,16 +88,19 @@ def mainPage() {
             input "hasLocationApi", "bool", title: "I subscribed to the Location API (GPS latitude/longitude)",                             defaultValue: false, submitOnChange: true
         }
 
-        section("<b>Step 4</b>") {
+        section("<b>Step 5</b>") {
             paragraph "Click Next to authorize with Volvo and select your vehicle."
         }
     }
 }
 
-// Volvo requires an HTTPS redirect URI, so we use the hub's cloud callback URL.
+// Volvo requires an HTTPS redirect URI. By default we use the hub's cloud
+// callback URL; if useLocalCallback is set, we use the hub's local API URL so
+// the embedded access token is only usable on the LAN.
 private String getCallbackUrl() {
     if (!state.accessToken) createAccessToken()
-    return "${getFullApiServerUrl()}/callback?access_token=${state.accessToken}"
+    def base = settings.useLocalCallback ? getFullLocalApiServerUrl() : getFullApiServerUrl()
+    return "${base}/callback?access_token=${state.accessToken}"
 }
 
 def authPage() {
