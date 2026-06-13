@@ -463,7 +463,7 @@ def pollVehicle() {
 
     updateLock(d,   volvoGet("/connected-vehicle/v2/vehicles/${vin}/doors"))
     updateFuel(d,   volvoGet("/connected-vehicle/v2/vehicles/${vin}/fuel"))
-    if (settings.hasEnergyApi)   updateEnergy(d,   volvoGet("/energy/v1/vehicles/${vin}/recharge-status"))
+    if (settings.hasEnergyApi)   updateEnergy(d,   volvoGet("/energy/v2/vehicles/${vin}/state"))
     if (settings.hasLocationApi) updateLocation(d, volvoGet("/location/v1/vehicles/${vin}/location"))
 
     d.sendEvent(name: "lastRefresh", value: new Date().format("MM/dd/yyyy HH:mm:ss", location.timeZone))
@@ -478,32 +478,46 @@ private void updateLock(def d, Map resp) {
 }
 
 private void updateFuel(def d, Map resp) {
-    def data = resp?.data
+    def data = resp?.data ?: resp
     if (!data) { ifDebug("fuel: no data"); return }
     def level = data.fuelAmountLevel?.value
     def range = data.distanceToEmptyTank?.value
     def unit  = data.distanceToEmptyTank?.unit ?: "km"
-    if (level != null) d.sendEvent(name: "fuelLevel", value: level as Integer, unit: "%")
-    if (range != null) d.sendEvent(name: "fuelRange",  value: range as Integer, unit: unit)
+    if (level != null) d.sendEvent(name: "fuelLevel", value: toInt(level), unit: "%")
+    if (range != null) d.sendEvent(name: "fuelRange",  value: toInt(range), unit: unit)
     ifDebug("fuel: level=${level}% range=${range}${unit}")
 }
 
 private void updateEnergy(def d, Map resp) {
-    def data = resp?.data
+    // Energy v2 returns fields at the top level (no "data" wrapper)
+    def data = resp?.data ?: resp
     if (!data) { ifDebug("energy: no data"); return }
     def level  = data.batteryChargeLevel?.value
     def range  = data.electricRange?.value ?: data.distanceToEmptyBattery?.value
     def unit   = data.electricRange?.unit ?: data.distanceToEmptyBattery?.unit ?: "km"
     def status = data.chargingStatus?.value
-    if (level  != null) d.sendEvent(name: "battery",        value: level as Integer, unit: "%")
-    if (range  != null) d.sendEvent(name: "batteryRange",   value: range as Integer, unit: unit)
+    if (level == null && range == null) {
+        ifDebug("energy: unrecognized response: ${resp}")
+        return
+    }
+    if (level  != null) d.sendEvent(name: "battery",        value: toInt(level), unit: "%")
+    if (range  != null) d.sendEvent(name: "batteryRange",   value: toInt(range), unit: unit)
     if (status != null) d.sendEvent(name: "chargingStatus", value: status)
     ifDebug("energy: battery=${level}% range=${range}${unit} status=${status}")
 }
 
+// Volvo numeric values can arrive as "50", "50.0", or numbers — coerce safely.
+private Integer toInt(def v) {
+    if (v == null) return null
+    try { return Math.round(v.toString().toDouble()) as Integer }
+    catch (e) { return null }
+}
+
 private void updateLocation(def d, Map resp) {
-    def coords = resp?.data?.geometry?.coordinates
-    if (!coords || coords.size() < 2) { ifDebug("location: no data"); return }
+    // Location API returns a GeoJSON Feature, possibly wrapped in "data"
+    def feature = resp?.data ?: resp
+    def coords = feature?.geometry?.coordinates
+    if (!coords || coords.size() < 2) { ifDebug("location: no data (${resp})"); return }
     def lon = coords[0]
     def lat = coords[1]
     d.sendEvent(name: "latitude",     value: lat.toString())
