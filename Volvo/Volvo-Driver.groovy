@@ -31,8 +31,10 @@ metadata {
         attribute "fuelRange",  "NUMBER"   // km
 
         // EV / hybrid battery
-        attribute "batteryRange",    "NUMBER"   // km
-        attribute "chargingStatus",  "STRING"
+        attribute "batteryRange",       "NUMBER"   // km
+        attribute "chargingStatus",     "STRING"   // raw chargingSystemStatus from API
+        attribute "chargingConnection", "STRING"   // e.g. CONNECTED_AC, DISCONNECTED
+        attribute "chargeLimit",        "NUMBER"   // targetBatteryChargeLevel (%)
 
         // Location
         attribute "latitude",     "STRING"

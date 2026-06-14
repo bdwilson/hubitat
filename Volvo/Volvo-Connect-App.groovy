@@ -505,23 +505,27 @@ private void updateEnergy(def d, Map resp) {
     // Energy v2 returns fields at the top level (no "data" wrapper)
     def data = resp?.data ?: resp
     if (!data) { ifDebug("energy: no data"); return }
-    def level    = data.batteryChargeLevel?.value
-    def range    = data.electricRange?.value ?: data.distanceToEmptyBattery?.value
-    def unit     = data.electricRange?.unit ?: data.distanceToEmptyBattery?.unit ?: "km"
-    def status   = data.chargingStatus?.value
-    def target   = data.targetBatteryLevel?.value
-    def estMins  = data.estimatedChargingTime?.value   // minutes remaining, may be null
+    def level      = data.batteryChargeLevel?.value
+    def range      = data.electricRange?.value ?: data.distanceToEmptyBattery?.value
+    def unit       = data.electricRange?.unit ?: data.distanceToEmptyBattery?.unit ?: "km"
+    // Raw API field is chargingSystemStatus; HA renames it to chargingStatus for display
+    def status     = data.chargingSystemStatus?.value
+    def connStatus = data.chargingConnectionStatus?.value   // e.g. CONNECTED_AC, DISCONNECTED
+    def estMins    = data.estimatedChargingTime?.value      // minutes remaining, may be null
+    def target     = data.targetBatteryChargeLevel?.value   // charge limit set by user, may be absent
     if (level == null && range == null) {
         ifDebug("energy: unrecognized response: ${resp}")
         return
     }
-    if (level  != null) d.sendEvent(name: "battery",        value: toInt(level), unit: "%")
-    if (range  != null) d.sendEvent(name: "batteryRange",   value: toInt(range), unit: unit)
-    if (status != null) d.sendEvent(name: "chargingStatus", value: status)
-    ifDebug("energy: battery=${level}% range=${range}${unit} status=${status} estMins=${estMins}")
+    if (level      != null) d.sendEvent(name: "battery",             value: toInt(level), unit: "%")
+    if (range      != null) d.sendEvent(name: "batteryRange",        value: toInt(range), unit: unit)
+    if (status     != null) d.sendEvent(name: "chargingStatus",      value: status)
+    if (connStatus != null) d.sendEvent(name: "chargingConnection",  value: connStatus)
+    if (target     != null) d.sendEvent(name: "chargeLimit",         value: toInt(target), unit: "%")
+    ifDebug("energy: battery=${level}% range=${range}${unit} status=${status} conn=${connStatus} target=${target} estMins=${estMins}")
 
     if (settings.notifyDevices) {
-        evaluateChargingNotifications(d.deviceNetworkId, toInt(level), status, target, estMins)
+        evaluateChargingNotifications(d.deviceNetworkId, toInt(level), status, connStatus, toInt(target), estMins)
     }
 }
 
@@ -550,7 +554,7 @@ private void updateLocation(def d, Map resp) {
 // Change-driven only — a poll never triggers a notification by itself.
 // First poll after install records baseline silently.
 
-private void evaluateChargingNotifications(String vin, Integer level, String status, def target, def estMins) {
+private void evaluateChargingNotifications(String vin, Integer level, String status, String connStatus, Integer target, def estMins) {
     if (!settings.notifyDevices) return
 
     def ns   = state.notifyState ?: [:]
@@ -562,34 +566,45 @@ private void evaluateChargingNotifications(String vin, Integer level, String sta
 
     if (!firstPoll) {
         def prevStatus = prev.chargingStatus
-        def isCharging    = (status == "CHARGING")
-        def wasCharging   = (prevStatus == "CHARGING")
-        def isComplete    = (status == "FULLY_CHARGED")
-        def wasComplete   = (prevStatus == "FULLY_CHARGED")
+        // API values may be uppercase or lowercase — compare case-insensitively
+        def isCharging    = status?.toUpperCase() == "CHARGING"
+        def wasCharging   = prevStatus?.toUpperCase() == "CHARGING"
+        def isComplete    = status?.toUpperCase() in ["FULLY_CHARGED", "DONE"]
+        def wasComplete   = prevStatus?.toUpperCase() in ["FULLY_CHARGED", "DONE"]
+        // Still physically connected but stopped charging = charge limit reached
+        def stillConnected = connStatus != null && !connStatus.toUpperCase().contains("DISCONNECTED")
 
         // Charging started
         if (isCharging && !wasCharging && settings.notifyChargingStarted != false) {
             def msg = "Volvo charging started. Battery at ${level}%"
-            if (target != null) msg += ", charging to ${toInt(target)}%"
+            if (target != null) msg += ", charging to ${target}%"
             if (estMins != null && estMins > 0) msg += ". Estimated finish: ${finishTime(estMins as Integer)}"
+            else msg += "."
             msgs << msg
         }
 
-        // Charging complete
+        // Fully charged (100%)
         if (isComplete && !wasComplete && settings.notifyChargingComplete != false) {
             msgs << "Volvo fully charged. Battery at ${level}%."
         }
 
-        // Charging stopped (not complete, not still charging)
+        // Was charging, now stopped — distinguish charge limit reached vs unplugged
         if (!isCharging && wasCharging && !isComplete && settings.notifyChargingStopped != false) {
-            msgs << "Volvo charging stopped. Battery at ${level}%."
+            if (stillConnected) {
+                def msg = "Volvo charge limit reached. Battery at ${level}%"
+                if (target != null) msg += " (limit: ${target}%)"
+                msg += "."
+                msgs << msg
+            } else {
+                msgs << "Volvo charging stopped (disconnected). Battery at ${level}%."
+            }
         }
 
         // 10% battery step increments while charging
         if (isCharging && settings.notifyBatterySteps && level != null) {
             def prevBand = prev.batteryBand ?: -1
             def curBand  = (int)(level / 10) * 10
-            if (curBand != prevBand && curBand > prevBand && curBand > 0) {
+            if (curBand > prevBand && curBand > 0) {
                 msgs << "Volvo battery at ${curBand}% while charging."
             }
         }
