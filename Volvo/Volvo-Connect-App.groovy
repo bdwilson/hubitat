@@ -376,7 +376,12 @@ private Map volvoGet(String path) {
             result = resp.data instanceof Map ? resp.data : new JsonSlurper().parseText(resp.data.text)
         }
     } catch (groovyx.net.http.HttpResponseException e) {
-        log.error "Volvo GET ${path} failed (${e.statusCode}): ${e.message}"
+        // 403 on new endpoints is expected while Volvo API approval is pending
+        if (e.statusCode == 403) {
+            log.warn "Volvo GET ${path} not yet approved (403) — will work after Volvo API approval"
+        } else {
+            log.error "Volvo GET ${path} failed (${e.statusCode}): ${e.message}"
+        }
         return null
     } catch (e) {
         log.error "Volvo GET ${path} error: ${e}"
@@ -639,8 +644,9 @@ private void updateEnergy(def d, Map resp) {
     if (!data) { ifDebug("energy: no data"); return }
     def level      = data.batteryChargeLevel?.value
     def range      = data.electricRange?.value ?: data.distanceToEmptyBattery?.value
-    def status     = data.chargingSystemStatus?.value
-    def connStatus = data.chargingConnectionStatus?.value
+    // v2 API uses chargingStatus; v1 used chargingSystemStatus — try both
+    def status     = data.chargingSystemStatus?.value ?: data.chargingStatus?.value
+    def connStatus = data.chargingConnectionStatus?.value ?: data.connectionStatus?.value
     def estMins    = data.estimatedChargingTime?.value
     def target     = data.targetBatteryChargeLevel?.value
     if (level == null && range == null) {
