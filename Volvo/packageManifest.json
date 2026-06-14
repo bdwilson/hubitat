@@ -4,9 +4,9 @@
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Volvo",
   "communityLink": "",
-  "dateReleased": "2026-06-13",
-  "releaseNotes": "Initial release — lock/unlock, battery/fuel level, electric and fuel range, charging status, GPS location via Volvo Connected Vehicle API",
-  "version": "1.0.0",
+  "dateReleased": "2026-06-14",
+  "releaseNotes": "1.1.0 — Charging notifications (started, charge limit reached vs unplugged, fully charged, 10% steps). Fixed Energy API field names (chargingSystemStatus, chargingConnectionStatus, targetBatteryChargeLevel). New driver attributes: chargingConnection, chargeLimit.",
+  "version": "1.1.0",
   "drivers": [
     {
       "id": "a3f7c291-5e84-4b12-9d63-7c08e1f45a20",
@@ -14,7 +14,7 @@
       "namespace": "brianwilson-hubitat",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Volvo/Volvo-Driver.groovy",
       "required": true,
-      "version": "1.0.0"
+      "version": "1.1.0"
     }
   ],
   "apps": [
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Volvo/Volvo-Connect-App.groovy",
       "required": true,
       "oauth": true,
-      "version": "1.0.0"
+      "version": "1.1.0"
     }
   ]
 }

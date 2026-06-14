@@ -1,7 +1,7 @@
 /**
  * Volvo Vehicle Driver
  *
- * 1.0.0 - Brian Wilson / bubba@bubba.org
+ * 1.1.0 - Brian Wilson / bubba@bubba.org
  *
  * Child driver for the Volvo Connect App.
  * Exposes lock/unlock, fuel level, battery/EV level, range, and GPS location.
