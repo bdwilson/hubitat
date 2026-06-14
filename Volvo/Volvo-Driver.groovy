@@ -1,7 +1,7 @@
 /**
  * Volvo Vehicle Driver
  *
- * 1.2.0 - Brian Wilson / bubba@bubba.org
+ * 1.2.1 - Brian Wilson / bubba@bubba.org
  *
  * Child driver for the Volvo Connect App.
  *

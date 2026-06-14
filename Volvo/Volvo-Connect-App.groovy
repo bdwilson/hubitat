@@ -1,7 +1,7 @@
 /**
  * Volvo Connect App
  *
- * 1.2.0 - Brian Wilson / bubba@bubba.org
+ * 1.2.1 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for Volvo vehicles via the Volvo Connected Vehicle API.
  * Supports lock/unlock, fuel/battery level, range, GPS location, doors, windows,
