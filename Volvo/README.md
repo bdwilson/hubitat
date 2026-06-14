@@ -11,6 +11,7 @@ Native Hubitat integration for Volvo vehicles via the [Volvo Connected Vehicle A
 - **Fuel level** (ICE/PHEV) — fuel percentage
 - **Fuel range** — estimated range to empty
 - **GPS location** — latitude/longitude *(requires Location API approval — see note below)*
+- **Charging notifications** — alerts when charging starts (with estimated finish time), stops, or completes; optional 10% battery step alerts
 - **Configurable poll interval** — 5, 10, 15, 30, or 60 minutes
 
 ---
@@ -133,6 +134,24 @@ Hubitat will create a child device named **Volvo {VIN}** under the app. You can 
 | `lock()` | Send lock command to vehicle |
 | `unlock()` | Send unlock command to vehicle |
 | `refresh()` | Force an immediate poll |
+
+---
+
+## Notifications
+
+Notifications are **change-driven** — a poll never triggers one by itself. The first poll after install silently records a baseline.
+
+| Notification | Trigger |
+|---|---|
+| Charging started | `chargingStatus` transitions to `CHARGING` |
+| Charging stopped | `chargingStatus` leaves `CHARGING` (not fully charged) |
+| Fully charged | `chargingStatus` transitions to `FULLY_CHARGED` |
+| Battery at X% | Every 10% increment crossed while charging (optional) |
+
+**Charging started** messages include battery level, target charge %, and estimated finish time when the API provides them, e.g.:
+> Volvo charging started. Battery at 34%, charging to 80%. Estimated finish: 11:45 PM.
+
+Configure notification devices under **Notifications** on the auth page after selecting your vehicle.
 
 ---
 

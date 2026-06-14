@@ -139,6 +139,19 @@ def authPage() {
                                   "30": "Every 30 min", "60": "Every hour"],
                         defaultValue: "15", required: true
                 }
+
+                section("<b>Notifications</b>") {
+                    paragraph "Notifications are change-driven — a poll by itself never sends anything."
+                    input "notifyDevices", "capability.notification",
+                        title: "Send notifications to", multiple: true, required: false, submitOnChange: true
+                    if (settings.notifyDevices) {
+                        input "notifyChargingStarted",  "bool", title: "Notify when charging starts",                           defaultValue: true,  required: false
+                        input "notifyChargingStopped",  "bool", title: "Notify when charging stops or disconnects",             defaultValue: true,  required: false
+                        input "notifyChargingComplete", "bool", title: "Notify when fully charged",                             defaultValue: true,  required: false
+                        input "notifyBatterySteps",     "bool", title: "Notify at every 10% battery increment while charging",  defaultValue: false, required: false
+                    }
+                }
+
                 section("<b>Options</b>") {
                     input "isDebug", "bool", title: "Enable Debug Logging", defaultValue: false, submitOnChange: true
                 }
@@ -492,10 +505,12 @@ private void updateEnergy(def d, Map resp) {
     // Energy v2 returns fields at the top level (no "data" wrapper)
     def data = resp?.data ?: resp
     if (!data) { ifDebug("energy: no data"); return }
-    def level  = data.batteryChargeLevel?.value
-    def range  = data.electricRange?.value ?: data.distanceToEmptyBattery?.value
-    def unit   = data.electricRange?.unit ?: data.distanceToEmptyBattery?.unit ?: "km"
-    def status = data.chargingStatus?.value
+    def level    = data.batteryChargeLevel?.value
+    def range    = data.electricRange?.value ?: data.distanceToEmptyBattery?.value
+    def unit     = data.electricRange?.unit ?: data.distanceToEmptyBattery?.unit ?: "km"
+    def status   = data.chargingStatus?.value
+    def target   = data.targetBatteryLevel?.value
+    def estMins  = data.estimatedChargingTime?.value   // minutes remaining, may be null
     if (level == null && range == null) {
         ifDebug("energy: unrecognized response: ${resp}")
         return
@@ -503,7 +518,11 @@ private void updateEnergy(def d, Map resp) {
     if (level  != null) d.sendEvent(name: "battery",        value: toInt(level), unit: "%")
     if (range  != null) d.sendEvent(name: "batteryRange",   value: toInt(range), unit: unit)
     if (status != null) d.sendEvent(name: "chargingStatus", value: status)
-    ifDebug("energy: battery=${level}% range=${range}${unit} status=${status}")
+    ifDebug("energy: battery=${level}% range=${range}${unit} status=${status} estMins=${estMins}")
+
+    if (settings.notifyDevices) {
+        evaluateChargingNotifications(d.deviceNetworkId, toInt(level), status, target, estMins)
+    }
 }
 
 // Volvo numeric values can arrive as "50", "50.0", or numbers — coerce safely.
@@ -524,6 +543,76 @@ private void updateLocation(def d, Map resp) {
     d.sendEvent(name: "longitude",    value: lon.toString())
     d.sendEvent(name: "lastLocation", value: "${lat}, ${lon}")
     ifDebug("location: lat=${lat} lon=${lon}")
+}
+
+// =================== Notifications ===================
+//
+// Change-driven only — a poll never triggers a notification by itself.
+// First poll after install records baseline silently.
+
+private void evaluateChargingNotifications(String vin, Integer level, String status, def target, def estMins) {
+    if (!settings.notifyDevices) return
+
+    def ns   = state.notifyState ?: [:]
+    def prev = ns[vin]
+    boolean firstPoll = (prev == null)
+    if (firstPoll) prev = [:]
+
+    def msgs = []
+
+    if (!firstPoll) {
+        def prevStatus = prev.chargingStatus
+        def isCharging    = (status == "CHARGING")
+        def wasCharging   = (prevStatus == "CHARGING")
+        def isComplete    = (status == "FULLY_CHARGED")
+        def wasComplete   = (prevStatus == "FULLY_CHARGED")
+
+        // Charging started
+        if (isCharging && !wasCharging && settings.notifyChargingStarted != false) {
+            def msg = "Volvo charging started. Battery at ${level}%"
+            if (target != null) msg += ", charging to ${toInt(target)}%"
+            if (estMins != null && estMins > 0) msg += ". Estimated finish: ${finishTime(estMins as Integer)}"
+            msgs << msg
+        }
+
+        // Charging complete
+        if (isComplete && !wasComplete && settings.notifyChargingComplete != false) {
+            msgs << "Volvo fully charged. Battery at ${level}%."
+        }
+
+        // Charging stopped (not complete, not still charging)
+        if (!isCharging && wasCharging && !isComplete && settings.notifyChargingStopped != false) {
+            msgs << "Volvo charging stopped. Battery at ${level}%."
+        }
+
+        // 10% battery step increments while charging
+        if (isCharging && settings.notifyBatterySteps && level != null) {
+            def prevBand = prev.batteryBand ?: -1
+            def curBand  = (int)(level / 10) * 10
+            if (curBand != prevBand && curBand > prevBand && curBand > 0) {
+                msgs << "Volvo battery at ${curBand}% while charging."
+            }
+        }
+    }
+
+    msgs.each { sendVolvoNotification(it) }
+
+    ns[vin] = [
+        chargingStatus : status,
+        batteryBand    : level != null ? ((int)(level / 10) * 10) : prev.batteryBand
+    ]
+    state.notifyState = ns
+}
+
+private void sendVolvoNotification(String msg) {
+    ifDebug("Notification: ${msg}")
+    settings.notifyDevices?.each { it.deviceNotification(msg) }
+}
+
+// Format minutes-remaining as a clock time (e.g. "2:45 AM")
+private String finishTime(int minutes) {
+    def finish = new Date(now() + minutes * 60000L)
+    return finish.format("h:mm a", location.timeZone)
 }
 
 // =================== Commands from Driver ===================
