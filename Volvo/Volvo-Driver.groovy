@@ -1,10 +1,9 @@
 /**
  * Volvo Vehicle Driver
  *
- * 1.1.0 - Brian Wilson / bubba@bubba.org
+ * 1.2.0 - Brian Wilson / bubba@bubba.org
  *
  * Child driver for the Volvo Connect App.
- * Exposes lock/unlock, fuel level, battery/EV level, range, and GPS location.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file
  * except in compliance with the License. You may obtain a copy of the License at:
@@ -26,20 +25,78 @@ metadata {
         command "unlock"
         command "refresh"
 
+        // Engine start/stop (requires conve:engine_start_stop — pending API approval for most users)
+        command "startEngine", [[name: "runtimeMinutes", type: "NUMBER", description: "Runtime in minutes (1–15, default 15)"]]
+        command "stopEngine"
+
+        // Climatization (requires conve:climatization_start_stop — pending API approval)
+        command "startClimatization"
+        command "stopClimatization"
+
+        // Horn / lights (requires conve:honk_flash — pending API approval)
+        command "honk"
+        command "flash"
+        command "honkAndFlash"
+
         // Fuel (ICE / hybrid)
         attribute "fuelLevel",  "NUMBER"   // percent
-        attribute "fuelRange",  "NUMBER"   // km
+        attribute "fuelRange",  "NUMBER"   // km or miles depending on unit preference
 
         // EV / hybrid battery
-        attribute "batteryRange",       "NUMBER"   // km
-        attribute "chargingStatus",     "STRING"   // raw chargingSystemStatus from API
-        attribute "chargingConnection", "STRING"   // e.g. CONNECTED_AC, DISCONNECTED
-        attribute "chargeLimit",        "NUMBER"   // targetBatteryChargeLevel (%)
+        attribute "batteryRange",       "NUMBER"
+        attribute "chargingStatus",     "STRING"
+        attribute "chargingConnection", "STRING"
+        attribute "chargeLimit",        "NUMBER"
+
+        // Engine
+        attribute "engineStatus", "STRING"   // RUNNING / STOPPED
+
+        // Doors
+        attribute "doorFrontLeft",  "STRING"
+        attribute "doorFrontRight", "STRING"
+        attribute "doorRearLeft",   "STRING"
+        attribute "doorRearRight",  "STRING"
+        attribute "hood",           "STRING"
+        attribute "tailgate",       "STRING"
+        attribute "tankLid",        "STRING"
+
+        // Windows
+        attribute "windowFrontLeft",  "STRING"
+        attribute "windowFrontRight", "STRING"
+        attribute "windowRearLeft",   "STRING"
+        attribute "windowRearRight",  "STRING"
+        attribute "sunroof",          "STRING"
+
+        // Tyres
+        attribute "tyreFrontLeft",  "STRING"
+        attribute "tyreFrontRight", "STRING"
+        attribute "tyreRearLeft",   "STRING"
+        attribute "tyreRearRight",  "STRING"
+
+        // Odometer
+        attribute "odometer", "NUMBER"
+
+        // Warnings (key safety indicators)
+        attribute "warningBrakeLight",     "STRING"
+        attribute "warningFuelLow",        "STRING"
+        attribute "warningEngineLight",    "STRING"
+        attribute "warningOilLow",         "STRING"
+        attribute "warningWasherFluid",    "STRING"
+        attribute "warningBrakeFluid",     "STRING"
+
+        // Vehicle info (populated once on first poll)
+        attribute "vehicleModel",   "STRING"
+        attribute "modelYear",      "STRING"
+        attribute "fuelType",       "STRING"
+        attribute "externalColor",  "STRING"
+        attribute "gearbox",        "STRING"
 
         // Location
-        attribute "latitude",     "STRING"
-        attribute "longitude",    "STRING"
-        attribute "lastLocation", "STRING"
+        attribute "latitude",          "STRING"
+        attribute "longitude",         "STRING"
+        attribute "heading",           "STRING"
+        attribute "lastLocation",      "STRING"
+        attribute "locationTimestamp", "STRING"
 
         attribute "lastRefresh",  "STRING"
     }
@@ -60,21 +117,53 @@ def updated() {
 def lock() {
     ifDebug("lock() called")
     sendEvent(name: "lock", value: "locking")
-    def vin = device.deviceNetworkId
-    parent.lockVehicle(vin)
+    parent.lockVehicle(device.deviceNetworkId)
 }
 
 def unlock() {
     ifDebug("unlock() called")
     sendEvent(name: "lock", value: "unlocking")
-    def vin = device.deviceNetworkId
-    parent.unlockVehicle(vin)
+    parent.unlockVehicle(device.deviceNetworkId)
 }
 
 def refresh() {
     ifDebug("refresh() called")
-    def vin = device.deviceNetworkId
-    parent.refreshVehicle(vin)
+    parent.refreshVehicle(device.deviceNetworkId)
+}
+
+def startEngine(minutes = null) {
+    ifDebug("startEngine(${minutes}) called")
+    parent.startEngineVehicle(device.deviceNetworkId, minutes)
+}
+
+def stopEngine() {
+    ifDebug("stopEngine() called")
+    parent.stopEngineVehicle(device.deviceNetworkId)
+}
+
+def startClimatization() {
+    ifDebug("startClimatization() called")
+    parent.startClimatizationVehicle(device.deviceNetworkId)
+}
+
+def stopClimatization() {
+    ifDebug("stopClimatization() called")
+    parent.stopClimatizationVehicle(device.deviceNetworkId)
+}
+
+def honk() {
+    ifDebug("honk() called")
+    parent.honkVehicle(device.deviceNetworkId)
+}
+
+def flash() {
+    ifDebug("flash() called")
+    parent.flashVehicle(device.deviceNetworkId)
+}
+
+def honkAndFlash() {
+    ifDebug("honkAndFlash() called")
+    parent.honkFlashVehicle(device.deviceNetworkId)
 }
 
 def logsOff() {
