@@ -1,7 +1,7 @@
 /**
  * Volvo Vehicle Driver
  *
- * 1.0.0 - Brian Wilson / bubba@bubba.org
+ * 1.1.0 - Brian Wilson / bubba@bubba.org
  *
  * Child driver for the Volvo Connect App.
  * Exposes lock/unlock, fuel level, battery/EV level, range, and GPS location.
@@ -31,8 +31,10 @@ metadata {
         attribute "fuelRange",  "NUMBER"   // km
 
         // EV / hybrid battery
-        attribute "batteryRange",    "NUMBER"   // km
-        attribute "chargingStatus",  "STRING"
+        attribute "batteryRange",       "NUMBER"   // km
+        attribute "chargingStatus",     "STRING"   // raw chargingSystemStatus from API
+        attribute "chargingConnection", "STRING"   // e.g. CONNECTED_AC, DISCONNECTED
+        attribute "chargeLimit",        "NUMBER"   // targetBatteryChargeLevel (%)
 
         // Location
         attribute "latitude",     "STRING"
