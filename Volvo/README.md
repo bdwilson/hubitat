@@ -72,10 +72,34 @@ Volvo re-approval takes 14–21 days, so it's worth enabling these now even if t
 
 ## ⚠️ API Approval — 14 to 21 Days
 
-Volvo reviews all developer app submissions before granting access. During this waiting period:
+Volvo reviews all developer app submissions before granting access.
 
-- **Lock, unlock, battery level, charging status, and fuel** all work immediately with a test vehicle (your own registered Volvo) once the app is created — Volvo allows testing before full approval.
-- **Location/GPS** (`location:read`) typically does **not** work until the application is fully approved. You will see a `403 Forbidden` error in Hubitat logs until then — this is expected and will resolve on its own once approved.
+### Works immediately (no approval required)
+
+These work as soon as you create your Volvo developer app and authorize:
+
+| Feature | Notes |
+|---|---|
+| Lock / Unlock | |
+| Battery level & charging status | Requires Energy API subscription |
+| Fuel level & range | |
+| Door status (hood, tailgate, tank lid) | Partial — individual doors may be pending |
+| Charging notifications | Driven by battery/charging data above |
+
+### Requires full API approval (14–21 days)
+
+These return `403 Forbidden` until Volvo approves your application. The app logs them as warnings and silently skips — no action needed on your part. They will start working automatically once approved.
+
+| Feature | Scope |
+|---|---|
+| GPS location | `location:read` |
+| Odometer | `conve:odometer_status` |
+| Window status | `conve:windows_status` |
+| Tyre status | `conve:tyre_status` |
+| Warning lights | `conve:warnings` |
+| Engine start/stop | `conve:engine_start_stop` |
+| Climatization start/stop | `conve:climatization_start_stop` |
+| Honk / flash | `conve:honk_flash` |
 
 ---
 
