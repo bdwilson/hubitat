@@ -1,10 +1,11 @@
 /**
  * Volvo Connect App
  *
- * 1.1.0 - Brian Wilson / bubba@bubba.org
+ * 1.2.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for Volvo vehicles via the Volvo Connected Vehicle API.
- * Supports lock/unlock, fuel/battery level, range, and GPS location.
+ * Supports lock/unlock, fuel/battery level, range, GPS location, doors, windows,
+ * tyres, odometer, warnings, engine start/stop, climatization, and honk/flash.
  *
  * Setup:
  *  1. Register a developer account at https://developer.volvocars.com
@@ -25,7 +26,7 @@ definition(
     name: "Volvo Connect",
     namespace: "brianwilson-hubitat",
     author: "bubba@bubba.org",
-    description: "Volvo Connected Vehicle integration — lock, fuel/battery, range, location",
+    description: "Volvo Connected Vehicle integration — lock, fuel/battery, range, location, doors, windows, tyres, engine",
     category: "My Apps",
     importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Volvo/Volvo-Connect-App.groovy",
     iconUrl: "",
@@ -70,7 +71,7 @@ def mainPage() {
         section("<b>Step 3 — Which optional APIs did you subscribe to?</b>") {
             paragraph "Check only the APIs you subscribed to in the Volvo developer portal. " +
                       "Requesting scopes from an unsubscribed API will cause authorization to fail.\n\n" +
-                      "<b>Connected Vehicle API</b> is always included (lock/unlock, fuel, doors)."
+                      "<b>Connected Vehicle API</b> is always included (lock/unlock, fuel, doors, windows, tyres, odometer, warnings)."
             input "hasEnergyApi",   "bool", title: "Energy API — EV battery level, charging status, electric range",  defaultValue: false, submitOnChange: true
             input "hasLocationApi", "bool", title: "Location API — GPS latitude/longitude",                            defaultValue: false, submitOnChange: true
         }
@@ -140,6 +141,10 @@ def authPage() {
                         defaultValue: "15", required: true
                 }
 
+                section("<b>Units</b>") {
+                    input "useImperial", "bool", title: "Use imperial units (miles) instead of metric (km)", defaultValue: false, submitOnChange: true
+                }
+
                 section("<b>Notifications</b>") {
                     paragraph "Notifications are change-driven — a poll by itself never sends anything."
                     input "notifyDevices", "capability.notification",
@@ -199,7 +204,9 @@ private String codeChallenge(String verifier) {
 private String buildAuthUrl(String callbackUrl) {
     def challenge = codeChallenge(state.codeVerifier)
 
-    // Core: Connected Vehicle API scopes (always required)
+    // Core: Connected Vehicle API scopes (always required).
+    // Extended scopes (odometer, windows, tyres, warnings, engine, climatization, honk/flash)
+    // are requested here; endpoints silently return null if not yet approved.
     def scopeList = [
         "openid",
         "conve:vehicle_relation",
@@ -208,17 +215,20 @@ private String buildAuthUrl(String callbackUrl) {
         "conve:lock",
         "conve:unlock",
         "conve:command_accessibility",
-        "conve:doors_status"
+        "conve:commands",
+        "conve:doors_status",
+        "conve:odometer_status",
+        "conve:windows_status",
+        "conve:tyre_status",
+        "conve:warnings",
+        "conve:engine_start_stop",
+        "conve:climatization_start_stop",
+        "conve:honk_flash",
+        "conve:trip_statistics",
+        "conve:environment"
     ]
-    // Optional: Energy API — only if user has subscribed.
-    // Real scope names per the Volvo developer portal.
-    if (settings.hasEnergyApi) {
-        scopeList += ["energy:state:read"]
-    }
-    // Optional: Location API — only if user has subscribed
-    if (settings.hasLocationApi) {
-        scopeList += ["location:read"]
-    }
+    if (settings.hasEnergyApi)   scopeList += ["energy:state:read"]
+    if (settings.hasLocationApi) scopeList += ["location:read"]
     def scopes = scopeList.join("%20")
 
     return "https://volvoid.eu.volvocars.com/as/authorization.oauth2" +
@@ -474,10 +484,25 @@ def pollVehicle() {
     def d = getChildDevice(vin)
     if (!d) return
 
-    updateLock(d,   volvoGet("/connected-vehicle/v2/vehicles/${vin}/doors"))
-    updateFuel(d,   volvoGet("/connected-vehicle/v2/vehicles/${vin}/fuel"))
+    // Fetch doors (also contains centralLock)
+    def doorsResp = volvoGet("/connected-vehicle/v2/vehicles/${vin}/doors")
+    updateLock(d,    doorsResp)
+    updateDoors(d,   doorsResp)
+
+    updateFuel(d,         volvoGet("/connected-vehicle/v2/vehicles/${vin}/fuel"))
+    updateWindows(d,      volvoGet("/connected-vehicle/v2/vehicles/${vin}/windows"))
+    updateTyres(d,        volvoGet("/connected-vehicle/v2/vehicles/${vin}/tyres"))
+    updateOdometer(d,     volvoGet("/connected-vehicle/v2/vehicles/${vin}/odometer"))
+    updateWarnings(d,     volvoGet("/connected-vehicle/v2/vehicles/${vin}/warnings"))
+    updateEngineStatus(d, volvoGet("/connected-vehicle/v2/vehicles/${vin}/engine-status"))
+
     if (settings.hasEnergyApi)   updateEnergy(d,   volvoGet("/energy/v2/vehicles/${vin}/state"))
     if (settings.hasLocationApi) updateLocation(d, volvoGet("/location/v1/vehicles/${vin}/location"))
+
+    // Fetch vehicle info once (model, year, fuelType, etc.)
+    if (!state.vehicleInfoFetched) {
+        updateVehicleInfo(d, volvoGet("/connected-vehicle/v2/vehicles/${vin}"))
+    }
 
     d.sendEvent(name: "lastRefresh", value: new Date().format("MM/dd/yyyy HH:mm:ss", location.timeZone))
 }
@@ -490,15 +515,122 @@ private void updateLock(def d, Map resp) {
     ifDebug("lock: ${status}")
 }
 
+private void updateDoors(def d, Map resp) {
+    def data = resp?.data
+    if (!data) { ifDebug("doors: no data"); return }
+    def doorMap = [
+        doorFrontLeft : data.frontLeft?.value,
+        doorFrontRight: data.frontRight?.value,
+        doorRearLeft  : data.rearLeft?.value,
+        doorRearRight : data.rearRight?.value,
+        hood          : data.hood?.value,
+        tailgate      : data.tailgate?.value,
+        tankLid       : data.tankLid?.value
+    ]
+    doorMap.each { attr, val ->
+        if (val != null) d.sendEvent(name: attr, value: val)
+    }
+    ifDebug("doors: ${doorMap}")
+}
+
+private void updateWindows(def d, Map resp) {
+    def data = resp?.data
+    if (!data) { ifDebug("windows: no data"); return }
+    def winMap = [
+        windowFrontLeft : data.frontLeft?.value,
+        windowFrontRight: data.frontRight?.value,
+        windowRearLeft  : data.rearLeft?.value,
+        windowRearRight : data.rearRight?.value,
+        sunroof         : data.sunroof?.value
+    ]
+    winMap.each { attr, val ->
+        if (val != null) d.sendEvent(name: attr, value: val)
+    }
+    ifDebug("windows: ${winMap}")
+}
+
+private void updateTyres(def d, Map resp) {
+    def data = resp?.data
+    if (!data) { ifDebug("tyres: no data"); return }
+    def tyreMap = [
+        tyreFrontLeft : data.frontLeft?.value,
+        tyreFrontRight: data.frontRight?.value,
+        tyreRearLeft  : data.rearLeft?.value,
+        tyreRearRight : data.rearRight?.value
+    ]
+    tyreMap.each { attr, val ->
+        if (val != null) d.sendEvent(name: attr, value: val)
+    }
+    ifDebug("tyres: ${tyreMap}")
+}
+
+private void updateOdometer(def d, Map resp) {
+    def data = resp?.data ?: resp
+    if (!data) { ifDebug("odometer: no data"); return }
+    def raw = data.odometer?.value
+    if (raw == null) { ifDebug("odometer: field missing"); return }
+    def km = toInt(raw)
+    def val = settings.useImperial ? Math.round(km * 0.621371) as Integer : km
+    def unit = settings.useImperial ? "mi" : "km"
+    d.sendEvent(name: "odometer", value: val, unit: unit)
+    ifDebug("odometer: ${val} ${unit}")
+}
+
+private void updateWarnings(def d, Map resp) {
+    def data = resp?.data
+    if (!data) { ifDebug("warnings: no data"); return }
+    def warnMap = [
+        warningBrakeLight : data.brakeLightCenterWarning?.value ?: data.brakeLightLeftWarning?.value ?: data.brakeLightRightWarning?.value,
+        warningFuelLow    : data.fuelLevelWarning?.value,
+        warningEngineLight: data.engineWarning?.value,
+        warningOilLow     : data.oilLevelWarning?.value,
+        warningWasherFluid: data.washerFluidLevelWarning?.value,
+        warningBrakeFluid : data.brakeFluidWarning?.value
+    ]
+    warnMap.each { attr, val ->
+        if (val != null) d.sendEvent(name: attr, value: val)
+    }
+    ifDebug("warnings: ${warnMap}")
+}
+
+private void updateEngineStatus(def d, Map resp) {
+    def data = resp?.data ?: resp
+    if (!data) { ifDebug("engineStatus: no data"); return }
+    def status = data.engineStatus?.value ?: data.status?.value
+    if (status != null) d.sendEvent(name: "engineStatus", value: status)
+    ifDebug("engineStatus: ${status}")
+}
+
+private void updateVehicleInfo(def d, Map resp) {
+    def data = resp?.data ?: resp
+    if (!data) { ifDebug("vehicleInfo: no data"); return }
+    def infoMap = [
+        vehicleModel : data.descriptions?.model ?: data.model,
+        modelYear    : data.modelYear?.toString(),
+        fuelType     : data.fuelType,
+        externalColor: data.externalColour ?: data.externalColor,
+        gearbox      : data.gearbox
+    ]
+    infoMap.each { attr, val ->
+        if (val != null) d.sendEvent(name: attr, value: val.toString())
+    }
+    if (infoMap.any { it.value != null }) state.vehicleInfoFetched = true
+    ifDebug("vehicleInfo: ${infoMap}")
+}
+
 private void updateFuel(def d, Map resp) {
     def data = resp?.data ?: resp
     if (!data) { ifDebug("fuel: no data"); return }
     def level = data.fuelAmountLevel?.value
     def range = data.distanceToEmptyTank?.value
-    def unit  = data.distanceToEmptyTank?.unit ?: "km"
     if (level != null) d.sendEvent(name: "fuelLevel", value: toInt(level), unit: "%")
-    if (range != null) d.sendEvent(name: "fuelRange",  value: toInt(range), unit: unit)
-    ifDebug("fuel: level=${level}% range=${range}${unit}")
+    if (range != null) {
+        def km = toInt(range)
+        def val = settings.useImperial ? Math.round(km * 0.621371) as Integer : km
+        def unit = settings.useImperial ? "mi" : "km"
+        d.sendEvent(name: "fuelRange", value: val, unit: unit)
+    }
+    ifDebug("fuel: level=${level}% range=${range}")
 }
 
 private void updateEnergy(def d, Map resp) {
@@ -507,22 +639,25 @@ private void updateEnergy(def d, Map resp) {
     if (!data) { ifDebug("energy: no data"); return }
     def level      = data.batteryChargeLevel?.value
     def range      = data.electricRange?.value ?: data.distanceToEmptyBattery?.value
-    def unit       = data.electricRange?.unit ?: data.distanceToEmptyBattery?.unit ?: "km"
-    // Raw API field is chargingSystemStatus; HA renames it to chargingStatus for display
     def status     = data.chargingSystemStatus?.value
-    def connStatus = data.chargingConnectionStatus?.value   // e.g. CONNECTED_AC, DISCONNECTED
-    def estMins    = data.estimatedChargingTime?.value      // minutes remaining, may be null
-    def target     = data.targetBatteryChargeLevel?.value   // charge limit set by user, may be absent
+    def connStatus = data.chargingConnectionStatus?.value
+    def estMins    = data.estimatedChargingTime?.value
+    def target     = data.targetBatteryChargeLevel?.value
     if (level == null && range == null) {
         ifDebug("energy: unrecognized response: ${resp}")
         return
     }
-    if (level      != null) d.sendEvent(name: "battery",             value: toInt(level), unit: "%")
-    if (range      != null) d.sendEvent(name: "batteryRange",        value: toInt(range), unit: unit)
-    if (status     != null) d.sendEvent(name: "chargingStatus",      value: status)
-    if (connStatus != null) d.sendEvent(name: "chargingConnection",  value: connStatus)
-    if (target     != null) d.sendEvent(name: "chargeLimit",         value: toInt(target), unit: "%")
-    ifDebug("energy: battery=${level}% range=${range}${unit} status=${status} conn=${connStatus} target=${target} estMins=${estMins}")
+    if (level != null) d.sendEvent(name: "battery", value: toInt(level), unit: "%")
+    if (range != null) {
+        def km = toInt(range)
+        def val = settings.useImperial ? Math.round(km * 0.621371) as Integer : km
+        def unit = settings.useImperial ? "mi" : "km"
+        d.sendEvent(name: "batteryRange", value: val, unit: unit)
+    }
+    if (status     != null) d.sendEvent(name: "chargingStatus",     value: status)
+    if (connStatus != null) d.sendEvent(name: "chargingConnection", value: connStatus)
+    if (target     != null) d.sendEvent(name: "chargeLimit",        value: toInt(target), unit: "%")
+    ifDebug("energy: battery=${level}% status=${status} conn=${connStatus} target=${target} estMins=${estMins}")
 
     if (settings.notifyDevices) {
         evaluateChargingNotifications(d.deviceNetworkId, toInt(level), status, connStatus, toInt(target), estMins)
@@ -546,7 +681,11 @@ private void updateLocation(def d, Map resp) {
     d.sendEvent(name: "latitude",     value: lat.toString())
     d.sendEvent(name: "longitude",    value: lon.toString())
     d.sendEvent(name: "lastLocation", value: "${lat}, ${lon}")
-    ifDebug("location: lat=${lat} lon=${lon}")
+    def heading = feature?.properties?.heading
+    if (heading != null) d.sendEvent(name: "heading", value: heading.toString())
+    def ts = feature?.properties?.timestamp
+    if (ts != null) d.sendEvent(name: "locationTimestamp", value: ts.toString())
+    ifDebug("location: lat=${lat} lon=${lon} heading=${heading}")
 }
 
 // =================== Notifications ===================
@@ -566,7 +705,6 @@ private void evaluateChargingNotifications(String vin, Integer level, String sta
 
     if (!firstPoll) {
         def prevStatus = prev.chargingStatus
-        // API values may be uppercase or lowercase — compare case-insensitively
         def isCharging    = status?.toUpperCase() == "CHARGING"
         def wasCharging   = prevStatus?.toUpperCase() == "CHARGING"
         def isComplete    = status?.toUpperCase() in ["FULLY_CHARGED", "DONE"]
@@ -654,6 +792,76 @@ def unlockVehicle(String vin) {
     }
     log.warn "Volvo unlock command returned status: ${status}"
     return false
+}
+
+def startEngineVehicle(String vin, def minutes) {
+    ifDebug("startEngineVehicle: ${vin} for ${minutes} min")
+    def runtime = (minutes != null) ? (toInt(minutes) ?: 15) : 15
+    runtime = Math.min(Math.max(runtime, 1), 15)  // clamp 1–15
+    def resp = volvoPost("/connected-vehicle/v2/vehicles/${vin}/commands/engine-start",
+                         [runtimeMinutes: runtime])
+    def status = resp?.data?.invokeStatus ?: resp?.status
+    if (status in ["COMPLETED", "DELIVERED"]) {
+        getChildDevice(vin)?.sendEvent(name: "engineStatus", value: "RUNNING")
+        return true
+    }
+    log.warn "Volvo engine-start returned status: ${status}"
+    return false
+}
+
+def stopEngineVehicle(String vin) {
+    ifDebug("stopEngineVehicle: ${vin}")
+    def resp = volvoPost("/connected-vehicle/v2/vehicles/${vin}/commands/engine-stop")
+    def status = resp?.data?.invokeStatus ?: resp?.status
+    if (status in ["COMPLETED", "DELIVERED"]) {
+        getChildDevice(vin)?.sendEvent(name: "engineStatus", value: "STOPPED")
+        return true
+    }
+    log.warn "Volvo engine-stop returned status: ${status}"
+    return false
+}
+
+def startClimatizationVehicle(String vin) {
+    ifDebug("startClimatizationVehicle: ${vin}")
+    def resp = volvoPost("/connected-vehicle/v2/vehicles/${vin}/commands/climatization-start")
+    def status = resp?.data?.invokeStatus ?: resp?.status
+    if (!(status in ["COMPLETED", "DELIVERED"])) {
+        log.warn "Volvo climatization-start returned status: ${status}"
+        return false
+    }
+    return true
+}
+
+def stopClimatizationVehicle(String vin) {
+    ifDebug("stopClimatizationVehicle: ${vin}")
+    def resp = volvoPost("/connected-vehicle/v2/vehicles/${vin}/commands/climatization-stop")
+    def status = resp?.data?.invokeStatus ?: resp?.status
+    if (!(status in ["COMPLETED", "DELIVERED"])) {
+        log.warn "Volvo climatization-stop returned status: ${status}"
+        return false
+    }
+    return true
+}
+
+def honkVehicle(String vin) {
+    ifDebug("honkVehicle: ${vin}")
+    def resp = volvoPost("/connected-vehicle/v2/vehicles/${vin}/commands/honk")
+    def status = resp?.data?.invokeStatus ?: resp?.status
+    if (!(status in ["COMPLETED", "DELIVERED"])) log.warn "Volvo honk returned status: ${status}"
+}
+
+def flashVehicle(String vin) {
+    ifDebug("flashVehicle: ${vin}")
+    def resp = volvoPost("/connected-vehicle/v2/vehicles/${vin}/commands/flash")
+    def status = resp?.data?.invokeStatus ?: resp?.status
+    if (!(status in ["COMPLETED", "DELIVERED"])) log.warn "Volvo flash returned status: ${status}"
+}
+
+def honkFlashVehicle(String vin) {
+    ifDebug("honkFlashVehicle: ${vin}")
+    def resp = volvoPost("/connected-vehicle/v2/vehicles/${vin}/commands/honk-and-flash")
+    def status = resp?.data?.invokeStatus ?: resp?.status
+    if (!(status in ["COMPLETED", "DELIVERED"])) log.warn "Volvo honk-and-flash returned status: ${status}"
 }
 
 def refreshVehicle(String vin) {
