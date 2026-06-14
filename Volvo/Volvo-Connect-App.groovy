@@ -1,7 +1,7 @@
 /**
  * Volvo Connect App
  *
- * 1.2.1 - Brian Wilson / bubba@bubba.org
+ * 1.2.2 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for Volvo vehicles via the Volvo Connected Vehicle API.
  * Supports lock/unlock, fuel/battery level, range, GPS location, doors, windows,
@@ -574,10 +574,14 @@ private void updateOdometer(def d, Map resp) {
     if (!data) { ifDebug("odometer: no data"); return }
     def raw = data.odometer?.value
     if (raw == null) { ifDebug("odometer: field missing"); return }
-    def km = toInt(raw)
-    def val = settings.useImperial ? Math.round(km * 0.621371) as Integer : km
-    def unit = settings.useImperial ? "mi" : "km"
-    d.sendEvent(name: "odometer", value: val, unit: unit)
+    def apiUnit = (data.odometer?.unit ?: "km").toLowerCase()
+    def val = toInt(raw)
+    def displayUnit = apiUnit
+    if (apiUnit == "km" && settings.useImperial) {
+        val = Math.round(val * 0.621371) as Integer
+        displayUnit = "mi"
+    }
+    d.sendEvent(name: "odometer", value: val, unit: displayUnit)
     ifDebug("odometer: ${val} ${unit}")
 }
 
@@ -630,10 +634,14 @@ private void updateFuel(def d, Map resp) {
     def range = data.distanceToEmptyTank?.value
     if (level != null) d.sendEvent(name: "fuelLevel", value: toInt(level), unit: "%")
     if (range != null) {
-        def km = toInt(range)
-        def val = settings.useImperial ? Math.round(km * 0.621371) as Integer : km
-        def unit = settings.useImperial ? "mi" : "km"
-        d.sendEvent(name: "fuelRange", value: val, unit: unit)
+        def apiUnit = (data.distanceToEmptyTank?.unit ?: "km").toLowerCase()
+        def val = toInt(range)
+        def displayUnit = apiUnit
+        if (apiUnit == "km" && settings.useImperial) {
+            val = Math.round(val * 0.621371) as Integer
+            displayUnit = "mi"
+        }
+        d.sendEvent(name: "fuelRange", value: val, unit: displayUnit)
     }
     ifDebug("fuel: level=${level}% range=${range}")
 }
@@ -655,15 +663,20 @@ private void updateEnergy(def d, Map resp) {
     }
     if (level != null) d.sendEvent(name: "battery", value: toInt(level), unit: "%")
     if (range != null) {
-        def km = toInt(range)
-        def val = settings.useImperial ? Math.round(km * 0.621371) as Integer : km
-        def unit = settings.useImperial ? "mi" : "km"
-        d.sendEvent(name: "batteryRange", value: val, unit: unit)
+        def apiUnit = (data.electricRange?.unit ?: data.distanceToEmptyBattery?.unit ?: "km").toLowerCase()
+        def val = toInt(range)
+        def displayUnit = apiUnit
+        // Only convert if API is giving km and user wants miles
+        if (apiUnit == "km" && settings.useImperial) {
+            val = Math.round(val * 0.621371) as Integer
+            displayUnit = "mi"
+        }
+        d.sendEvent(name: "batteryRange", value: val, unit: displayUnit)
     }
     if (status     != null) d.sendEvent(name: "chargingStatus",     value: status)
     if (connStatus != null) d.sendEvent(name: "chargingConnection", value: connStatus)
     if (target     != null) d.sendEvent(name: "chargeLimit",        value: toInt(target), unit: "%")
-    ifDebug("energy: battery=${level}% status=${status} conn=${connStatus} target=${target} estMins=${estMins}")
+    ifDebug("energy: battery=${level}% range=${range} status=${status} conn=${connStatus} target=${target} estMins=${estMins}")
 
     if (settings.notifyDevices) {
         evaluateChargingNotifications(d.deviceNetworkId, toInt(level), status, connStatus, toInt(target), estMins)
