@@ -5,8 +5,8 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Volvo",
   "communityLink": "",
   "dateReleased": "2026-06-14",
-  "releaseNotes": "1.2.0 — Added door/window/tyre status, odometer, engine status, warning lights, vehicle info (model/year/fuelType/color/gearbox), imperial/metric unit preference, heading & location timestamp. New commands: startEngine, stopEngine, startClimatization, stopClimatization, honk, flash, honkAndFlash. Extended Connected Vehicle API scope coverage.",
-  "version": "1.2.0",
+  "releaseNotes": "1.2.1 — Fix charging status showing null/ERROR (Energy v2 API uses chargingStatus field name). Reduce 403 log noise for pending-approval endpoints (odometer, windows, tyres, warnings, engine, location).",
+  "version": "1.2.1",
   "drivers": [
     {
       "id": "a3f7c291-5e84-4b12-9d63-7c08e1f45a20",
@@ -14,7 +14,7 @@
       "namespace": "brianwilson-hubitat",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Volvo/Volvo-Driver.groovy",
       "required": true,
-      "version": "1.2.0"
+      "version": "1.2.1"
     }
   ],
   "apps": [
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Volvo/Volvo-Connect-App.groovy",
       "required": true,
       "oauth": true,
-      "version": "1.2.0"
+      "version": "1.2.1"
     }
   ]
 }
