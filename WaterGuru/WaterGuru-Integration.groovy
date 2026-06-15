@@ -1,7 +1,7 @@
 /**
  * WaterGuru Integration App
  *
- * 2.2.1 - Brian Wilson / bubba@bubba.org
+ * 2.2.2 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration — no external Python/Flask server required.
  * Authenticates directly with AWS Cognito (SRP flow) and calls the
@@ -19,6 +19,11 @@
  *    conditions, then arms the state machine so the same state does not
  *    re-alert on subsequent polls. A "Send Current State Summary" button
  *    re-triggers this for already-baselined devices.
+ *  - First-poll digest (2.2.2): if "Send a digest for every new sample" is
+ *    enabled, the initial-state summary also includes the current readings
+ *    (pH, free chlorine, temperature, flow) — previously the digest only
+ *    fired when a NEW sample arrived between polls, so the first summary
+ *    after a baseline reset was missing the readings.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at:
@@ -700,8 +705,10 @@ private void processWaterGuruData(def response) {
 //
 // Change-driven, never poll-driven:
 //  - First poll for a device emits a one-time summary of any pre-existing
-//    non-GREEN / out-of-range / low-threshold conditions, then arms the
-//    state machine so the same state does NOT re-alert on subsequent polls.
+//    non-GREEN / out-of-range / low-threshold conditions, plus a current-
+//    readings digest if "Send a digest for every new sample" is on. The
+//    state machine is then armed so the same state does NOT re-alert on
+//    subsequent polls.
 //  - Chemistry (pH / free chlorine) is otherwise only evaluated when
 //    LastMeasurement changes (a real new sample, not just a poll).
 //  - Status / cassette / battery status alerts fire on the transition edge
@@ -743,6 +750,15 @@ private void evaluateNotifications(String id, String name, Map cur) {
     if (firstPoll) {
         // Surface any pre-existing conditions as a one-time summary, then arm
         // per-condition flags so the same state does not re-alert next poll.
+        // If the digest toggle is on, also include current readings so the
+        // initial summary covers the "every new sample" expectation — there
+        // is no prior LastMeasurement to compare against on first poll.
+        if (settings.notifyOnNewSample && (cur.pH != null || cur.freeChlorine != null)) {
+            def parts = []
+            if (cur.pH != null)           parts << "pH ${cur.pH}"
+            if (cur.freeChlorine != null) parts << "free chlorine ${cur.freeChlorine} ppm"
+            alerts << "current readings — ${parts.join(', ')}"
+        }
         if (phOut) { alerts << "pH ${cur.pH} is outside ${phLo}–${phHi}"; phAlerted = true }
         if (clOut) { alerts << "free chlorine ${cur.freeChlorine} ppm is outside ${clLo}–${clHi} ppm"; clAlerted = true }
         if (cur.status && cur.status != "GREEN") {
