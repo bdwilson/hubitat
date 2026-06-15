@@ -5,16 +5,16 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/WaterGuru",
   "communityLink": "https://community.hubitat.com/t/release-waterguru-pool-integration/77922",
   "dateReleased": "2026-06-15",
-  "releaseNotes": "Filter WaterGuru 'measurement outdated' YELLOW alerts (Total Alkalinity, Salt, Cyanuric Acid, Phosphates, Copper, Iron, Saturation Index, Calcium Hardness) so they no longer trigger notifications. If a device is YELLOW only because of stale-data alerts, the notification engine treats it as GREEN. Device's Status and Status Msg attributes still show the full raw WaterGuru state. New toggle 'Ignore measurement outdated alerts' (default on) in the Notifications section.",
-  "version": "2.2.3",
+  "releaseNotes": "Fix importUrl in app (was pointing to wrong repository) and in driver (update to refs/heads/master form). No functional changes.",
+  "version": "2.2.4",
   "drivers": [
     {
       "id": "20bad83b-d3db-43f6-ba69-ffa3d6e120ca",
       "name": "WaterGuru Integration Driver",
       "namespace": "brianwilson-hubitat",
-      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/WaterGuru/WaterGuru-Driver.groovy",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/WaterGuru/WaterGuru-Driver.groovy",
       "required": true,
-      "version": "2.0.0"
+      "version": "2.0.1"
     }
   ],
   "apps": [
@@ -22,10 +22,10 @@
       "id": "be813355-ac78-463a-b43f-e2a9bd7869d0",
       "name": "WaterGuru Integration",
       "namespace": "brianwilson-hubitat",
-      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/WaterGuru/WaterGuru-Integration.groovy",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/WaterGuru/WaterGuru-Integration.groovy",
       "required": true,
       "oauth": false,
-      "version": "2.2.3"
+      "version": "2.2.4"
     }
   ]
 }
