@@ -5,8 +5,8 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Volvo",
   "communityLink": "",
   "dateReleased": "2026-06-14",
-  "releaseNotes": "1.2.2 — Fix battery/fuel range double-conversion: respect the unit field returned by the API and only convert km→miles when the API actually returns km. Adds range to energy debug log.",
-  "version": "1.2.2",
+  "releaseNotes": "1.2.3 — Downgrade POST 403 errors to warn (engine/climatization/honk/flash require Volvo API approval). Suppress redundant null status warnings when command fails with 403.",
+  "version": "1.2.3",
   "drivers": [
     {
       "id": "a3f7c291-5e84-4b12-9d63-7c08e1f45a20",
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Volvo/Volvo-Connect-App.groovy",
       "required": true,
       "oauth": true,
-      "version": "1.2.2"
+      "version": "1.2.3"
     }
   ]
 }

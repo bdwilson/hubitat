@@ -1,7 +1,7 @@
 /**
  * Volvo Connect App
  *
- * 1.2.2 - Brian Wilson / bubba@bubba.org
+ * 1.2.3 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for Volvo vehicles via the Volvo Connected Vehicle API.
  * Supports lock/unlock, fuel/battery level, range, GPS location, doors, windows,
@@ -410,7 +410,12 @@ private Map volvoPost(String path, Map body = [:]) {
             result = resp.data instanceof Map ? resp.data : new JsonSlurper().parseText(resp.data.text)
         }
     } catch (groovyx.net.http.HttpResponseException e) {
-        log.error "Volvo POST ${path} failed (${e.statusCode}): ${e.message}"
+        // 403 on commands is expected while Volvo API approval is pending
+        if (e.statusCode == 403) {
+            log.warn "Volvo POST ${path} not yet approved (403) — will work after Volvo API approval"
+        } else {
+            log.error "Volvo POST ${path} failed (${e.statusCode}): ${e.message}"
+        }
         return null
     } catch (e) {
         log.error "Volvo POST ${path} error: ${e}"
@@ -819,33 +824,36 @@ def startEngineVehicle(String vin, def minutes) {
     runtime = Math.min(Math.max(runtime, 1), 15)  // clamp 1–15
     def resp = volvoPost("/connected-vehicle/v2/vehicles/${vin}/commands/engine-start",
                          [runtimeMinutes: runtime])
+    if (resp == null) return false  // 403 or network error already logged
     def status = resp?.data?.invokeStatus ?: resp?.status
     if (status in ["COMPLETED", "DELIVERED"]) {
         getChildDevice(vin)?.sendEvent(name: "engineStatus", value: "RUNNING")
         return true
     }
-    log.warn "Volvo engine-start returned status: ${status}"
+    log.warn "Volvo engine-start returned unexpected status: ${status}"
     return false
 }
 
 def stopEngineVehicle(String vin) {
     ifDebug("stopEngineVehicle: ${vin}")
     def resp = volvoPost("/connected-vehicle/v2/vehicles/${vin}/commands/engine-stop")
+    if (resp == null) return false
     def status = resp?.data?.invokeStatus ?: resp?.status
     if (status in ["COMPLETED", "DELIVERED"]) {
         getChildDevice(vin)?.sendEvent(name: "engineStatus", value: "STOPPED")
         return true
     }
-    log.warn "Volvo engine-stop returned status: ${status}"
+    log.warn "Volvo engine-stop returned unexpected status: ${status}"
     return false
 }
 
 def startClimatizationVehicle(String vin) {
     ifDebug("startClimatizationVehicle: ${vin}")
     def resp = volvoPost("/connected-vehicle/v2/vehicles/${vin}/commands/climatization-start")
+    if (resp == null) return false
     def status = resp?.data?.invokeStatus ?: resp?.status
     if (!(status in ["COMPLETED", "DELIVERED"])) {
-        log.warn "Volvo climatization-start returned status: ${status}"
+        log.warn "Volvo climatization-start returned unexpected status: ${status}"
         return false
     }
     return true
@@ -854,9 +862,10 @@ def startClimatizationVehicle(String vin) {
 def stopClimatizationVehicle(String vin) {
     ifDebug("stopClimatizationVehicle: ${vin}")
     def resp = volvoPost("/connected-vehicle/v2/vehicles/${vin}/commands/climatization-stop")
+    if (resp == null) return false
     def status = resp?.data?.invokeStatus ?: resp?.status
     if (!(status in ["COMPLETED", "DELIVERED"])) {
-        log.warn "Volvo climatization-stop returned status: ${status}"
+        log.warn "Volvo climatization-stop returned unexpected status: ${status}"
         return false
     }
     return true
@@ -865,22 +874,25 @@ def stopClimatizationVehicle(String vin) {
 def honkVehicle(String vin) {
     ifDebug("honkVehicle: ${vin}")
     def resp = volvoPost("/connected-vehicle/v2/vehicles/${vin}/commands/honk")
+    if (resp == null) return
     def status = resp?.data?.invokeStatus ?: resp?.status
-    if (!(status in ["COMPLETED", "DELIVERED"])) log.warn "Volvo honk returned status: ${status}"
+    if (!(status in ["COMPLETED", "DELIVERED"])) log.warn "Volvo honk returned unexpected status: ${status}"
 }
 
 def flashVehicle(String vin) {
     ifDebug("flashVehicle: ${vin}")
     def resp = volvoPost("/connected-vehicle/v2/vehicles/${vin}/commands/flash")
+    if (resp == null) return
     def status = resp?.data?.invokeStatus ?: resp?.status
-    if (!(status in ["COMPLETED", "DELIVERED"])) log.warn "Volvo flash returned status: ${status}"
+    if (!(status in ["COMPLETED", "DELIVERED"])) log.warn "Volvo flash returned unexpected status: ${status}"
 }
 
 def honkFlashVehicle(String vin) {
     ifDebug("honkFlashVehicle: ${vin}")
     def resp = volvoPost("/connected-vehicle/v2/vehicles/${vin}/commands/honk-and-flash")
+    if (resp == null) return
     def status = resp?.data?.invokeStatus ?: resp?.status
-    if (!(status in ["COMPLETED", "DELIVERED"])) log.warn "Volvo honk-and-flash returned status: ${status}"
+    if (!(status in ["COMPLETED", "DELIVERED"])) log.warn "Volvo honk-and-flash returned unexpected status: ${status}"
 }
 
 def refreshVehicle(String vin) {
