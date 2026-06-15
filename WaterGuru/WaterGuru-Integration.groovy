@@ -1,7 +1,7 @@
 /**
  * WaterGuru Integration App
  *
- * 2.2.3 - Brian Wilson / bubba@bubba.org
+ * 2.2.4 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration — no external Python/Flask server required.
  * Authenticates directly with AWS Cognito (SRP flow) and calls the
@@ -30,6 +30,8 @@
  *    If they would be the only thing keeping Status from being GREEN, the
  *    notification engine treats the device as GREEN. Device attributes
  *    (Status, statusMsg) still reflect the raw WaterGuru state.
+ *  - Import URL fix (2.2.4): corrected importUrl in both app and driver to
+ *    point to the bdwilson/hubitat repository on master.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at:
@@ -51,7 +53,7 @@ definition(
     author: "bubba@bubba.org",
     description: "WaterGuru Integration App",
     category: "My Apps",
-    importUrl: "https://raw.githubusercontent.com/bdwilson/waterguru-api/main/hubitat/WaterGuru-Integration.groovy",
+    importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/WaterGuru/WaterGuru-Integration.groovy",
     iconUrl: "",
     iconX2Url: "",
     iconX3Url: "",
