@@ -1,7 +1,7 @@
 /**
  * WaterGuru Integration App
  *
- * 2.2.0 - Brian Wilson / bubba@bubba.org
+ * 2.2.3 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration — no external Python/Flask server required.
  * Authenticates directly with AWS Cognito (SRP flow) and calls the
@@ -14,6 +14,22 @@
  *  - Change-driven notifications (2.2.0): chemistry range alerts on new
  *    samples, status transitions, low cassette/battery thresholds, quiet
  *    hours, recovery alerts. Polling alone never triggers a notification.
+ *  - Initial-state summary (2.2.1): first poll for a device emits a one-time
+ *    summary of any pre-existing non-GREEN / out-of-range / low-threshold
+ *    conditions, then arms the state machine so the same state does not
+ *    re-alert on subsequent polls. A "Send Current State Summary" button
+ *    re-triggers this for already-baselined devices.
+ *  - First-poll digest (2.2.2): if "Send a digest for every new sample" is
+ *    enabled, the initial-state summary also includes the current readings
+ *    (pH, free chlorine, temperature, flow).
+ *  - Stale-data alert filter (2.2.3): WaterGuru reports "measurement
+ *    outdated" YELLOW alerts for old (e.g. years-stale) Total Alkalinity,
+ *    Calcium Hardness, etc. readings even when current pH/chlorine are
+ *    fine. These are informational and not actionable, so they are skipped
+ *    when deciding whether to notify (a toggle controls this; default on).
+ *    If they would be the only thing keeping Status from being GREEN, the
+ *    notification engine treats the device as GREEN. Device attributes
+ *    (Status, statusMsg) still reflect the raw WaterGuru state.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at:
@@ -99,15 +115,19 @@ def mainPage() {
                 input "notifyDevices", "capability.notification",
                     title: "Send notifications to", multiple: true, required: false, submitOnChange: true
                 if (settings.notifyDevices) {
-                    input "btnTestNotify", "button", title: "Send Test Notification", width: 4
+                    input "btnTestNotify",    "button", title: "Send Test Notification",     width: 4
+                    input "btnResendSummary", "button", title: "Send Current State Summary", width: 4
+                    paragraph "<i>Test sends a plain ping. Summary clears the per-device baseline and runs a poll, so any current non-GREEN or out-of-range conditions are re-announced.</i>"
                     input "phMin", "decimal", title: "pH low alert threshold",            defaultValue: 7.2, required: false, width: 6
                     input "phMax", "decimal", title: "pH high alert threshold",           defaultValue: 7.8, required: false, width: 6
                     input "clMin", "decimal", title: "Free chlorine low alert (ppm)",     defaultValue: 1.0, required: false, width: 6
                     input "clMax", "decimal", title: "Free chlorine high alert (ppm)",    defaultValue: 3.0, required: false, width: 6
                     input "checksLeftThreshold", "number", title: "Cassette checks-left warning at or below", defaultValue: 10, required: false, width: 6
                     input "batteryThreshold",    "number", title: "Battery % warning at or below",            defaultValue: 20, required: false, width: 6
-                    input "notifyOnNewSample", "bool", title: "Send a digest for every new sample (pH, chlorine, temp, flow)", defaultValue: false, required: false
-                    input "notifyRecovery",    "bool", title: "Also notify when conditions return to normal",                 defaultValue: false, required: false
+                    input "notifyOnNewSample",   "bool",   title: "Send a digest for every new sample (pH, chlorine, temp, flow)", defaultValue: false, required: false
+                    input "notifyRecovery",      "bool",   title: "Also notify when conditions return to normal",                 defaultValue: false, required: false
+                    input "suppressStaleAlerts", "bool",   title: "Ignore 'measurement outdated' alerts (Total Alkalinity, Salt, Cyanuric Acid, etc.)", defaultValue: true, required: false
+                    paragraph "<i>Stale-data alerts are still shown in the device's Status Msg attribute, but won't trigger notifications. If a non-GREEN status is caused only by stale-data alerts, the notification engine treats it as GREEN.</i>"
                     input "quietStart", "time", title: "Quiet hours start (optional)", required: false, width: 6, submitOnChange: true
                     input "quietEnd",   "time", title: "Quiet hours end",              required: settings.quietStart != null, width: 6
                     paragraph "<i>Alerts during quiet hours are held and delivered when quiet hours end.</i>"
@@ -130,6 +150,12 @@ def appButtonHandler(btn) {
     } else if (btn == "btnTestNotify") {
         // Bypasses pause and quiet hours so routing can always be verified
         settings.notifyDevices?.each { it.deviceNotification("WaterGuru test notification from Hubitat") }
+    } else if (btn == "btnResendSummary") {
+        // Clear the per-device notification baseline; the next poll will treat
+        // each device as first-poll and emit the initial-state summary.
+        state.notifyState = [:]
+        log.info "WaterGuru: notification baseline cleared; running poll to re-announce current state"
+        runIn(2, discoverChildDevices)
     }
 }
 
@@ -552,6 +578,13 @@ def discoverChildDevices() {
     }
 }
 
+// Identifies WaterGuru's "measurement outdated" YELLOW alerts so the
+// notification engine can ignore them. Device attributes still show the
+// full set so dashboards see the real WG state.
+private boolean isStaleDataAlert(alert) {
+    alert?.text && alert.text.toLowerCase().contains("measurement outdated")
+}
+
 // =================== Data Processing ===================
 
 private void processWaterGuruData(def response) {
@@ -576,6 +609,7 @@ private void processWaterGuruData(def response) {
         def LastMeasurementHuman = item.latestMeasureTimeHuman
         def LastMeasurement      = item.latestMeasureTime
 
+        // statusMsg for the device attribute uses every alert (dashboards stay accurate)
         def statusMsg = ""
         def count = 0
         item.alerts.each { alert ->
@@ -584,6 +618,27 @@ private void processWaterGuruData(def response) {
             ifDebug("alert: ${alert.status} — ${alert.text}")
         }
         if (!statusMsg) statusMsg = "None"
+
+        // Build the actionable view of alerts for the notification engine: drop
+        // "measurement outdated" entries unless the user disabled the filter.
+        def rawAlerts        = item.alerts ?: []
+        def filterStale      = (settings.suppressStaleAlerts != false)
+        def actionableAlerts = filterStale ? rawAlerts.findAll { !isStaleDataAlert(it) } : rawAlerts
+        if (filterStale && rawAlerts.size() != actionableAlerts.size()) {
+            ifDebug("Filtered ${rawAlerts.size() - actionableAlerts.size()} stale-data alert(s) for ${name}")
+        }
+        // If WG flagged a non-GREEN status but every alert behind it was stale-
+        // data, treat the device as effectively GREEN for notification purposes.
+        def notifyStatus = (status && status != "GREEN" && actionableAlerts.isEmpty()) ? "GREEN" : status
+        // statusMsg for the notification body mirrors actionableAlerts so the
+        // detail text in alerts doesn't carry stale-data warnings.
+        def notifyStatusMsg = ""
+        def nCount = 0
+        actionableAlerts.each { alert ->
+            nCount++
+            notifyStatusMsg += "${alert.status} Alert (${nCount}): ${alert.text}\n"
+        }
+        if (!notifyStatusMsg) notifyStatusMsg = "None"
 
         def index = item.measurements?.findIndexOf { it.type == "FREE_CL" }
         def freeChlorine = (index != null && index >= 0) ? item.measurements[index].floatValue : null
@@ -666,8 +721,8 @@ private void processWaterGuruData(def response) {
 
         evaluateNotifications(id, name, [
             lastMeasurement : LastMeasurement,
-            status          : status,
-            statusMsg       : statusMsg,
+            status          : notifyStatus,
+            statusMsg       : notifyStatusMsg,
             cassetteStatus  : CassetteStatus,
             batteryStatus   : batteryStatus,
             checksLeft      : CassetteChecksLeft,
@@ -676,7 +731,7 @@ private void processWaterGuruData(def response) {
             freeChlorine    : freeChlorine,
             temp            : temp,
             rate            : rate,
-            alerts          : item.alerts?.collect { "${it.status}: ${it.text}".toString() } ?: []
+            alerts          : actionableAlerts.collect { "${it.status}: ${it.text}".toString() }
         ])
     }
 
@@ -686,15 +741,26 @@ private void processWaterGuruData(def response) {
 // =================== Notifications ===================
 //
 // Change-driven, never poll-driven:
-//  - Chemistry (pH / free chlorine) is only evaluated when LastMeasurement
-//    changes, i.e. the device actually took a new sample.
-//  - Status / cassette / battery status alerts fire only on the transition
-//    edge (GREEN -> non-GREEN), not while the condition persists.
-//  - Checks-left and battery % thresholds are edge-triggered and re-arm only
-//    after the value climbs back above threshold (replacement).
+//  - First poll for a device emits a one-time summary of any pre-existing
+//    non-GREEN / out-of-range / low-threshold conditions, plus a current-
+//    readings digest if "Send a digest for every new sample" is on. The
+//    state machine is then armed so the same state does NOT re-alert on
+//    subsequent polls.
+//  - Chemistry (pH / free chlorine) is otherwise only evaluated when
+//    LastMeasurement changes (a real new sample, not just a poll).
+//  - Status / cassette / battery status alerts fire on the transition edge
+//    (GREEN -> non-GREEN), not while the condition persists. Stale-data
+//    YELLOW alerts ("measurement outdated ... years ago") are filtered out
+//    upstream so they don't contribute to status here — see
+//    processWaterGuruData / isStaleDataAlert.
+//  - Checks-left and battery % thresholds are edge-triggered and re-arm
+//    only after the value climbs back above threshold (replacement).
 //  - Temperature and flow are context in the message body, never a trigger.
-//  - The first poll after install records a baseline and stays silent.
 //  - All triggers from one poll are coalesced into a single message.
+//
+// Use the "Send Current State Summary" button to clear the per-device
+// baseline and re-emit the initial-state summary (useful after upgrade or
+// when notifications were turned on while a device was already non-GREEN).
 
 private void evaluateNotifications(String id, String name, Map cur) {
     if (!settings.notifyDevices) return
@@ -722,9 +788,33 @@ private void evaluateNotifications(String id, String name, Map cur) {
     boolean clAlerted = prev.clAlerted ?: false
 
     if (firstPoll) {
-        // Baseline pre-existing out-of-range conditions silently
-        phAlerted = phOut
-        clAlerted = clOut
+        // Surface any pre-existing conditions as a one-time summary, then arm
+        // per-condition flags so the same state does not re-alert next poll.
+        // If the digest toggle is on, also include current readings so the
+        // initial summary covers the "every new sample" expectation — there
+        // is no prior LastMeasurement to compare against on first poll.
+        if (settings.notifyOnNewSample && (cur.pH != null || cur.freeChlorine != null)) {
+            def parts = []
+            if (cur.pH != null)           parts << "pH ${cur.pH}"
+            if (cur.freeChlorine != null) parts << "free chlorine ${cur.freeChlorine} ppm"
+            alerts << "current readings — ${parts.join(', ')}"
+        }
+        if (phOut) { alerts << "pH ${cur.pH} is outside ${phLo}–${phHi}"; phAlerted = true }
+        if (clOut) { alerts << "free chlorine ${cur.freeChlorine} ppm is outside ${clLo}–${clHi} ppm"; clAlerted = true }
+        if (cur.status && cur.status != "GREEN") {
+            def aCount = (cur.alerts ?: []).size()
+            def first  = (cur.alerts ?: [])[0]
+            def detail = ""
+            if (aCount > 0) {
+                detail = " — ${first}"
+                if (aCount > 1) detail += " (+${aCount - 1} more)"
+            }
+            alerts << "status is ${cur.status}${detail}"
+        }
+        if (cur.cassetteStatus && cur.cassetteStatus != "GREEN")
+            alerts << "cassette status is ${cur.cassetteStatus}"
+        if (cur.batteryStatus && cur.batteryStatus != "GREEN")
+            alerts << "battery status is ${cur.batteryStatus}"
     } else if (newSample) {
         if (settings.notifyOnNewSample)
             alerts << "new sample — pH ${cur.pH}, free chlorine ${cur.freeChlorine} ppm"
@@ -769,7 +859,8 @@ private void evaluateNotifications(String id, String name, Map cur) {
     if (cur.checksLeft != null) {
         int v = cur.checksLeft as int
         if (firstPoll) {
-            checksArmed = v > checksThr
+            if (v <= checksThr) { alerts << "only ${v} cassette checks left"; checksArmed = false }
+            else                { checksArmed = true }
         } else if (checksArmed && v <= checksThr) {
             alerts << "only ${v} cassette checks left"
             checksArmed = false
@@ -782,7 +873,8 @@ private void evaluateNotifications(String id, String name, Map cur) {
     if (cur.batteryPct != null) {
         int v = cur.batteryPct as int
         if (firstPoll) {
-            battArmed = v > battThr
+            if (v <= battThr) { alerts << "battery low (${v}%)"; battArmed = false }
+            else              { battArmed = true }
         } else if (battArmed && v <= battThr) {
             alerts << "battery low (${v}%)"
             battArmed = false
@@ -800,7 +892,8 @@ private void evaluateNotifications(String id, String name, Map cur) {
         if (cur.temp != null) ctx << "temp ${cur.temp}°"
         if (cur.rate != null) ctx << "flow ${cur.rate} GPM"
         def context = ctx ? " (${ctx.join(', ')})" : ""
-        sendWgNotification("WaterGuru ${name}: ${lines.join('; ')}${context}")
+        def prefix  = firstPoll ? "WaterGuru ${name} initial state — " : "WaterGuru ${name}: "
+        sendWgNotification("${prefix}${lines.join('; ')}${context}")
     }
 
     ns[id] = [

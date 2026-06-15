@@ -34,16 +34,26 @@ Notifications are change-driven, not poll-driven: a poll by itself never sends
 a notification. Select one or more notification devices (Pushover, the Hubitat
 mobile app, etc.) in the app, then tune what you want to hear about:
 
+* **Initial-state summary** — the first poll for a device emits a one-time
+  summary of any pre-existing non-GREEN, out-of-range, or low-threshold
+  conditions, then arms the state machine so the same state does not
+  re-alert on subsequent polls. Use the **Send Current State Summary** button
+  to clear the per-device baseline and re-emit this summary on demand.
 * **Chemistry alerts** — when a *new sample* arrives (detected via the
   measurement timestamp, not the poll), pH and free chlorine are checked
   against configurable safe ranges (defaults: pH 7.2–7.8, Cl 1.0–3.0 ppm).
-  You're alerted once when a value goes out of range and not again until it
-  recovers and re-trips.
-* **Status alerts** — when the device status, cassette status, or battery
-  status transitions away from GREEN, or when a new device alert appears.
+* **Status alerts** — when device, cassette, or battery status transitions
+  away from GREEN, or when a new device alert appears.
+* **Stale-data alert filter** (on by default) — WaterGuru reports YELLOW
+  alerts whenever side measurements like Total Alkalinity, Salt, Cyanuric
+  Acid, etc. are years out of date. These are informational, not actionable,
+  and they're skipped when deciding whether to notify. If they would be the
+  only thing keeping Status from being GREEN, the notification engine treats
+  the device as GREEN. Device attributes (`Status`, `statusMsg`) still show
+  the raw WaterGuru state so dashboards stay accurate. Toggle off if you
+  want the raw behavior.
 * **Consumable/battery thresholds** — when cassette checks-left or battery %
-  drops below your threshold (defaults: 10 checks, 20%). Edge-triggered: you
-  get one alert, and it re-arms only after replacement.
+  drops below your threshold (defaults: 10 checks, 20%). Edge-triggered.
 * **Optional new-sample digest** — a summary of every new reading, off by default.
 * **Recovery notifications** — "back to GREEN" / "back in range" messages,
   off by default.
@@ -54,8 +64,7 @@ mobile app, etc.) in the app, then tune what you want to hear about:
 
 Temperature and flow rate are included in alert messages as context but never
 trigger a notification themselves. Multiple alerts from the same poll are
-coalesced into a single message. The first poll after install records a
-baseline silently.
+coalesced into a single message.
 
 ## Notes
 
