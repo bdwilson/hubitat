@@ -34,6 +34,13 @@ Notifications are change-driven, not poll-driven: a poll by itself never sends
 a notification. Select one or more notification devices (Pushover, the Hubitat
 mobile app, etc.) in the app, then tune what you want to hear about:
 
+* **Initial-state summary** — the first poll for a device emits a one-time
+  summary of any pre-existing non-GREEN, out-of-range, or low-threshold
+  conditions, then arms the state machine so the same state does not
+  re-alert on subsequent polls. Use the **Send Current State Summary** button
+  to clear the per-device baseline and re-emit this summary on demand —
+  useful after upgrading or if notifications were enabled while a device was
+  already in a non-GREEN state.
 * **Chemistry alerts** — when a *new sample* arrives (detected via the
   measurement timestamp, not the poll), pH and free chlorine are checked
   against configurable safe ranges (defaults: pH 7.2–7.8, Cl 1.0–3.0 ppm).
@@ -54,8 +61,7 @@ mobile app, etc.) in the app, then tune what you want to hear about:
 
 Temperature and flow rate are included in alert messages as context but never
 trigger a notification themselves. Multiple alerts from the same poll are
-coalesced into a single message. The first poll after install records a
-baseline silently.
+coalesced into a single message.
 
 ## Notes
 
