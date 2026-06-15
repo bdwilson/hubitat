@@ -5,8 +5,8 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/WaterGuru",
   "communityLink": "https://community.hubitat.com/t/release-waterguru-pool-integration/77922",
   "dateReleased": "2026-06-15",
-  "releaseNotes": "Initial-state summary now includes the current-readings digest when 'Send a digest for every new sample' is enabled, so the first message after a baseline reset isn't missing pH/Cl values.",
-  "version": "2.2.2",
+  "releaseNotes": "Filter WaterGuru 'measurement outdated' YELLOW alerts (Total Alkalinity, Salt, Cyanuric Acid, Phosphates, Copper, Iron, Saturation Index, Calcium Hardness) so they no longer trigger notifications. If a device is YELLOW only because of stale-data alerts, the notification engine treats it as GREEN. Device's Status and Status Msg attributes still show the full raw WaterGuru state. New toggle 'Ignore measurement outdated alerts' (default on) in the Notifications section.",
+  "version": "2.2.3",
   "drivers": [
     {
       "id": "20bad83b-d3db-43f6-ba69-ffa3d6e120ca",

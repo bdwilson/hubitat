@@ -38,19 +38,22 @@ mobile app, etc.) in the app, then tune what you want to hear about:
   summary of any pre-existing non-GREEN, out-of-range, or low-threshold
   conditions, then arms the state machine so the same state does not
   re-alert on subsequent polls. Use the **Send Current State Summary** button
-  to clear the per-device baseline and re-emit this summary on demand —
-  useful after upgrading or if notifications were enabled while a device was
-  already in a non-GREEN state.
+  to clear the per-device baseline and re-emit this summary on demand.
 * **Chemistry alerts** — when a *new sample* arrives (detected via the
   measurement timestamp, not the poll), pH and free chlorine are checked
   against configurable safe ranges (defaults: pH 7.2–7.8, Cl 1.0–3.0 ppm).
-  You're alerted once when a value goes out of range and not again until it
-  recovers and re-trips.
-* **Status alerts** — when the device status, cassette status, or battery
-  status transitions away from GREEN, or when a new device alert appears.
+* **Status alerts** — when device, cassette, or battery status transitions
+  away from GREEN, or when a new device alert appears.
+* **Stale-data alert filter** (on by default) — WaterGuru reports YELLOW
+  alerts whenever side measurements like Total Alkalinity, Salt, Cyanuric
+  Acid, etc. are years out of date. These are informational, not actionable,
+  and they're skipped when deciding whether to notify. If they would be the
+  only thing keeping Status from being GREEN, the notification engine treats
+  the device as GREEN. Device attributes (`Status`, `statusMsg`) still show
+  the raw WaterGuru state so dashboards stay accurate. Toggle off if you
+  want the raw behavior.
 * **Consumable/battery thresholds** — when cassette checks-left or battery %
-  drops below your threshold (defaults: 10 checks, 20%). Edge-triggered: you
-  get one alert, and it re-arms only after replacement.
+  drops below your threshold (defaults: 10 checks, 20%). Edge-triggered.
 * **Optional new-sample digest** — a summary of every new reading, off by default.
 * **Recovery notifications** — "back to GREEN" / "back in range" messages,
   off by default.

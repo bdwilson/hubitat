@@ -1,7 +1,7 @@
 /**
  * WaterGuru Integration App
  *
- * 2.2.2 - Brian Wilson / bubba@bubba.org
+ * 2.2.3 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration — no external Python/Flask server required.
  * Authenticates directly with AWS Cognito (SRP flow) and calls the
@@ -21,9 +21,15 @@
  *    re-triggers this for already-baselined devices.
  *  - First-poll digest (2.2.2): if "Send a digest for every new sample" is
  *    enabled, the initial-state summary also includes the current readings
- *    (pH, free chlorine, temperature, flow) — previously the digest only
- *    fired when a NEW sample arrived between polls, so the first summary
- *    after a baseline reset was missing the readings.
+ *    (pH, free chlorine, temperature, flow).
+ *  - Stale-data alert filter (2.2.3): WaterGuru reports "measurement
+ *    outdated" YELLOW alerts for old (e.g. years-stale) Total Alkalinity,
+ *    Calcium Hardness, etc. readings even when current pH/chlorine are
+ *    fine. These are informational and not actionable, so they are skipped
+ *    when deciding whether to notify (a toggle controls this; default on).
+ *    If they would be the only thing keeping Status from being GREEN, the
+ *    notification engine treats the device as GREEN. Device attributes
+ *    (Status, statusMsg) still reflect the raw WaterGuru state.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at:
@@ -118,8 +124,10 @@ def mainPage() {
                     input "clMax", "decimal", title: "Free chlorine high alert (ppm)",    defaultValue: 3.0, required: false, width: 6
                     input "checksLeftThreshold", "number", title: "Cassette checks-left warning at or below", defaultValue: 10, required: false, width: 6
                     input "batteryThreshold",    "number", title: "Battery % warning at or below",            defaultValue: 20, required: false, width: 6
-                    input "notifyOnNewSample", "bool", title: "Send a digest for every new sample (pH, chlorine, temp, flow)", defaultValue: false, required: false
-                    input "notifyRecovery",    "bool", title: "Also notify when conditions return to normal",                 defaultValue: false, required: false
+                    input "notifyOnNewSample",   "bool",   title: "Send a digest for every new sample (pH, chlorine, temp, flow)", defaultValue: false, required: false
+                    input "notifyRecovery",      "bool",   title: "Also notify when conditions return to normal",                 defaultValue: false, required: false
+                    input "suppressStaleAlerts", "bool",   title: "Ignore 'measurement outdated' alerts (Total Alkalinity, Salt, Cyanuric Acid, etc.)", defaultValue: true, required: false
+                    paragraph "<i>Stale-data alerts are still shown in the device's Status Msg attribute, but won't trigger notifications. If a non-GREEN status is caused only by stale-data alerts, the notification engine treats it as GREEN.</i>"
                     input "quietStart", "time", title: "Quiet hours start (optional)", required: false, width: 6, submitOnChange: true
                     input "quietEnd",   "time", title: "Quiet hours end",              required: settings.quietStart != null, width: 6
                     paragraph "<i>Alerts during quiet hours are held and delivered when quiet hours end.</i>"
@@ -570,6 +578,13 @@ def discoverChildDevices() {
     }
 }
 
+// Identifies WaterGuru's "measurement outdated" YELLOW alerts so the
+// notification engine can ignore them. Device attributes still show the
+// full set so dashboards see the real WG state.
+private boolean isStaleDataAlert(alert) {
+    alert?.text && alert.text.toLowerCase().contains("measurement outdated")
+}
+
 // =================== Data Processing ===================
 
 private void processWaterGuruData(def response) {
@@ -594,6 +609,7 @@ private void processWaterGuruData(def response) {
         def LastMeasurementHuman = item.latestMeasureTimeHuman
         def LastMeasurement      = item.latestMeasureTime
 
+        // statusMsg for the device attribute uses every alert (dashboards stay accurate)
         def statusMsg = ""
         def count = 0
         item.alerts.each { alert ->
@@ -602,6 +618,27 @@ private void processWaterGuruData(def response) {
             ifDebug("alert: ${alert.status} — ${alert.text}")
         }
         if (!statusMsg) statusMsg = "None"
+
+        // Build the actionable view of alerts for the notification engine: drop
+        // "measurement outdated" entries unless the user disabled the filter.
+        def rawAlerts        = item.alerts ?: []
+        def filterStale      = (settings.suppressStaleAlerts != false)
+        def actionableAlerts = filterStale ? rawAlerts.findAll { !isStaleDataAlert(it) } : rawAlerts
+        if (filterStale && rawAlerts.size() != actionableAlerts.size()) {
+            ifDebug("Filtered ${rawAlerts.size() - actionableAlerts.size()} stale-data alert(s) for ${name}")
+        }
+        // If WG flagged a non-GREEN status but every alert behind it was stale-
+        // data, treat the device as effectively GREEN for notification purposes.
+        def notifyStatus = (status && status != "GREEN" && actionableAlerts.isEmpty()) ? "GREEN" : status
+        // statusMsg for the notification body mirrors actionableAlerts so the
+        // detail text in alerts doesn't carry stale-data warnings.
+        def notifyStatusMsg = ""
+        def nCount = 0
+        actionableAlerts.each { alert ->
+            nCount++
+            notifyStatusMsg += "${alert.status} Alert (${nCount}): ${alert.text}\n"
+        }
+        if (!notifyStatusMsg) notifyStatusMsg = "None"
 
         def index = item.measurements?.findIndexOf { it.type == "FREE_CL" }
         def freeChlorine = (index != null && index >= 0) ? item.measurements[index].floatValue : null
@@ -684,8 +721,8 @@ private void processWaterGuruData(def response) {
 
         evaluateNotifications(id, name, [
             lastMeasurement : LastMeasurement,
-            status          : status,
-            statusMsg       : statusMsg,
+            status          : notifyStatus,
+            statusMsg       : notifyStatusMsg,
             cassetteStatus  : CassetteStatus,
             batteryStatus   : batteryStatus,
             checksLeft      : CassetteChecksLeft,
@@ -694,7 +731,7 @@ private void processWaterGuruData(def response) {
             freeChlorine    : freeChlorine,
             temp            : temp,
             rate            : rate,
-            alerts          : item.alerts?.collect { "${it.status}: ${it.text}".toString() } ?: []
+            alerts          : actionableAlerts.collect { "${it.status}: ${it.text}".toString() }
         ])
     }
 
@@ -712,7 +749,10 @@ private void processWaterGuruData(def response) {
 //  - Chemistry (pH / free chlorine) is otherwise only evaluated when
 //    LastMeasurement changes (a real new sample, not just a poll).
 //  - Status / cassette / battery status alerts fire on the transition edge
-//    (GREEN -> non-GREEN), not while the condition persists.
+//    (GREEN -> non-GREEN), not while the condition persists. Stale-data
+//    YELLOW alerts ("measurement outdated ... years ago") are filtered out
+//    upstream so they don't contribute to status here — see
+//    processWaterGuruData / isStaleDataAlert.
 //  - Checks-left and battery % thresholds are edge-triggered and re-arm
 //    only after the value climbs back above threshold (replacement).
 //  - Temperature and flow are context in the message body, never a trigger.
