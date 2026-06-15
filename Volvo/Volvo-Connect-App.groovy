@@ -1,7 +1,7 @@
 /**
  * Volvo Connect App
  *
- * 1.2.3 - Brian Wilson / bubba@bubba.org
+ * 1.2.4 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for Volvo vehicles via the Volvo Connected Vehicle API.
  * Supports lock/unlock, fuel/battery level, range, GPS location, doors, windows,
@@ -726,31 +726,44 @@ private void evaluateChargingNotifications(String vin, Integer level, String sta
     if (firstPoll) prev = [:]
 
     def msgs = []
+    def isCharging    = status?.toUpperCase() == "CHARGING"
+    def wasCharging   = prev.chargingStatus?.toUpperCase() == "CHARGING"
+    def isComplete    = status?.toUpperCase() in ["FULLY_CHARGED", "DONE"]
+    def wasComplete   = prev.chargingStatus?.toUpperCase() in ["FULLY_CHARGED", "DONE"]
+    def stillConnected = connStatus != null && !connStatus.toUpperCase().contains("DISCONNECTED")
+
+    // Estimate minutes-to-target when the API doesn't supply it.
+    // Uses the charge rate observed between the last two polls while charging.
+    def resolvedEstMins = estMins
+    if (resolvedEstMins == null && isCharging && level != null && target != null && target > level) {
+        def prevLevel = prev.batteryLevel
+        def prevTime  = prev.pollTime
+        if (prevLevel != null && prevTime != null && wasCharging) {
+            def elapsedMin = (now() - prevTime) / 60000.0
+            def gained     = level - prevLevel
+            if (gained > 0 && elapsedMin > 0) {
+                def ratePerMin     = gained / elapsedMin      // % per minute
+                resolvedEstMins    = Math.round((target - level) / ratePerMin) as Integer
+            }
+        }
+    }
 
     if (!firstPoll) {
-        def prevStatus = prev.chargingStatus
-        def isCharging    = status?.toUpperCase() == "CHARGING"
-        def wasCharging   = prevStatus?.toUpperCase() == "CHARGING"
-        def isComplete    = status?.toUpperCase() in ["FULLY_CHARGED", "DONE"]
-        def wasComplete   = prevStatus?.toUpperCase() in ["FULLY_CHARGED", "DONE"]
-        // Still physically connected but stopped charging = charge limit reached
-        def stillConnected = connStatus != null && !connStatus.toUpperCase().contains("DISCONNECTED")
-
         // Charging started
         if (isCharging && !wasCharging && settings.notifyChargingStarted != false) {
             def msg = "Volvo charging started. Battery at ${level}%"
             if (target != null) msg += ", charging to ${target}%"
-            if (estMins != null && estMins > 0) msg += ". Estimated finish: ${finishTime(estMins as Integer)}"
+            if (resolvedEstMins != null && resolvedEstMins > 0) msg += ". Estimated finish: ${finishTime(resolvedEstMins)}"
             else msg += "."
             msgs << msg
         }
 
-        // Fully charged (100%)
+        // Fully charged
         if (isComplete && !wasComplete && settings.notifyChargingComplete != false) {
             msgs << "Volvo fully charged. Battery at ${level}%."
         }
 
-        // Was charging, now stopped — distinguish charge limit reached vs unplugged
+        // Was charging, now stopped — charge limit reached vs unplugged
         if (!isCharging && wasCharging && !isComplete && settings.notifyChargingStopped != false) {
             if (stillConnected) {
                 def msg = "Volvo charge limit reached. Battery at ${level}%"
@@ -767,7 +780,11 @@ private void evaluateChargingNotifications(String vin, Integer level, String sta
             def prevBand = prev.batteryBand ?: -1
             def curBand  = (int)(level / 10) * 10
             if (curBand > prevBand && curBand > 0) {
-                msgs << "Volvo battery at ${curBand}% while charging."
+                def msg = "Volvo battery at ${curBand}% while charging"
+                if (target != null) msg += ", charging to ${target}%"
+                if (resolvedEstMins != null && resolvedEstMins > 0) msg += ". Estimated finish: ${finishTime(resolvedEstMins)}"
+                else msg += "."
+                msgs << msg
             }
         }
     }
@@ -776,6 +793,8 @@ private void evaluateChargingNotifications(String vin, Integer level, String sta
 
     ns[vin] = [
         chargingStatus : status,
+        batteryLevel   : level,
+        pollTime       : now(),
         batteryBand    : level != null ? ((int)(level / 10) * 10) : prev.batteryBand
     ]
     state.notifyState = ns

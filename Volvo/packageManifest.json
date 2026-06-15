@@ -4,9 +4,9 @@
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Volvo",
   "communityLink": "",
-  "dateReleased": "2026-06-14",
-  "releaseNotes": "1.2.3 — Downgrade POST 403 errors to warn (engine/climatization/honk/flash require Volvo API approval). Suppress redundant null status warnings when command fails with 403.",
-  "version": "1.2.3",
+  "dateReleased": "2026-06-15",
+  "releaseNotes": "1.2.4 — Estimate charge completion time from observed charge rate when the API does not supply it. 10% step notifications now also include target % and estimated finish time.",
+  "version": "1.2.4",
   "drivers": [
     {
       "id": "a3f7c291-5e84-4b12-9d63-7c08e1f45a20",
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Volvo/Volvo-Connect-App.groovy",
       "required": true,
       "oauth": true,
-      "version": "1.2.3"
+      "version": "1.2.4"
     }
   ]
 }
