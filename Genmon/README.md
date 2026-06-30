@@ -1,8 +1,8 @@
 # Genmon Generator Monitor — Hubitat Integration
 
-A native Hubitat driver for monitoring and controlling Generac generators via [genmon](https://github.com/jgyates/genmon) - based on [genmon-ha](https://www.github.com/jgyates/genmon-ha)
+A native Hubitat driver for monitoring and controlling Generac generators via [genmon](https://github.com/jgyates/genmon) - based on [genmon-ha](https://www.github.com/jgyates/genmon-ha) but now added to mainline Genmon via the [Native Hubitat integration](https://github.com/jgyates/genmon/wiki/1----Software-Overview#genhubitatpy-optional). 
 
-This integration communicates with the **genhalink** addon running on your genmon instance, providing real-time generator data through a REST + WebSocket API. It works alongside the existing MQTT-based integration — users can choose whichever fits their setup.
+This integration communicates with the **genhubitat** addon running on your genmon instance, providing real-time generator data through a REST + WebSocket API. It works alongside the existing MQTT-based integration — users can choose whichever fits their setup.
 
 ## Features
 
@@ -11,7 +11,6 @@ This integration communicates with the **genhalink** addon running on your genmo
 - **5 control buttons**: Start, Stop, Start Transfer, Start Exercise, Set Time
 - **Quiet mode switch**: Toggle quiet mode for Evolution/Nexus controllers
 - **Exercise scheduling**: Select day/frequency and set hour/minute via HA UI
-- **Automatic discovery**: Zeroconf/mDNS finds your generator on the network
 - **WebSocket push updates**: Near-instant state changes without polling delay
 - **Diagnostics**: Built-in diagnostics download for troubleshooting
 - **Multi-instance**: Supports multiple generators
@@ -19,21 +18,20 @@ This integration communicates with the **genhalink** addon running on your genmo
 ## Requirements
 
 - **genmon v2+** running on a Raspberry Pi (or similar) connected to your Generac generator
-- **genhalink addon for Home Assistant** enabled in genmon (see setup below)
-- **Home Assistant** 2024.1.0 or later
+- **genhubitat addon for Hubitat** enabled in genmon (see setup below)
 
 ## Installation
 
 
-### Step 1: Enable the genhalink addon in genmon
+### Step 1: Enable the genhubitat addon in genmon
 
 1. Open the genmon web UI (typically `http://<pi-ip>:8000`)
 2. Go to **Settings** (gear icon)
-3. Find **Home Assistant Integration (Native)** and enable it
+3. Find **Native Hubitat Integration** and enable it
 4. An **API Key** is automatically generated — copy it for the next step
 5. Click **Save** and the addon will start automatically
 
-![z_20260602_184630_2026-06-02_18-45-21](https://bdwilson.github.io/images/z_20260602_184630_2026-06-02_18-45-21.png)
+![z_20260629_203504_2026-06-29_20-34-37](https://bdwilson.github.io/images/z_20260629_203504_2026-06-29_20-34-37.png)
 
 ### Step 2: Add the integration in Hubitat
 
@@ -112,12 +110,12 @@ After setup, you can configure options via the integration's **Configure** butto
 ### Cannot connect
 - Verify genmon is running: `http://<pi-ip>:8000`
 - Verify genhalink addon is enabled in genmon Settings
-- Check the port (default `9083`) is accessible from your HA instance
+- Check the port (default `9084`) is accessible from your Hubitat instance
 - Check firewall rules on the Pi: `sudo ufw allow 9083/tcp`
 
 ### Invalid API key
-- Open genmon Settings → Home Assistant Integration (Native)
-- Copy the current API key and re-enter it in HA
+- Open genmon Settings → Native Hubitat Integration
+- Copy the current API key and re-enter it in Hubitat driver preferences
 
 ### Missing entities
 - Some entities are controller-specific (Evolution, Nexus, H-100, PowerZone)
@@ -127,7 +125,7 @@ After setup, you can configure options via the integration's **Configure** butto
 ### Check genhalink logs
 On the genmon Pi:
 ```bash
-tail -f /var/log/genhalink.log
+tail -f /var/log/genhubitat.log
 ```
 
 ### Check on the Hubitat community
