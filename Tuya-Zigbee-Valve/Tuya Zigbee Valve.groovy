@@ -71,6 +71,8 @@
  *                                  ignores endpoint 02's, even though real device traffic confirms zigbee.parseDescriptionAsMap() parses them
  *                                  (and descMap.value) correctly; valve2 was only updating by coincidence off Default Response echoes of our
  *                                  own open2()/close2() commands. parseSonoffZF2Port2() now decodes descMap.value directly instead.
+ *  ver. 1.8.3 2026-07-10 bdwilson - sendValve2Event() now skips sending a duplicate 'valve2' event if the value hasn't changed, since both the
+ *                                  FC11 501F handler and the real genOnOff attribute report fire for the same port-2 toggle.
  *
  *                                  TODO: @rgr - add a timer to the driver that shows how much time is left before the valve closes ''
  *                                  TODO: document the attributes (per valve model) in GitHub; add links to the HE forum and GitHub pages;
@@ -80,8 +82,8 @@ import groovy.json.*
 import groovy.transform.Field
 import hubitat.zigbee.zcl.DataType
 
-static String version() { '1.8.2' }
-static String timeStamp() { '2026/07/10 09:00 AM' }
+static String version() { '1.8.3' }
+static String timeStamp() { '2026/07/10 09:15 AM' }
 
 @Field static final Boolean _DEBUG = false
 @Field static final Boolean DEFAULT_DEBUG_LOGGING = false               // disable it for the production release !
@@ -747,6 +749,10 @@ boolean parseSonoffZF2Port2(String description) {
 
 void sendValve2Event(final String switchValue) {
     String value = (switchValue == null) ? 'unknown' : (switchValue == 'on') ? 'open' : (switchValue == 'off') ? 'closed' : 'unknown'
+    if (device.currentValue('valve2') == value) {   // dedup: both the FC11 501F handler and the real genOnOff report fire for the same toggle
+        clearIsDigital2()
+        return
+    }
     boolean isDigital = (state.states != null && state.states['isDigital2'] == true)
     String descriptionText = "${device.displayName} valve2 (port 2) is ${value} [${isDigital == true ? 'digital' : 'physical'}]"
     if (txtEnable) { log.info descriptionText }
