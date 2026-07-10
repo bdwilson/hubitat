@@ -66,6 +66,11 @@
  *                                  platform Groovy version); fixed SWV-ZF2 port 2 FC11 traffic (500D/500E/501F irrigation start/end/schedule-status,
  *                                  which port 2 also emits on its own sourceEndpoint) incorrectly flipping the primary valve/switch (port 1)
  *                                  attributes instead of valve2 - parseSonoffCluster() is now endpoint-aware for isSonoffZF2().
+ *  ver. 1.8.2 2026-07-10 bdwilson - fixed SWV-ZF2 port 2 genOnOff attribute reports being dropped ("unrecognized cluster 0006 report on
+ *                                  endpoint 02"): zigbee.getEvent() only decodes reports for the device's primary endpoint (01) and silently
+ *                                  ignores endpoint 02's, even though real device traffic confirms zigbee.parseDescriptionAsMap() parses them
+ *                                  (and descMap.value) correctly; valve2 was only updating by coincidence off Default Response echoes of our
+ *                                  own open2()/close2() commands. parseSonoffZF2Port2() now decodes descMap.value directly instead.
  *
  *                                  TODO: @rgr - add a timer to the driver that shows how much time is left before the valve closes ''
  *                                  TODO: document the attributes (per valve model) in GitHub; add links to the HE forum and GitHub pages;
@@ -75,8 +80,8 @@ import groovy.json.*
 import groovy.transform.Field
 import hubitat.zigbee.zcl.DataType
 
-static String version() { '1.8.1' }
-static String timeStamp() { '2026/07/10 08:30 AM' }
+static String version() { '1.8.2' }
+static String timeStamp() { '2026/07/10 09:00 AM' }
 
 @Field static final Boolean _DEBUG = false
 @Field static final Boolean DEFAULT_DEBUG_LOGGING = false               // disable it for the production release !
@@ -716,9 +721,12 @@ void sendSwitchEvent(final String switchValue) {
 }
 
 // SONOFF_SWV_ZF2_VALVE (dual-port) : genOnOff (cluster 0006) reports from endpoint 02 must be routed to 'valve2',
-// not to the primary 'valve'/'switch' attributes. zigbee.getEvent() does not discriminate by source endpoint,
-// so port-2 traffic is intercepted here - before the generic switch-event parsing - using descMap.sourceEndpoint
-// (attribute-report style) / descMap.endpoint (catchall style), both populated by zigbee.parseDescriptionAsMap().
+// not to the primary 'valve'/'switch' attributes. Port-2 traffic is intercepted here - before the generic
+// switch-event parsing - using descMap.sourceEndpoint (attribute-report style) / descMap.endpoint (catchall
+// style), both populated by zigbee.parseDescriptionAsMap(). The on/off value is decoded directly from
+// descMap.value rather than via zigbee.getEvent(): real device traffic shows zigbee.getEvent() only decodes
+// reports for the device's primary endpoint (01) and silently ignores endpoint 02's genOnOff attribute
+// reports, even though zigbee.parseDescriptionAsMap() parses them (and their value) just fine.
 // Returns true if the description was for port 2 and has been fully handled (caller should stop parsing it further).
 boolean parseSonoffZF2Port2(String description) {
     Map dm = null
@@ -728,12 +736,11 @@ boolean parseSonoffZF2Port2(String description) {
     if (dmCluster != '0006') { return false }
     String srcEp = dm?.sourceEndpoint ?: dm?.endpoint
     if (srcEp != '02') { return false }
-    Map ev = zigbee.getEvent(description)
-    if (ev?.name == 'switch') {
-        sendValve2Event(ev.value)
+    if (dm?.attrId == '0000' && dm?.value != null) {
+        sendValve2Event(dm.value == '01' ? 'on' : 'off')
     }
     else {
-        logDebug "parseSonoffZF2Port2: unrecognized cluster 0006 report on endpoint 02: ${description}"
+        logDebug "parseSonoffZF2Port2: ignored cluster 0006 report on endpoint 02 (not an onOff attribute value): ${description}"
     }
     return true
 }
