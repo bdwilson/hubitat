@@ -62,6 +62,10 @@
  *                                  commands for the second port, wired to the real endpoint-02 genOnOff cluster; valve2 attribute now reflects live
  *                                  endpoint-02 on/off reports (routed by sourceEndpoint before the generic switch-event parsing); setValve2() generalized
  *                                  to also drive SWV-ZF2 port 2; configure()/refresh() bind, configure reporting and read genOnOff on endpoint 02.
+ *  ver. 1.8.1 2026-07-10 bdwilson - fixed Groovy parse error (state.states?['isDigital2'] used the safe-index ?[ operator, unsupported on Hubitat's
+ *                                  platform Groovy version); fixed SWV-ZF2 port 2 FC11 traffic (500D/500E/501F irrigation start/end/schedule-status,
+ *                                  which port 2 also emits on its own sourceEndpoint) incorrectly flipping the primary valve/switch (port 1)
+ *                                  attributes instead of valve2 - parseSonoffCluster() is now endpoint-aware for isSonoffZF2().
  *
  *                                  TODO: @rgr - add a timer to the driver that shows how much time is left before the valve closes ''
  *                                  TODO: document the attributes (per valve model) in GitHub; add links to the HE forum and GitHub pages;
@@ -71,8 +75,8 @@ import groovy.json.*
 import groovy.transform.Field
 import hubitat.zigbee.zcl.DataType
 
-static String version() { '1.8.0' }
-static String timeStamp() { '2026/07/10 00:00 AM' }
+static String version() { '1.8.1' }
+static String timeStamp() { '2026/07/10 08:30 AM' }
 
 @Field static final Boolean _DEBUG = false
 @Field static final Boolean DEFAULT_DEBUG_LOGGING = false               // disable it for the production release !
@@ -1242,6 +1246,18 @@ void parseSonoffCluster(Map it, String description) {
     }
     // Firmware >= 1.0.4 uses Unix epoch (1970); older firmware uses Zigbee epoch (year 2000)
     long epochOffset = isSonoffFwGte(1004) ? 0L : 946684800L
+    // SONOFF_SWV_ZF2_VALVE : FC11 traffic (irrigation start/end/schedule-status) is per-endpoint - port 2 sends
+    // its own reports on sourceEndpoint 02. Without this, autonomous irrigation start/end inference below would
+    // incorrectly flip the primary 'valve'/'switch' (port 1) attributes whenever port 2 opens or closes.
+    String fc11SrcEp = null
+    if (isSonoffZF2()) {
+        try {
+            Map dm = zigbee.parseDescriptionAsMap(description)
+            fc11SrcEp = dm?.sourceEndpoint ?: dm?.endpoint
+        }
+        catch (e) { fc11SrcEp = null }
+    }
+    boolean isPort2 = isSonoffZF2() && fc11SrcEp == '02'
     switch (it.attrId) {
         case '5006' :   // Real-time irrigation duration (0..86400, seconds)
             logDebug "Sonoff cluster 0x${it.cluster} attribute ${it.attrId} value is ${intValue} (raw: ${it.value})"
@@ -1285,7 +1301,12 @@ void parseSonoffCluster(Map it, String description) {
             sendEvent(name: 'irrigationStartTime', value: startDateString, descriptionText:descText, type: 'physical')
             // Set valve/switch to open/on only for autonomous (unsolicited) reports, not during Refresh polling
             if (!(state.states['isRefresh'] ?: false)) {
-                if (device.currentValue('valve') != 'open' || device.currentValue('switch') != 'on') {
+                if (isPort2) {
+                    if (device.currentValue('valve2') != 'open') {
+                        logInfo 'Irrigation started (autonomous) - setting valve2 (port 2) to open'
+                        sendEvent(name: 'valve2', value: 'open', descriptionText: 'Valve2 opened (irrigation started)', type: 'digital')
+                    }
+                } else if (device.currentValue('valve') != 'open' || device.currentValue('switch') != 'on') {
                     logInfo 'Irrigation started (autonomous) - setting valve to open and switch to on'
                     sendEvent(name: 'valve', value: 'open', descriptionText: 'Valve opened (irrigation started)', type: 'digital')
                     sendEvent(name: 'switch', value: 'on', descriptionText: 'Switch turned on (irrigation started)', type: 'digital')
@@ -1302,7 +1323,12 @@ void parseSonoffCluster(Map it, String description) {
             sendEvent(name: 'irrigationEndTime', value: endDateString, descriptionText:descText, type: 'physical')
             // Set valve/switch to closed/off only for autonomous (unsolicited) reports, not during Refresh polling
             if (!(state.states['isRefresh'] ?: false)) {
-                if (device.currentValue('valve') != 'closed' || device.currentValue('switch') != 'off') {
+                if (isPort2) {
+                    if (device.currentValue('valve2') != 'closed') {
+                        logInfo 'Irrigation ended (autonomous) - setting valve2 (port 2) to closed'
+                        sendEvent(name: 'valve2', value: 'closed', descriptionText: 'Valve2 closed (irrigation ended)', type: 'digital')
+                    }
+                } else if (device.currentValue('valve') != 'closed' || device.currentValue('switch') != 'off') {
                     logInfo 'Irrigation ended (autonomous) - setting valve to closed and switch to off'
                     sendEvent(name: 'valve', value: 'closed', descriptionText: 'Valve closed (irrigation ended)', type: 'digital')
                     sendEvent(name: 'switch', value: 'off', descriptionText: 'Switch turned off (irrigation ended)', type: 'digital')
@@ -1391,7 +1417,12 @@ void parseSonoffCluster(Map it, String description) {
                 if (!(state.states['isRefresh'] ?: false)) {
                     String newValveVal  = (schedStatus == 0 || schedStatus == 2) ? 'open' : 'closed'
                     String newSwitchVal = (schedStatus == 0 || schedStatus == 2) ? 'on'   : 'off'
-                    if (device.currentValue('valve') != newValveVal) {   // deduplicate: skip if state unchanged (e.g. repeated 'running' reports)
+                    if (isPort2) {
+                        if (device.currentValue('valve2') != newValveVal) {
+                            logInfo "Irrigation schedule ${statusStr} (autonomous) - setting valve2 (port 2) to ${newValveVal} (${typeStr}, ${modeStr} mode, index=${schedIndex})"
+                            sendEvent(name: 'valve2', value: newValveVal, descriptionText: "Valve2 ${newValveVal} (irrigation ${statusStr})", type: 'physical')
+                        }
+                    } else if (device.currentValue('valve') != newValveVal) {   // deduplicate: skip if state unchanged (e.g. repeated 'running' reports)
                         logInfo "Irrigation schedule ${statusStr} (autonomous) - setting valve to ${newValveVal} and switch to ${newSwitchVal} (${typeStr}, ${modeStr} mode, index=${schedIndex})"
                         sendEvent(name: 'valve',  value: newValveVal,  descriptionText: "Valve ${newValveVal} (irrigation ${statusStr})", type: 'physical')
                         sendEvent(name: 'switch', value: newSwitchVal, descriptionText: "Switch ${newSwitchVal} (irrigation ${statusStr})", type: 'physical')
