@@ -736,7 +736,7 @@ boolean parseSonoffZF2Port2(String description) {
 
 void sendValve2Event(final String switchValue) {
     String value = (switchValue == null) ? 'unknown' : (switchValue == 'on') ? 'open' : (switchValue == 'off') ? 'closed' : 'unknown'
-    boolean isDigital = state.states?['isDigital2'] ?: false
+    boolean isDigital = (state.states != null && state.states['isDigital2'] == true)
     String descriptionText = "${device.displayName} valve2 (port 2) is ${value} [${isDigital == true ? 'digital' : 'physical'}]"
     if (txtEnable) { log.info descriptionText }
     sendEvent(name: 'valve2', value: value, descriptionText: descriptionText, type: isDigital == true ? 'digital' : 'physical')
