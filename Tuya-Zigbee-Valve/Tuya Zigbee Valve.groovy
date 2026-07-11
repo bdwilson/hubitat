@@ -93,6 +93,14 @@
  *                                  znLastScheduleStatus/znDeviceEpochOffset dedup state was shared across both ports, so if port 1 and port 2
  *                                  transitioned through the same schedStatus around the same time, one port's timestamp event could be
  *                                  silently skipped as a false duplicate of the other's - each port now has its own state key.
+ *  ver. 1.9.3 2026-07-11 bdwilson - fixed child devices sometimes not getting a valve/switch update: the FC11 500D/500E/501F handlers and the
+ *                                  cluster 0006 genOnOff report are two independent, redundant signals for the same physical open/close
+ *                                  transition, and previously raced each other - 500D/500E/501F called sendEvent() directly (parent only, no
+ *                                  child push), while cluster 0006 called sendSwitchEvent()/sendValve2Event() (parent + child push, with
+ *                                  dedup). Whichever signal arrived first "won"; if it was 500D/500E/501F, the child device's own valve/switch
+ *                                  never got updated, because the cluster 0006 report arriving moments later was deduped out (state already
+ *                                  matched) before it reached its own child-push. 500D/500E/501F now call sendSwitchEvent()/sendValve2Event()
+ *                                  too, so there is a single choke point (with dedup and child-push) regardless of which signal wins the race.
  *
  *                                  TODO: @rgr - add a timer to the driver that shows how much time is left before the valve closes ''
  *                                  TODO: document the attributes (per valve model) in GitHub; add links to the HE forum and GitHub pages;
@@ -102,8 +110,8 @@ import groovy.json.*
 import groovy.transform.Field
 import hubitat.zigbee.zcl.DataType
 
-static String version() { '1.9.2' }
-static String timeStamp() { '2026/07/11 09:00 AM' }
+static String version() { '1.9.3' }
+static String timeStamp() { '2026/07/11 10:30 AM' }
 
 @Field static final Boolean _DEBUG = false
 @Field static final Boolean DEFAULT_DEBUG_LOGGING = false               // disable it for the production release !
@@ -1337,18 +1345,14 @@ void parseSonoffCluster(Map it, String description) {
             descText = "Irrigation Start Time is ${startDateString}" ; if (settings?.logEnable) { descText += " (raw: ${it.value})" }
             logInfo "${descText}"
             routedSendEvent(isPort2, 'irrigationStartTime', startDateString, descText)
-            // Set valve/switch to open/on only for autonomous (unsolicited) reports, not during Refresh polling
+            // Set valve/switch to open/on only for autonomous (unsolicited) reports, not during Refresh polling.
+            // Routed through sendValve2Event()/sendSwitchEvent() (the same functions the cluster 0006 genOnOff
+            // path uses) rather than sendEvent() directly, so there is a single choke point with dedup and
+            // child-device push - whichever of the two redundant signals (this, or the cluster 0006 report)
+            // arrives first "wins" and the other is correctly deduped, instead of one of them silently skipping
+            // the child-device update because it thinks nothing changed.
             if (!(state.states['isRefresh'] ?: false)) {
-                if (isPort2) {
-                    if (device.currentValue('valve2') != 'open') {
-                        logInfo 'Irrigation started (autonomous) - setting valve2 (port 2) to open'
-                        sendEvent(name: 'valve2', value: 'open', descriptionText: 'Valve2 opened (irrigation started)', type: 'digital')
-                    }
-                } else if (device.currentValue('valve') != 'open' || device.currentValue('switch') != 'on') {
-                    logInfo 'Irrigation started (autonomous) - setting valve to open and switch to on'
-                    sendEvent(name: 'valve', value: 'open', descriptionText: 'Valve opened (irrigation started)', type: 'digital')
-                    sendEvent(name: 'switch', value: 'on', descriptionText: 'Switch turned on (irrigation started)', type: 'digital')
-                }
+                if (isPort2) { sendValve2Event('on') } else { sendSwitchEvent('on') }
             } else {
                 logDebug 'Irrigation Start Time (500D): valve/switch state inference skipped during Refresh'
             }
@@ -1359,18 +1363,10 @@ void parseSonoffCluster(Map it, String description) {
             descText = "Irrigation End Time is ${endDateString}"  ; if (settings?.logEnable) { descText += " (raw: ${it.value})" }
             logInfo "${descText}"
             routedSendEvent(isPort2, 'irrigationEndTime', endDateString, descText)
-            // Set valve/switch to closed/off only for autonomous (unsolicited) reports, not during Refresh polling
+            // Set valve/switch to closed/off only for autonomous (unsolicited) reports, not during Refresh polling.
+            // Routed through sendValve2Event()/sendSwitchEvent() - see the comment in case '500D' above.
             if (!(state.states['isRefresh'] ?: false)) {
-                if (isPort2) {
-                    if (device.currentValue('valve2') != 'closed') {
-                        logInfo 'Irrigation ended (autonomous) - setting valve2 (port 2) to closed'
-                        sendEvent(name: 'valve2', value: 'closed', descriptionText: 'Valve2 closed (irrigation ended)', type: 'digital')
-                    }
-                } else if (device.currentValue('valve') != 'closed' || device.currentValue('switch') != 'off') {
-                    logInfo 'Irrigation ended (autonomous) - setting valve to closed and switch to off'
-                    sendEvent(name: 'valve', value: 'closed', descriptionText: 'Valve closed (irrigation ended)', type: 'digital')
-                    sendEvent(name: 'switch', value: 'off', descriptionText: 'Switch turned off (irrigation ended)', type: 'digital')
-                }
+                if (isPort2) { sendValve2Event('off') } else { sendSwitchEvent('off') }
             } else {
                 logDebug 'Irrigation End Time (500E): valve/switch state inference skipped during Refresh'
             }
@@ -1462,21 +1458,13 @@ void parseSonoffCluster(Map it, String description) {
                     state.states[statusStateKey] = schedStatus
                 }
                 // --- Valve/switch update (guarded by isRefresh) ---
+                // Routed through sendValve2Event()/sendSwitchEvent() - see the comment in case '500D' above: this
+                // and the cluster 0006 genOnOff report are two independent signals for the same transition, and
+                // whichever arrives first must be the one that both updates state AND pushes to the child device.
                 if (!(state.states['isRefresh'] ?: false)) {
-                    String newValveVal  = (schedStatus == 0 || schedStatus == 2) ? 'open' : 'closed'
-                    String newSwitchVal = (schedStatus == 0 || schedStatus == 2) ? 'on'   : 'off'
-                    if (isPort2) {
-                        if (device.currentValue('valve2') != newValveVal) {
-                            logInfo "Irrigation schedule ${statusStr} (autonomous) - setting valve2 (port 2) to ${newValveVal} (${typeStr}, ${modeStr} mode, index=${schedIndex})"
-                            sendEvent(name: 'valve2', value: newValveVal, descriptionText: "Valve2 ${newValveVal} (irrigation ${statusStr})", type: 'physical')
-                        }
-                    } else if (device.currentValue('valve') != newValveVal) {   // deduplicate: skip if state unchanged (e.g. repeated 'running' reports)
-                        logInfo "Irrigation schedule ${statusStr} (autonomous) - setting valve to ${newValveVal} and switch to ${newSwitchVal} (${typeStr}, ${modeStr} mode, index=${schedIndex})"
-                        sendEvent(name: 'valve',  value: newValveVal,  descriptionText: "Valve ${newValveVal} (irrigation ${statusStr})", type: 'physical')
-                        sendEvent(name: 'switch', value: newSwitchVal, descriptionText: "Switch ${newSwitchVal} (irrigation ${statusStr})", type: 'physical')
-                    } else {
-                        //logDebug "501F irrigationScheduleStatus: valve already ${newValveVal}, skipping sendEvent for status=${statusStr}"
-                    }
+                    String newValveVal = (schedStatus == 0 || schedStatus == 2) ? 'open' : 'closed'
+                    logDebug "Irrigation schedule ${statusStr} (${typeStr}, ${modeStr} mode, index=${schedIndex})"
+                    if (isPort2) { sendValve2Event(newValveVal == 'open' ? 'on' : 'off') } else { sendSwitchEvent(newValveVal == 'open' ? 'on' : 'off') }
                 } else {
                     logDebug '501F irrigationScheduleStatus: valve/switch state inference skipped during Refresh'
                 }
