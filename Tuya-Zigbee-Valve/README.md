@@ -116,6 +116,18 @@ Changes in this fork (v1.8.0):
   `device.currentValue()` first and only call `sendSwitchEvent()`/
   `sendValve2Event()` when the value actually changed.
 
+  v1.10.0 added per-port auto-off timers: `autoOffTimer1`/`autoOffTimer2`
+  preferences on the parent device, in **minutes** (0 = disabled). The ZF2
+  has no documented per-channel hardware auto-off (the manual irrigation
+  default duration, FC11 `0x501D`, is a single device-level setting in
+  zigbee-herdsman-converters, not per endpoint), so these are driver-side
+  `runIn` timers: scheduled off the *observed* open transition — so they
+  also cover physical-button and eWeLink-app opens — and cancelled on the
+  observed close, without being restarted by repeated or refresh reports of
+  an unchanged state. Note the valve firmware itself closes a
+  manually-opened port after its own default duration (10 minutes out of
+  the box, configurable in eWeLink), which caps longer driver timers.
+
 ## Install
 
 This is a standalone fork, hosted and maintained here independently -
