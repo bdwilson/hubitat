@@ -92,6 +92,19 @@ Changes in this fork (v1.8.0):
   field-verified against a real fault condition on this device**, since
   testing requires an actual water shortage/leakage/fail-safe trigger.
 
+  v1.9.5 corrects a mistake from v1.9.2: `irrigationVolume` (FC11
+  `0x5007`) and `waterConsumed` (`0x500F`) were routed per-port like
+  `lastValveOpenDuration`, but they shouldn't have been. Checking
+  zigbee-herdsman-converters' ZF2 device definition again: the
+  real-time irrigation *duration* attribute (`0x5006`) is declared with
+  `endpointNames: ["1", "2"]` (genuinely per-channel), but the *volume*
+  attribute has no `endpointNames` at all - the device has one physical
+  flow meter, most likely upstream of the split to both valve outputs,
+  not two independent sensors (`0x500F` isn't even in the ZF2's
+  declared attribute schema at all). Both now stay on the parent device
+  only, as they did before v1.9.2; the child driver no longer declares
+  them, and `refresh()` no longer queries them on endpoint 02.
+
 **Install order matters**: import `Tuya Zigbee Valve Port.groovy` into
 Drivers Code first (so the child driver exists), then import/save
 `Tuya Zigbee Valve.groovy` and press **Configure** on the ZF2 device to

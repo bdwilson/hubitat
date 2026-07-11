@@ -110,6 +110,12 @@
  *                                  shortage/fail-safe, bit1 = shared leakage, per zigbee-herdsman-converters) - decodeZF2ValveAbnormalState()
  *                                  now decodes each channel's own fault state and routes it to that port's child (not yet field-verified
  *                                  against a real shortage/leakage/fail-safe fault on this device model - please verify when testable).
+ *  ver. 1.9.5 2026-07-11 bdwilson - corrected 1.9.2: irrigationVolume (FC11 0x5007) and waterConsumed (0x500F) were incorrectly routed
+ *                                  per-port. Per zigbee-herdsman-converters, the ZF2's real-time irrigation *duration* attribute (0x5006)
+ *                                  is declared with endpointNames ["1","2"] (genuinely per-channel), but the *volume* attribute has no
+ *                                  endpointNames at all - it's read from a single physical flow meter (most likely upstream of the split to
+ *                                  both valve outputs), not two independent sensors; 0x500F isn't even in the ZF2's declared attribute schema.
+ *                                  Both now stay parent-only, as they were before 1.9.2; refresh() no longer queries them on endpoint 02.
  *
  *                                  TODO: @rgr - add a timer to the driver that shows how much time is left before the valve closes ''
  *                                  TODO: document the attributes (per valve model) in GitHub; add links to the HE forum and GitHub pages;
@@ -119,8 +125,8 @@ import groovy.json.*
 import groovy.transform.Field
 import hubitat.zigbee.zcl.DataType
 
-static String version() { '1.9.4' }
-static String timeStamp() { '2026/07/11 11:15 AM' }
+static String version() { '1.9.5' }
+static String timeStamp() { '2026/07/11 12:00 PM' }
 
 @Field static final Boolean _DEBUG = false
 @Field static final Boolean DEFAULT_DEBUG_LOGGING = false               // disable it for the production release !
@@ -1340,9 +1346,14 @@ void parseSonoffCluster(Map it, String description) {
             logInfo "${descText}"
             break
         case '5007' :   // Real-time Irrigation Volume (0..1000, divisor:10, unit: 'L')
+            // SONOFF_SWV_ZF2_VALVE: unlike 5006 (per-channel, endpointNames ["1","2"] in zigbee-herdsman-converters),
+            // this attribute has no endpointNames there - it's a single shared flow-meter reading (most likely one
+            // physical sensor upstream of the split to both valve outputs), not independent per-port measurements.
+            // Kept parent-only rather than routed to a port's child, to avoid implying a precision the hardware
+            // doesn't have.
             logDebug "Sonoff cluster 0x${it.cluster} attribute ${it.attrId} value is ${intValue} (raw: ${it.value})"
             descText = "irrigationVolume is ${intValue} L"
-            routedSendEvent(isPort2, 'irrigationVolume', intValue, descText)
+            sendEvent(name: 'irrigationVolume', value: intValue, descriptionText: descText, type: 'physical')
             logInfo "${descText}"
             break
         case '5008' :   // Cyclic Timed Irrigation // data type: Char string      0x0A 01 01 00 00 04 B0 00 00 0E 10
@@ -1414,14 +1425,12 @@ void parseSonoffCluster(Map it, String description) {
             }
             break
         case '500F' :   // Daily Irrigation Volume (Irrigation water volume for the day)    // uint32 (Liter)
+            // SONOFF_SWV_ZF2_VALVE: this attribute isn't even in the ZF2's declared custom-cluster attribute
+            // schema in zigbee-herdsman-converters (it belongs to a different Sonoff product) - like 5007, it
+            // ties to the single shared flow meter if it appears at all, not per-port. Kept parent-only.
             descText = "Daily irrigation volume is ${intValue} L"
             logInfo "${descText}"
-            if (isPort2) {
-                pushChildEvent('02', 'waterConsumed', intValue, descText)
-            } else {
-                sendEvent(name: 'waterConsumed', value: intValue, unit: 'L', descriptionText: descText, type: 'physical')
-                if (isSonoffZF2()) { pushChildEvent('01', 'waterConsumed', intValue, descText) }
-            }
+            sendEvent(name: 'waterConsumed', value: intValue, unit: 'L', descriptionText: descText, type: 'physical')
             break
         case '5010' :   // Valve Work State (Valve working status)  // 0 - 'manual control'; 1 - 'Cycle timing / quantity control''; 2 - 'Schedule control'
             String workState = SonoffWorkStateOptions[intValue.toString()] ?: "unknown (${intValue})"
@@ -1934,9 +1943,10 @@ void refresh() {
             cmds += zigbee.readAttribute(0xFC11, 0x5011, [:], delay = 204) // lackWaterCloseValveTimeout for firmware 1.0.4 or later
         }
         if (isSonoffZF2()) {
-            // port 2 (endpoint 02) - own genOnOff state and irrigation duration/volume/daily water consumed
+            // port 2 (endpoint 02) - own genOnOff state and irrigation duration (5006 only: 5007/500F are shared
+            // flow-meter attributes with no per-channel meaning, already read once via the endpoint 01 query above)
             cmds += zigbee.readAttribute(0x0006, 0x0000, [destEndpoint: 0x02], delay = 205)
-            cmds += zigbee.readAttribute(0xFC11, [0x5006, 0x5007, 0x500F], [destEndpoint: 0x02], delay = 206)
+            cmds += zigbee.readAttribute(0xFC11, 0x5006, [destEndpoint: 0x02], delay = 206)
         }
         // reporting
         // Read Reporting Configuration Response, status=SUCCESS, endpoint=0x01, cluster=0x0001, attribute=0x0021, minPeriod=1, maxPeriod=7200      , data:[00, 00, 21, 00, 20, 01, 00, 20, 1C, 02],

@@ -5,8 +5,12 @@
  *  All Zigbee communication and parsing lives in the parent "Tuya Zigbee Valve" driver; this driver
  *  only forwards commands up to the parent (via the standard Hubitat componentXxx() convention) and
  *  renders the state the parent pushes back down via parse(). Each port gets its own independent
- *  irrigation history (start/end time, duration, volume, water consumed) instead of those being
- *  single attributes shared - and overwritten by whichever port last reported - on the parent device.
+ *  irrigation history (start/end time, duration, fault state) instead of those being single attributes
+ *  shared - and overwritten by whichever port last reported - on the parent device. Cumulative flow
+ *  volume (irrigationVolume/waterConsumed) is NOT per-port - the ZF2 has a single physical flow meter
+ *  shared across both valve outputs (confirmed via zigbee-herdsman-converters: unlike the per-channel
+ *  irrigation duration attribute, the volume attributes have no per-endpoint declaration there) - so
+ *  those remain on the parent device only.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -27,8 +31,13 @@
  *                                  cluster binding (unlike the classic single-port SWV); it only reports cumulative
  *                                  volume/duration (irrigationVolume, lastValveOpenDuration, waterConsumed above),
  *                                  not an instantaneous flow rate, so there is no real per-port data to expose here.
+ *  ver. 1.3.0 2026-07-11 bdwilson - removed irrigationVolume/waterConsumed: zigbee-herdsman-converters confirms these
+ *                                  come from a single shared flow meter (no per-endpoint declaration, unlike the
+ *                                  per-channel irrigation duration attribute), so they were never really per-port
+ *                                  data - they were incorrectly duplicated onto each child in v1.1.0. They remain on
+ *                                  the parent device only.
  */
-static String version() { '1.2.0' }
+static String version() { '1.3.0' }
 
 metadata {
     definition(name: 'Tuya Zigbee Valve Port', namespace: 'bdwilson', author: 'Brian Wilson', component: true, importUrl: 'https://raw.githubusercontent.com/bdwilson/hubitat/claude/tuya-zigbee-valve-dual-port-bbcxk4/Tuya-Zigbee-Valve/Tuya%20Zigbee%20Valve%20Port.groovy') {
@@ -40,9 +49,7 @@ metadata {
         attribute 'irrigationStartTime', 'string'
         attribute 'irrigationEndTime', 'string'
         attribute 'lastIrrigationDuration', 'string'
-        attribute 'irrigationVolume', 'number'
         attribute 'lastValveOpenDuration', 'number'
-        attribute 'waterConsumed', 'number'
         attribute 'valveStatus', 'enum', ['normal', 'shortage', 'leakage', 'shortage, leakage', 'fail-safe', 'shortage, fail-safe', 'leakage, fail-safe', 'shortage, leakage, fail-safe']
     }
 
