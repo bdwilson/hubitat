@@ -74,12 +74,17 @@
  *  ver. 1.8.3 2026-07-10 bdwilson - sendValve2Event() now skips sending a duplicate 'valve2' event if the value hasn't changed, since both the
  *                                  FC11 501F handler and the real genOnOff attribute report fire for the same port-2 toggle.
  *  ver. 1.9.0 2026-07-10 bdwilson - added parent/child "shim" device support for SONOFF_SWV_ZF2_VALVE: configure() now creates two child
- *                                  devices (driver "Tuya Zigbee Valve Port", companion file in this same folder), Port 1 and Port 2, each a
- *                                  separate controllable device. All Zigbee communication/parsing stays in this parent driver; the children
- *                                  are thin shims using the standard Hubitat component convention (componentOpen/componentClose/
- *                                  componentOn/componentOff/componentRefresh on the parent, child.parse() to push state down). The existing
- *                                  top-level open()/close()/valve/switch (port 1) and valve2/open2()/close2()/setValve2 (port 2) commands and
- *                                  attributes on the parent device itself are unchanged and continue to work side by side with the children.
+ *                                  devices, Port 1 and Port 2, using Hubitat's built-in "Generic Component Switch" driver (no extra file to
+ *                                  install - ships on every hub), so each port is a separate on/off device, matching how the built-in Generic
+ *                                  Zigbee Multi-Endpoint Switch driver already exposed both ports. All Zigbee communication/parsing stays in
+ *                                  this parent driver; the children are thin shims using the standard Hubitat component convention
+ *                                  (componentOn/componentOff/componentRefresh on the parent, child.parse() to push 'switch' state down). The
+ *                                  existing top-level open()/close()/valve/switch (port 1) and valve2/open2()/close2()/setValve2 (port 2)
+ *                                  commands and attributes on the parent device itself are unchanged and continue to work alongside the children.
+ *  ver. 1.9.1 2026-07-10 bdwilson - switched the ZF2 child devices from a custom child driver file to Hubitat's built-in "Generic Component
+ *                                  Switch" (namespace 'hubitat') - one file to install instead of two, and no install-order dependency;
+ *                                  dropped per-port lastValveOpenDuration/irrigationVolume child routing since that stock driver only declares
+ *                                  the Switch capability (those two attributes remain on the parent, shared across both ports as before).
  *
  *                                  TODO: @rgr - add a timer to the driver that shows how much time is left before the valve closes ''
  *                                  TODO: document the attributes (per valve model) in GitHub; add links to the HE forum and GitHub pages;
@@ -89,8 +94,8 @@ import groovy.json.*
 import groovy.transform.Field
 import hubitat.zigbee.zcl.DataType
 
-static String version() { '1.9.0' }
-static String timeStamp() { '2026/07/10 10:00 AM' }
+static String version() { '1.9.1' }
+static String timeStamp() { '2026/07/10 10:30 AM' }
 
 @Field static final Boolean _DEBUG = false
 @Field static final Boolean DEFAULT_DEBUG_LOGGING = false               // disable it for the production release !
@@ -727,8 +732,7 @@ void sendSwitchEvent(final String switchValue) {
     // added 02/15/2025 - send a switch event as well for compatibility with Alexa and Google Home and Apple HomeKit
     sendEvent(name: 'switch', value: value == 'open' ? 'on' : 'off', descriptionText: map.descriptionText)
     if (isSonoffZF2()) {   // mirror port 1 state onto its shim child device
-        pushChildEvent('01', 'valve', value, map.descriptionText, map.type)
-        pushChildEvent('01', 'switch', value == 'open' ? 'on' : 'off', map.descriptionText, map.type)
+        pushChildSwitchEvent('01', value == 'open' ? 'on' : 'off', map.descriptionText, map.type)
     }
     clearIsDigital()
 }
@@ -769,8 +773,7 @@ void sendValve2Event(final String switchValue) {
     String type = isDigital == true ? 'digital' : 'physical'
     if (txtEnable) { log.info descriptionText }
     sendEvent(name: 'valve2', value: value, descriptionText: descriptionText, type: type)
-    pushChildEvent('02', 'valve', value, descriptionText, type)
-    pushChildEvent('02', 'switch', value == 'open' ? 'on' : 'off', descriptionText, type)
+    pushChildSwitchEvent('02', value == 'open' ? 'on' : 'off', descriptionText, type)
     clearIsDigital2()
 }
 
@@ -1286,26 +1289,16 @@ void parseSonoffCluster(Map it, String description) {
     }
     boolean isPort2 = isSonoffZF2() && fc11SrcEp == '02'
     switch (it.attrId) {
-        case '5006' :   // Real-time irrigation duration (0..86400, seconds)
+        case '5006' :   // Real-time irrigation duration (0..86400, seconds) - shared attribute, not per-port (see isPort2 above)
             logDebug "Sonoff cluster 0x${it.cluster} attribute ${it.attrId} value is ${intValue} (raw: ${it.value})"
             descText = "lastValveOpenDuration is ${intValue} seconds"
-            if (isPort2) {
-                pushChildEvent('02', 'lastValveOpenDuration', intValue, descText)
-            } else {
-                sendEvent(name: 'lastValveOpenDuration', value: intValue, descriptionText: descText, type: 'physical')
-                if (isSonoffZF2()) { pushChildEvent('01', 'lastValveOpenDuration', intValue, descText) }
-            }
+            sendEvent(name: 'lastValveOpenDuration', value: intValue, descriptionText: descText, type: 'physical')
             logInfo "${descText}"
             break
-        case '5007' :   // Real-time Irrigation Volume (0..1000, divisor:10, unit: 'L')
+        case '5007' :   // Real-time Irrigation Volume (0..1000, divisor:10, unit: 'L') - shared attribute, not per-port (see isPort2 above)
             logDebug "Sonoff cluster 0x${it.cluster} attribute ${it.attrId} value is ${intValue} (raw: ${it.value})"
             descText = "irrigationVolume is ${intValue} L"
-            if (isPort2) {
-                pushChildEvent('02', 'irrigationVolume', intValue, descText)
-            } else {
-                sendEvent(name: 'irrigationVolume', value: intValue, descriptionText: descText, type: 'physical')
-                if (isSonoffZF2()) { pushChildEvent('01', 'irrigationVolume', intValue, descText) }
-            }
+            sendEvent(name: 'irrigationVolume', value: intValue, descriptionText: descText, type: 'physical')
             logInfo "${descText}"
             break
         case '5008' :   // Cyclic Timed Irrigation // data type: Char string      0x0A 01 01 00 00 04 B0 00 00 0E 10
@@ -1715,12 +1708,13 @@ void clearIsDigital2() { if (state.states == null) { state.states = [:] } ; stat
 
 // --- SONOFF_SWV_ZF2_VALVE child "shim" devices (Port 1 / Port 2) -----------------------------------
 // All Zigbee communication/parsing stays in this parent driver. Each port additionally gets a thin
-// child device (driver "Tuya Zigbee Valve Port") that shows up as its own separate device, so it can
-// be used directly in apps/automations the way the built-in Generic Zigbee Multi-Endpoint Switch's
-// child devices already were. Commands on the child are forwarded here via the standard Hubitat
-// componentXxx() convention; state is pushed back down to the child via child.parse().
-@Field static final String ZF2_CHILD_DRIVER_NAME      = 'Tuya Zigbee Valve Port'
-@Field static final String ZF2_CHILD_DRIVER_NAMESPACE = 'bdwilson'
+// child device using Hubitat's built-in "Generic Component Switch" driver (ships on every hub - no
+// extra file to install), so it shows up as its own separate on/off device, the same way the built-in
+// Generic Zigbee Multi-Endpoint Switch driver's child devices already worked for this hardware.
+// Commands on the child are forwarded here via the standard Hubitat componentXxx() convention; state
+// is pushed back down to the child via child.parse().
+@Field static final String ZF2_CHILD_DRIVER_NAME      = 'Generic Component Switch'
+@Field static final String ZF2_CHILD_DRIVER_NAMESPACE = 'hubitat'
 
 String zf2ChildDni(String port) { return "${device.deviceNetworkId}-P${port == '02' ? '2' : '1'}" }
 
@@ -1745,17 +1739,16 @@ void ensureZF2ChildDevices() {
     }
 }
 
-// pushes a sendEvent-style map down to the given port's child device, if it exists
-void pushChildEvent(String port, String attrName, value, String descriptionText, String type = 'physical') {
+// pushes 'switch' state down to the given port's child device, if it exists
+// (Generic Component Switch only declares the Switch capability, so 'switch' is all it understands)
+void pushChildSwitchEvent(String port, String onOffValue, String descriptionText, String type = 'physical') {
     com.hubitat.app.ChildDeviceWrapper cd = getZF2ChildDevice(port)
     if (cd == null) { return }
-    cd.parse([[name: attrName, value: value, descriptionText: descriptionText, type: type]])
+    cd.parse([[name: 'switch', value: onOffValue, descriptionText: descriptionText, type: type]])
 }
 
-void componentOpen(com.hubitat.app.DeviceWrapper cd)  { getPortFromChild(cd) == '02' ? open2()  : open()  }
-void componentClose(com.hubitat.app.DeviceWrapper cd) { getPortFromChild(cd) == '02' ? close2() : close() }
-void componentOn(com.hubitat.app.DeviceWrapper cd)     { componentOpen(cd) }
-void componentOff(com.hubitat.app.DeviceWrapper cd)    { componentClose(cd) }
+void componentOn(com.hubitat.app.DeviceWrapper cd)  { getPortFromChild(cd) == '02' ? open2()  : open()  }
+void componentOff(com.hubitat.app.DeviceWrapper cd) { getPortFromChild(cd) == '02' ? close2() : close() }
 void componentRefresh(com.hubitat.app.DeviceWrapper cd) { refresh() }   // refresh() already covers both ports for ZF2
 // -----------------------------------------------------------------------------------------------------
 
