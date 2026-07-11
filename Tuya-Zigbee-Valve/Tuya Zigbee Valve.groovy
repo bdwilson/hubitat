@@ -116,6 +116,13 @@
  *                                  endpointNames at all - it's read from a single physical flow meter (most likely upstream of the split to
  *                                  both valve outputs), not two independent sensors; 0x500F isn't even in the ZF2's declared attribute schema.
  *                                  Both now stay parent-only, as they were before 1.9.2; refresh() no longer queries them on endpoint 02.
+ *  ver. 1.9.6 2026-07-11 bdwilson - fixed event spam introduced by 1.9.3: the FC11 501F "running" status floods every ~6 seconds while a
+ *                                  schedule is active, and since 1.9.3 routed it through sendSwitchEvent()/sendValve2Event() unconditionally,
+ *                                  every flood re-fired an identical open/closed event (and child push) - those functions' own dedup is a
+ *                                  300ms debounce window meant for near-simultaneous duplicate signals, not for suppressing an unchanged value
+ *                                  reported many seconds apart. 500D/500E/501F now check device.currentValue() first and only call
+ *                                  sendSwitchEvent()/sendValve2Event() when the value has actually changed, restoring the old suppression
+ *                                  behavior while keeping the 1.9.3 fix (single choke point, whichever signal arrives first) for real transitions.
  *
  *                                  TODO: @rgr - add a timer to the driver that shows how much time is left before the valve closes ''
  *                                  TODO: document the attributes (per valve model) in GitHub; add links to the HE forum and GitHub pages;
@@ -125,8 +132,8 @@ import groovy.json.*
 import groovy.transform.Field
 import hubitat.zigbee.zcl.DataType
 
-static String version() { '1.9.5' }
-static String timeStamp() { '2026/07/11 12:00 PM' }
+static String version() { '1.9.6' }
+static String timeStamp() { '2026/07/11 12:45 PM' }
 
 @Field static final Boolean _DEBUG = false
 @Field static final Boolean DEFAULT_DEBUG_LOGGING = false               // disable it for the production release !
@@ -1403,9 +1410,12 @@ void parseSonoffCluster(Map it, String description) {
             // path uses) rather than sendEvent() directly, so there is a single choke point with dedup and
             // child-device push - whichever of the two redundant signals (this, or the cluster 0006 report)
             // arrives first "wins" and the other is correctly deduped, instead of one of them silently skipping
-            // the child-device update because it thinks nothing changed.
+            // the child-device update because it thinks nothing changed. Guarded against re-firing on a repeated
+            // report of the same state (see the equivalent comment in case '501F' below).
             if (!(state.states['isRefresh'] ?: false)) {
-                if (isPort2) { sendValve2Event('on') } else { sendSwitchEvent('on') }
+                if ((isPort2 ? device.currentValue('valve2') : device.currentValue('valve')) != 'open') {
+                    if (isPort2) { sendValve2Event('on') } else { sendSwitchEvent('on') }
+                }
             } else {
                 logDebug 'Irrigation Start Time (500D): valve/switch state inference skipped during Refresh'
             }
@@ -1419,7 +1429,9 @@ void parseSonoffCluster(Map it, String description) {
             // Set valve/switch to closed/off only for autonomous (unsolicited) reports, not during Refresh polling.
             // Routed through sendValve2Event()/sendSwitchEvent() - see the comment in case '500D' above.
             if (!(state.states['isRefresh'] ?: false)) {
-                if (isPort2) { sendValve2Event('off') } else { sendSwitchEvent('off') }
+                if ((isPort2 ? device.currentValue('valve2') : device.currentValue('valve')) != 'closed') {
+                    if (isPort2) { sendValve2Event('off') } else { sendSwitchEvent('off') }
+                }
             } else {
                 logDebug 'Irrigation End Time (500E): valve/switch state inference skipped during Refresh'
             }
@@ -1514,8 +1526,15 @@ void parseSonoffCluster(Map it, String description) {
                 // whichever arrives first must be the one that both updates state AND pushes to the child device.
                 if (!(state.states['isRefresh'] ?: false)) {
                     String newValveVal = (schedStatus == 0 || schedStatus == 2) ? 'open' : 'closed'
-                    logDebug "Irrigation schedule ${statusStr} (${typeStr}, ${modeStr} mode, index=${schedIndex})"
-                    if (isPort2) { sendValve2Event(newValveVal == 'open' ? 'on' : 'off') } else { sendSwitchEvent(newValveVal == 'open' ? 'on' : 'off') }
+                    // 'running' floods every ~6s while a schedule is active - sendSwitchEvent()/sendValve2Event()'s
+                    // own dedup is a short (300ms) debounce window meant for near-simultaneous duplicate signals,
+                    // not for suppressing an unchanged value reported many seconds apart, so guard here first to
+                    // avoid re-firing an identical open/closed event (and a redundant child push) on every report.
+                    String currentValveVal = isPort2 ? device.currentValue('valve2') : device.currentValue('valve')
+                    if (currentValveVal != newValveVal) {
+                        logDebug "Irrigation schedule ${statusStr} (${typeStr}, ${modeStr} mode, index=${schedIndex})"
+                        if (isPort2) { sendValve2Event(newValveVal == 'open' ? 'on' : 'off') } else { sendSwitchEvent(newValveVal == 'open' ? 'on' : 'off') }
+                    }
                 } else {
                     logDebug '501F irrigationScheduleStatus: valve/switch state inference skipped during Refresh'
                 }
