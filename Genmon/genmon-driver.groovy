@@ -3,11 +3,13 @@
  *
  *   - Converted by Brian Wilson based on https://github.com/jgyates/genmon-ha using Claude Code
  *   - v2.01 - 021MAY26 - Initial Release
+ *   - v2.1.0 - 30JUN26 - Native Genmon addon; Home Assistant no longer required.
+ *                        Default port updated to 9084.
  *
- * Communicates with the genhalink REST API (same backend as the Home
- * Assistant integration).  Maintains a persistent WebSocket connection
- * for real-time push updates; falls back to HTTP polling when the
- * WebSocket is unavailable.
+ * Communicates directly with the Genmon REST/WebSocket API using the native
+ * Genmon addon for Hubitat.  Home Assistant is NOT required.
+ * Maintains a persistent WebSocket connection for real-time push updates;
+ * falls back to HTTP polling when the WebSocket is unavailable.
  *
  * API endpoints:
  *   GET  /api/health   — unauthenticated connectivity probe
@@ -23,11 +25,10 @@
  *
  * Requirements:
  *   - Genmon v2.0 or later
- *   - "Native Home Assistant integration via REST/WebSocket API" plugin enabled
- *     in Genmon (this provides the REST API and WebSocket used by this driver)
- *   - HTTPS/WSS is enabled by default here, matching the genmon Home Assistant
- *     plugin default.  Disable only if your genhalink instance is configured
- *     for plain HTTP.
+ *   - Native Genmon REST/WebSocket API addon enabled in Genmon (port 9084 by default).
+ *     The Home Assistant integration addon is no longer required.
+ *   - HTTPS/WSS is enabled by default here.  Disable only if your Genmon
+ *     instance is configured for plain HTTP.
  */
 
 metadata {
@@ -188,9 +189,9 @@ metadata {
 
     preferences {
         input name: "host",         type: "text",     title: "Genmon IP Address (must be a dotted-decimal IP, e.g. 192.168.1.100)", required: true
-        input name: "port",         type: "number",   title: "Port",               defaultValue: 9083
-        input name: "apiKey",       type: "password", title: "API Key — requires Genmon v2.0 or later with the 'Native Home Assistant integration via REST/WebSocket API' plugin enabled", required: true
-        input name: "useSSL",       type: "bool",     title: "Use HTTPS / WSS (default: on — matches the genmon Home Assistant plugin default)", defaultValue: true
+        input name: "port",         type: "number",   title: "Port",               defaultValue: 9084
+        input name: "apiKey",       type: "password", title: "API Key — requires Genmon v2.0 or later with the native REST/WebSocket API addon enabled", required: true
+        input name: "useSSL",       type: "bool",     title: "Use HTTPS / WSS (default: on)", defaultValue: true
         input name: "pollInterval", type: "enum",     title: "Fallback Poll Interval (when WebSocket is unavailable)",
                                     options: ["5": "5 sec", "10": "10 sec", "30": "30 sec",
                                               "60": "1 min", "300": "5 min"],
@@ -245,7 +246,7 @@ private boolean checkHealth() {
         httpGet(params) { resp -> ok = (resp.status == 200) }
         return ok
     } catch (Exception e) {
-        log.warn "Genmon: health check failed — ${e.message} (is genhalink running on ${host}:${port}?)"
+        log.warn "Genmon: health check failed — ${e.message} (is genmon running on ${host}:${port}?)"
         return false
     }
 }
@@ -262,7 +263,7 @@ private void updateDNI() {
     }
 
     try {
-        def p   = (port ?: 9083).toInteger()
+        def p   = (port ?: 9084).toInteger()
         def dni = ipPortToHex(host, p)
         if (device.deviceNetworkId != dni) {
             device.deviceNetworkId = dni
@@ -275,7 +276,7 @@ private void updateDNI() {
 
 private String ipPortToHex(String ip, int port) {
     // Hubitat LAN DNI format: uppercase hex IP (8 chars) + ":" + uppercase hex port (4 chars)
-    // e.g. 192.168.1.100:9083 → C0A80164:237B
+    // e.g. 192.168.1.100:9084 → C0A80164:237C
     def octets = ip.tokenize(".").collect { Integer.parseInt(it) }
     def hexIP   = octets.collect { String.format("%02X", it) }.join("")
     def hexPort = String.format("%04X", port)
@@ -294,7 +295,7 @@ def disconnect() {
 
 private void connectWebSocket() {
     def scheme = useSSL ? "wss" : "ws"
-    def p      = (port ?: 9083).toInteger()
+    def p      = (port ?: 9084).toInteger()
     def wsUrl  = "${scheme}://${host}:${p}/ws"
 
     if (logEnable) log.debug "Genmon WS: connecting to ${wsUrl}"
@@ -690,7 +691,7 @@ private void sendGenmonCommand(String command) {
 
 private Map buildParams(String path) {
     def scheme = useSSL ? "https" : "http"
-    def p      = (port ?: 9083).toInteger()
+    def p      = (port ?: 9084).toInteger()
     return [
         uri:                "${scheme}://${host}:${p}${path}",
         headers:            ["Authorization": "Bearer ${apiKey}"],
@@ -795,4 +796,3 @@ private void safeEvent(String attr, Object value) {
     if (value == null) return
     updateStringIfChanged(attr, value.toString())
 }
-
