@@ -101,6 +101,15 @@
  *                                  never got updated, because the cluster 0006 report arriving moments later was deduped out (state already
  *                                  matched) before it reached its own child-push. 500D/500E/501F now call sendSwitchEvent()/sendValve2Event()
  *                                  too, so there is a single choke point (with dedup and child-push) regardless of which signal wins the race.
+ *  ver. 1.9.4 2026-07-11 bdwilson - audited ZF2 capabilities/attributes for per-port correctness. LiquidFlowRate ('rate', cluster 0x0404)
+ *                                  confirmed NOT applicable to the ZF2 (checked zigbee-herdsman-converters: only the classic single-port SWV
+ *                                  binds msFlowMeasurement/exposes flow; ZF2 only reports cumulative volume/duration, already covered by
+ *                                  irrigationVolume/lastValveOpenDuration/waterConsumed) - not added to the child, no data source for it.
+ *                                  Added valveStatus to the child: FC11 0x500C (valveAbnormalState) is only ever read from endpoint 01, but
+ *                                  its value is a per-channel bitmask (bit0/bit3 = channel 1 shortage/fail-safe, bit4/bit5 = channel 2
+ *                                  shortage/fail-safe, bit1 = shared leakage, per zigbee-herdsman-converters) - decodeZF2ValveAbnormalState()
+ *                                  now decodes each channel's own fault state and routes it to that port's child (not yet field-verified
+ *                                  against a real shortage/leakage/fail-safe fault on this device model - please verify when testable).
  *
  *                                  TODO: @rgr - add a timer to the driver that shows how much time is left before the valve closes ''
  *                                  TODO: document the attributes (per valve model) in GitHub; add links to the HE forum and GitHub pages;
@@ -110,8 +119,8 @@ import groovy.json.*
 import groovy.transform.Field
 import hubitat.zigbee.zcl.DataType
 
-static String version() { '1.9.3' }
-static String timeStamp() { '2026/07/11 10:30 AM' }
+static String version() { '1.9.4' }
+static String timeStamp() { '2026/07/11 11:15 AM' }
 
 @Field static final Boolean _DEBUG = false
 @Field static final Boolean DEFAULT_DEBUG_LOGGING = false               // disable it for the production release !
@@ -145,7 +154,7 @@ metadata {
         attribute 'irrigationVolume', 'number'
         attribute 'irrigationDuration', 'number'        // Sonoff SWV, frankEver FK_V02
         attribute 'irrigationCapacity', 'number'
-        attribute 'valveStatus',  'enum', ['normal', 'shortage', 'leakage', 'shortage and leakage', 'clear', 'manual', 'auto', 'idle']    // SONOFF {ID: 0x500c, type: 0x20},
+        attribute 'valveStatus',  'enum', ['normal', 'shortage', 'leakage', 'shortage and leakage', 'fail-safe', 'clear', 'manual', 'auto', 'idle']    // SONOFF {ID: 0x500c, type: 0x20},
         attribute 'valveStatus2', 'enum', ['normal', 'shortage', 'leakage', 'shortage and leakage', 'clear', 'manual', 'auto', 'idle']    // isTZE284()
         attribute 'valveOpenThreshold', 'number'        // FrankEver FK_V02 - the set threshold for valve open 
         attribute 'valveOpenPercentage', 'number'       // FrankEver FK_V02 - the current valve open percentage reported by the device
@@ -1276,6 +1285,25 @@ void parseZHAcommand(Map descMap) {
     '3': 'shortage and leakage'
 ]
 
+// SONOFF_SWV_ZF2_VALVE valveAbnormalState (FC11 0x500C) bitmask, per channel - bit layout per
+// zigbee-herdsman-converters sonoff.ts sonoffExtend.valveAbnormalState(dualChannel=true):
+//   bit0 (0x01) channel 1 water shortage   bit3 (0x08) channel 1 fail-safe
+//   bit4 (0x10) channel 2 water shortage   bit5 (0x20) channel 2 fail-safe
+//   bit1 (0x02) water leakage - shared, not channel-specific
+// Not yet field-verified against a real shortage/leakage/fail-safe fault on this device model.
+String decodeZF2ValveAbnormalState(int value, int channel) {
+    List<String> states = []
+    if (channel == 1) {
+        if ((value & 0x01) != 0) { states << 'shortage' }
+        if ((value & 0x08) != 0) { states << 'fail-safe' }
+    } else {
+        if ((value & 0x10) != 0) { states << 'shortage' }
+        if ((value & 0x20) != 0) { states << 'fail-safe' }
+    }
+    if ((value & 0x02) != 0) { states << 'leakage' }
+    return states.isEmpty() ? 'normal' : states.join(', ')
+}
+
 import java.text.SimpleDateFormat
 
 void parseSonoffCluster(Map it, String description) {
@@ -1333,10 +1361,24 @@ void parseSonoffCluster(Map it, String description) {
             break
         case '500C' :	// Valve Abnormal State // valveStatus :  0 - 'normal'; 1 - 'shortage'; 2 - 'leakage'; 3 - 'shortage and leakage'
             logDebug "Sonoff cluster 0x${it.cluster} attribute ${it.attrId} Valve Abnormal State value is ${intValue} (raw: ${it.value})"
-            String valveStatus = valveStatusOptions[intValue.toString()]
-            descText = "valveStatus is ${valveStatus}"
-            logInfo "${descText} (${intValue})"
-            sendEvent(name: 'valveStatus', value: valveStatus, descriptionText:descText, type: 'physical')
+            if (isSonoffZF2()) {
+                // this single attribute is only ever read from endpoint 01, but its value is a bitmask covering
+                // BOTH channels' fault state (see decodeZF2ValveAbnormalState() above) - decode and route each
+                // channel's own status to that port's child, plus a combined view on the parent for convenience.
+                String ch1Status = decodeZF2ValveAbnormalState(intValue, 1)
+                String ch2Status = decodeZF2ValveAbnormalState(intValue, 2)
+                descText = "valveStatus is ${ch1Status} (port 1), ${ch2Status} (port 2)"
+                logInfo "${descText} (raw: ${intValue})"
+                sendEvent(name: 'valveStatus', value: ch1Status, descriptionText: "valveStatus (port 1) is ${ch1Status}", type: 'physical')
+                pushChildEvent('01', 'valveStatus', ch1Status, "valveStatus is ${ch1Status}")
+                pushChildEvent('02', 'valveStatus', ch2Status, "valveStatus is ${ch2Status}")
+            }
+            else {
+                String valveStatus = valveStatusOptions[intValue.toString()]
+                descText = "valveStatus is ${valveStatus}"
+                logInfo "${descText} (${intValue})"
+                sendEvent(name: 'valveStatus', value: valveStatus, descriptionText:descText, type: 'physical')
+            }
             break
         case '500D' :   // Irrigation Start Time // uint32  // Unix epoch (fw>=1.0.4) or Zigbee epoch/year 2000 (fw<1.0.4)
             logDebug "Sonoff cluster 0x${it.cluster} attribute ${it.attrId} Irrigation Start Time : value is ${intValue} (raw: ${it.value})"

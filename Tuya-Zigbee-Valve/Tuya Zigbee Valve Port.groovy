@@ -21,8 +21,14 @@
  *  ver. 1.1.0 2026-07-11 bdwilson - added per-port irrigation attributes (irrigationStartTime, irrigationEndTime,
  *                                  lastIrrigationDuration, irrigationVolume, lastValveOpenDuration, waterConsumed);
  *                                  replaces Hubitat's built-in Generic Component Switch, which couldn't hold them.
+ *  ver. 1.2.0 2026-07-11 bdwilson - added valveStatus (per-channel water shortage/leakage/fail-safe fault state, decoded
+ *                                  from the FC11 0x500C bitmask by the parent). No LiquidFlowRate/'rate' attribute -
+ *                                  confirmed against zigbee-herdsman-converters that the ZF2 has no msFlowMeasurement
+ *                                  cluster binding (unlike the classic single-port SWV); it only reports cumulative
+ *                                  volume/duration (irrigationVolume, lastValveOpenDuration, waterConsumed above),
+ *                                  not an instantaneous flow rate, so there is no real per-port data to expose here.
  */
-static String version() { '1.1.0' }
+static String version() { '1.2.0' }
 
 metadata {
     definition(name: 'Tuya Zigbee Valve Port', namespace: 'bdwilson', author: 'Brian Wilson', component: true, importUrl: 'https://raw.githubusercontent.com/bdwilson/hubitat/claude/tuya-zigbee-valve-dual-port-bbcxk4/Tuya-Zigbee-Valve/Tuya%20Zigbee%20Valve%20Port.groovy') {
@@ -37,6 +43,7 @@ metadata {
         attribute 'irrigationVolume', 'number'
         attribute 'lastValveOpenDuration', 'number'
         attribute 'waterConsumed', 'number'
+        attribute 'valveStatus', 'enum', ['normal', 'shortage', 'leakage', 'shortage, leakage', 'fail-safe', 'shortage, fail-safe', 'leakage, fail-safe', 'shortage, leakage, fail-safe']
     }
 
     preferences {

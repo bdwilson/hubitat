@@ -66,6 +66,32 @@ Changes in this fork (v1.8.0):
   silently skipped as a false duplicate of the other's. Each port now has
   its own state key.
 
+  v1.9.3 fixed a related race: the FC11 `500D`/`500E`/`501F` handlers and
+  the cluster `0006` `genOnOff` report are two independent signals for the
+  same open/close transition. Previously `500D`/`500E`/`501F` wrote
+  `valve`/`switch`/`valve2` directly (parent only, no child push), so if
+  one of them "won the race" against the `0006` report, the child device's
+  own state could be silently missed. All four now route through
+  `sendSwitchEvent()`/`sendValve2Event()`, the single choke point that
+  handles both the parent attribute and the child push, so it no longer
+  matters which signal arrives first.
+
+  v1.9.4 audited the remaining capabilities/attributes for per-port
+  correctness. `LiquidFlowRate` (`rate`, cluster `0x0404`) is confirmed
+  **not applicable** to the ZF2 - checked against
+  zigbee-herdsman-converters' own SONOFF device definitions: only the
+  classic single-port SWV binds `msFlowMeasurement`/exposes `flow`; the
+  ZF2 only reports cumulative volume/duration (already covered by
+  `irrigationVolume`/`lastValveOpenDuration`/`waterConsumed`), so it isn't
+  added to the child - there's no real data behind it. `valveStatus`
+  (FC11 `0x500C`, water shortage/leakage/fail-safe) *is* per-channel data
+  though: it's only ever read from endpoint 01, but the value is a bitmask
+  covering both channels (bit0/bit3 = channel 1 shortage/fail-safe, bit4/
+  bit5 = channel 2 shortage/fail-safe, bit1 = shared leakage). It's now
+  decoded per channel and routed to each port's child - **not yet
+  field-verified against a real fault condition on this device**, since
+  testing requires an actual water shortage/leakage/fail-safe trigger.
+
 **Install order matters**: import `Tuya Zigbee Valve Port.groovy` into
 Drivers Code first (so the child driver exists), then import/save
 `Tuya Zigbee Valve.groovy` and press **Configure** on the ZF2 device to
