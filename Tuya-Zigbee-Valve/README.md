@@ -5,6 +5,8 @@ Vendored copy of [kkossev/Hubitat "Tuya Zigbee Valve"](https://github.com/kkosse
 upstream version 1.7.1, with added support for the **SONOFF SWV-ZF2 (Hydro DUO)**
 dual-channel / dual-port Zigbee water valve.
 
+Hubitat Community Link: [https://community.hubitat.com/t/sonoff-zigbee-sprinklers-on-pre-order-sale/162398](https://community.hubitat.com/t/sonoff-zigbee-sprinklers-on-pre-order-sale/162398)
+
 ## What's added
 
 The stock driver only ever talks to a single Zigbee endpoint (01). The
