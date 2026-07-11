@@ -37,22 +37,39 @@ Changes in this fork (v1.8.0):
   attribute reports being silently dropped because `zigbee.getEvent()` only
   decodes reports for the device's primary endpoint (01) - the value is now
   decoded directly from `descMap.value` instead.
-- (v1.9.0-1.9.1) Added parent/child support. For `SONOFF_SWV_ZF2_VALVE`, the
+- (v1.9.0-1.9.2) Added parent/child support. For `SONOFF_SWV_ZF2_VALVE`, the
   parent's `configure()` creates two child devices - "Port 1" and "Port 2" -
-  each a fully separate, independently controllable on/off device, matching
-  how Hubitat's built-in "Generic Zigbee Multi-Endpoint Switch" driver
-  already exposed both ports. The children use Hubitat's own built-in
-  **"Generic Component Switch"** driver (namespace `hubitat`) - it ships on
-  every hub, so there's nothing extra to install; only `Tuya Zigbee
-  Valve.groovy` itself is needed, and the two children are only created if
-  the connected device is actually a ZF2. All Zigbee communication and
-  parsing still lives in the parent driver; the children only forward
-  `on()`/`off()`/`refresh()` up (`componentOn`/`componentOff`/
-  `componentRefresh` on the parent) and receive `switch` state pushed back
-  down via `child.parse()`, per Hubitat's standard Generic Component driver
-  convention. The parent's own top-level `open()`/`close()`/`valve`/`switch`
-  (port 1) and `valve2`/`open2()`/`close2()`/`setValve2` (port 2) are
-  unchanged and continue to work alongside the children.
+  each a fully separate, independently controllable device, matching how
+  Hubitat's built-in "Generic Zigbee Multi-Endpoint Switch" driver already
+  exposed both ports as separate devices. The children are only created if
+  the connected device is actually a ZF2.
+
+  The children use a companion driver, **`Tuya Zigbee Valve Port.groovy`**
+  (in this same folder - install it too), rather than Hubitat's stock
+  "Generic Component Switch", so each port gets its own independent
+  `irrigationStartTime`/`irrigationEndTime`/`lastIrrigationDuration`/
+  `irrigationVolume`/`lastValveOpenDuration`/`waterConsumed` history instead
+  of those being single attributes on the parent that get overwritten by
+  whichever port last reported. All Zigbee communication and parsing still
+  lives in the parent driver; the children only forward `open()`/`close()`/
+  `on()`/`off()`/`refresh()` up (`componentOpen`/`componentClose`/
+  `componentOn`/`componentOff`/`componentRefresh` on the parent) and receive
+  state pushed back down via `child.parse()`, per Hubitat's standard Generic
+  Component driver convention. The parent's own top-level `open()`/`close()`/
+  `valve`/`switch` (port 1) and `valve2`/`open2()`/`close2()`/`setValve2`
+  (port 2) are unchanged and continue to work alongside the children.
+
+  v1.9.2 also fixed a latent concurrency bug: the FC11 `501F` handler's
+  dedup state (`znLastScheduleStatus`/`znDeviceEpochOffset`) was shared
+  across both ports, so if port 1 and port 2 transitioned through the same
+  schedule status around the same time, one port's timestamp event could be
+  silently skipped as a false duplicate of the other's. Each port now has
+  its own state key.
+
+**Install order matters**: import `Tuya Zigbee Valve Port.groovy` into
+Drivers Code first (so the child driver exists), then import/save
+`Tuya Zigbee Valve.groovy` and press **Configure** on the ZF2 device to
+create its two child devices.
 
 See the changelog at the top of the driver file for the full version history
 (both upstream and this fork's additions).

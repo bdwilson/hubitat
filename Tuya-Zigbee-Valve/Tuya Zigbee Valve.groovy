@@ -85,6 +85,14 @@
  *                                  Switch" (namespace 'hubitat') - one file to install instead of two, and no install-order dependency;
  *                                  dropped per-port lastValveOpenDuration/irrigationVolume child routing since that stock driver only declares
  *                                  the Switch capability (those two attributes remain on the parent, shared across both ports as before).
+ *  ver. 1.9.2 2026-07-11 bdwilson - back to a custom child driver (Tuya Zigbee Valve Port.groovy) so each port gets its own independent
+ *                                  irrigation history instead of single attributes on the parent overwritten by whichever port last reported:
+ *                                  irrigationStartTime/irrigationEndTime/lastIrrigationDuration/irrigationVolume/lastValveOpenDuration/
+ *                                  waterConsumed now route to the correct port's child via routedSendEvent(); refresh() now also reads
+ *                                  waterConsumed (500F) for port 2. Also fixed a latent concurrency bug in the FC11 501F handler: the
+ *                                  znLastScheduleStatus/znDeviceEpochOffset dedup state was shared across both ports, so if port 1 and port 2
+ *                                  transitioned through the same schedStatus around the same time, one port's timestamp event could be
+ *                                  silently skipped as a false duplicate of the other's - each port now has its own state key.
  *
  *                                  TODO: @rgr - add a timer to the driver that shows how much time is left before the valve closes ''
  *                                  TODO: document the attributes (per valve model) in GitHub; add links to the HE forum and GitHub pages;
@@ -94,8 +102,8 @@ import groovy.json.*
 import groovy.transform.Field
 import hubitat.zigbee.zcl.DataType
 
-static String version() { '1.9.1' }
-static String timeStamp() { '2026/07/10 10:30 AM' }
+static String version() { '1.9.2' }
+static String timeStamp() { '2026/07/11 09:00 AM' }
 
 @Field static final Boolean _DEBUG = false
 @Field static final Boolean DEFAULT_DEBUG_LOGGING = false               // disable it for the production release !
@@ -1289,16 +1297,16 @@ void parseSonoffCluster(Map it, String description) {
     }
     boolean isPort2 = isSonoffZF2() && fc11SrcEp == '02'
     switch (it.attrId) {
-        case '5006' :   // Real-time irrigation duration (0..86400, seconds) - shared attribute, not per-port (see isPort2 above)
+        case '5006' :   // Real-time irrigation duration (0..86400, seconds)
             logDebug "Sonoff cluster 0x${it.cluster} attribute ${it.attrId} value is ${intValue} (raw: ${it.value})"
             descText = "lastValveOpenDuration is ${intValue} seconds"
-            sendEvent(name: 'lastValveOpenDuration', value: intValue, descriptionText: descText, type: 'physical')
+            routedSendEvent(isPort2, 'lastValveOpenDuration', intValue, descText)
             logInfo "${descText}"
             break
-        case '5007' :   // Real-time Irrigation Volume (0..1000, divisor:10, unit: 'L') - shared attribute, not per-port (see isPort2 above)
+        case '5007' :   // Real-time Irrigation Volume (0..1000, divisor:10, unit: 'L')
             logDebug "Sonoff cluster 0x${it.cluster} attribute ${it.attrId} value is ${intValue} (raw: ${it.value})"
             descText = "irrigationVolume is ${intValue} L"
-            sendEvent(name: 'irrigationVolume', value: intValue, descriptionText: descText, type: 'physical')
+            routedSendEvent(isPort2, 'irrigationVolume', intValue, descText)
             logInfo "${descText}"
             break
         case '5008' :   // Cyclic Timed Irrigation // data type: Char string      0x0A 01 01 00 00 04 B0 00 00 0E 10
@@ -1328,7 +1336,7 @@ void parseSonoffCluster(Map it, String description) {
             String startDateString = dateFormat.format(startDate)
             descText = "Irrigation Start Time is ${startDateString}" ; if (settings?.logEnable) { descText += " (raw: ${it.value})" }
             logInfo "${descText}"
-            sendEvent(name: 'irrigationStartTime', value: startDateString, descriptionText:descText, type: 'physical')
+            routedSendEvent(isPort2, 'irrigationStartTime', startDateString, descText)
             // Set valve/switch to open/on only for autonomous (unsolicited) reports, not during Refresh polling
             if (!(state.states['isRefresh'] ?: false)) {
                 if (isPort2) {
@@ -1350,7 +1358,7 @@ void parseSonoffCluster(Map it, String description) {
             String endDateString = dateFormat.format(endDate)
             descText = "Irrigation End Time is ${endDateString}"  ; if (settings?.logEnable) { descText += " (raw: ${it.value})" }
             logInfo "${descText}"
-            sendEvent(name: 'irrigationEndTime', value: endDateString, descriptionText:descText, type: 'physical')
+            routedSendEvent(isPort2, 'irrigationEndTime', endDateString, descText)
             // Set valve/switch to closed/off only for autonomous (unsolicited) reports, not during Refresh polling
             if (!(state.states['isRefresh'] ?: false)) {
                 if (isPort2) {
@@ -1370,7 +1378,12 @@ void parseSonoffCluster(Map it, String description) {
         case '500F' :   // Daily Irrigation Volume (Irrigation water volume for the day)    // uint32 (Liter)
             descText = "Daily irrigation volume is ${intValue} L"
             logInfo "${descText}"
-            sendEvent(name: 'waterConsumed', value: intValue, unit: 'L', descriptionText: descText, type: 'physical')
+            if (isPort2) {
+                pushChildEvent('02', 'waterConsumed', intValue, descText)
+            } else {
+                sendEvent(name: 'waterConsumed', value: intValue, unit: 'L', descriptionText: descText, type: 'physical')
+                if (isSonoffZF2()) { pushChildEvent('01', 'waterConsumed', intValue, descText) }
+            }
             break
         case '5010' :   // Valve Work State (Valve working status)  // 0 - 'manual control'; 1 - 'Cycle timing / quantity control''; 2 - 'Schedule control'
             String workState = SonoffWorkStateOptions[intValue.toString()] ?: "unknown (${intValue})"
@@ -1408,8 +1421,13 @@ void parseSonoffCluster(Map it, String description) {
                 String modeStr   = modeMap[schedMode]     ?: "unknown(${schedMode})"
                 //logDebug "501F irrigationScheduleStatus: status=${statusStr} type=${typeStr} mode=${modeStr} index=${schedIndex}"
                 // --- Timestamp events (fire on status change only; not gated by isRefresh) ---
-                // Deduplicate by tracking last emitted status: running floods 2x/sec, so only emit once per transition
-                if (bytes.size() >= 15 && schedStatus != (state.states['znLastScheduleStatus'] as Integer)) {
+                // Deduplicate by tracking last emitted status: running floods 2x/sec, so only emit once per transition.
+                // Ports have independent state keys (znLastScheduleStatus vs znLastScheduleStatus2) - with a single
+                // shared key, port 1 and port 2 transitioning through the same schedStatus around the same time would
+                // cause one port's timestamp event to be silently skipped as a false "duplicate" of the other port's.
+                String statusStateKey = isPort2 ? 'znLastScheduleStatus2' : 'znLastScheduleStatus'
+                String offsetStateKey = isPort2 ? 'znDeviceEpochOffset2'  : 'znDeviceEpochOffset'
+                if (bytes.size() >= 15 && schedStatus != (state.states[statusStateKey] as Integer)) {
                     long expStart = (long)(bytes[7]  & 0xFF) << 24 | (long)(bytes[8]  & 0xFF) << 16 | (long)(bytes[9]  & 0xFF) << 8 | (long)(bytes[10] & 0xFF)
                     long expEnd   = (long)(bytes[11] & 0xFF) << 24 | (long)(bytes[12] & 0xFF) << 16 | (long)(bytes[13] & 0xFF) << 8 | (long)(bytes[14] & 0xFF)
                     logDebug "501F: expStart=0x${Long.toHexString(expStart)} expEnd=0x${Long.toHexString(expEnd)} (device uptime seconds)"
@@ -1417,31 +1435,31 @@ void parseSonoffCluster(Map it, String description) {
                         // 24-byte form (running/end): bytes[15-18] = deviceCurrentTime (running) or actualEndTime (end)
                         long devNow = (long)(bytes[15] & 0xFF) << 24 | (long)(bytes[16] & 0xFF) << 16 | (long)(bytes[17] & 0xFF) << 8 | (long)(bytes[18] & 0xFF)
                         long offset = now() / 1000L - devNow   // wall-clock offset: converts device uptime → Unix seconds
-                        state.states['znDeviceEpochOffset'] = offset
+                        state.states[offsetStateKey] = offset
                         if (schedStatus == 2) {   // first running → emit scheduled start/end
                             String startStr = dateFormat.format(new Date((expStart + offset) * 1000L))
                             String endStr   = dateFormat.format(new Date((expEnd   + offset) * 1000L))
-                            sendEvent(name: 'irrigationStartTime', value: startStr, descriptionText: "irrigationStartTime is ${startStr}", type: 'physical')
-                            sendEvent(name: 'irrigationEndTime',   value: endStr,   descriptionText: "irrigationEndTime is ${endStr}",     type: 'physical')
+                            routedSendEvent(isPort2, 'irrigationStartTime', startStr, "irrigationStartTime is ${startStr}")
+                            routedSendEvent(isPort2, 'irrigationEndTime', endStr, "irrigationEndTime is ${endStr}")
                             logInfo "501F: irrigationStartTime=${startStr} irrigationEndTime=${endStr}"
                         } else if (schedStatus == 1) {   // end → actual end time + duration
                             long durationSec = devNow - expStart
                             String actualEndStr = dateFormat.format(new Date(now()))
                             String durationStr  = String.format('%02d:%02d:%02d', durationSec.intdiv(3600L), (durationSec % 3600L).intdiv(60L), durationSec % 60L)
-                            sendEvent(name: 'irrigationEndTime',      value: actualEndStr, descriptionText: "irrigationEndTime is ${actualEndStr}",      type: 'physical')
-                            sendEvent(name: 'lastIrrigationDuration', value: durationStr,  descriptionText: "lastIrrigationDuration is ${durationStr}",  type: 'physical')
+                            routedSendEvent(isPort2, 'irrigationEndTime', actualEndStr, "irrigationEndTime is ${actualEndStr}")
+                            routedSendEvent(isPort2, 'lastIrrigationDuration', durationStr, "lastIrrigationDuration is ${durationStr}")
                             logInfo "501F: irrigationEndTime=${actualEndStr} lastIrrigationDuration=${durationStr}"
                         }
                     } else if (schedStatus == 0) {
                         // 18-byte form (start): no deviceCurrentTime; use stored offset from previous running/end or approximate
-                        long offset = (state.states['znDeviceEpochOffset'] as Long) ?: (now() / 1000L - expStart)
+                        long offset = (state.states[offsetStateKey] as Long) ?: (now() / 1000L - expStart)
                         String startStr = dateFormat.format(new Date((expStart + offset) * 1000L))
                         String endStr   = dateFormat.format(new Date((expEnd   + offset) * 1000L))
-                        sendEvent(name: 'irrigationStartTime', value: startStr, descriptionText: "irrigationStartTime is ${startStr}", type: 'physical')
-                        sendEvent(name: 'irrigationEndTime',   value: endStr,   descriptionText: "irrigationEndTime is ${endStr}",     type: 'physical')
+                        routedSendEvent(isPort2, 'irrigationStartTime', startStr, "irrigationStartTime is ${startStr}")
+                        routedSendEvent(isPort2, 'irrigationEndTime', endStr, "irrigationEndTime is ${endStr}")
                         logInfo "501F: irrigationStartTime=${startStr} irrigationEndTime=${endStr} (start event)"
                     }
-                    state.states['znLastScheduleStatus'] = schedStatus
+                    state.states[statusStateKey] = schedStatus
                 }
                 // --- Valve/switch update (guarded by isRefresh) ---
                 if (!(state.states['isRefresh'] ?: false)) {
@@ -1708,13 +1726,16 @@ void clearIsDigital2() { if (state.states == null) { state.states = [:] } ; stat
 
 // --- SONOFF_SWV_ZF2_VALVE child "shim" devices (Port 1 / Port 2) -----------------------------------
 // All Zigbee communication/parsing stays in this parent driver. Each port additionally gets a thin
-// child device using Hubitat's built-in "Generic Component Switch" driver (ships on every hub - no
-// extra file to install), so it shows up as its own separate on/off device, the same way the built-in
-// Generic Zigbee Multi-Endpoint Switch driver's child devices already worked for this hardware.
-// Commands on the child are forwarded here via the standard Hubitat componentXxx() convention; state
-// is pushed back down to the child via child.parse().
-@Field static final String ZF2_CHILD_DRIVER_NAME      = 'Generic Component Switch'
-@Field static final String ZF2_CHILD_DRIVER_NAMESPACE = 'hubitat'
+// child device (driver "Tuya Zigbee Valve Port", companion file in this same folder) so it shows up as
+// its own separate device with its own independent irrigation history - the same way the built-in
+// Generic Zigbee Multi-Endpoint Switch driver's child devices already worked for this hardware, but
+// also able to carry per-port attributes (irrigationStartTime/irrigationEndTime/lastIrrigationDuration/
+// irrigationVolume/lastValveOpenDuration/waterConsumed) that Hubitat's built-in Generic Component
+// Switch driver can't hold, since those would otherwise be single attributes on the parent overwritten
+// by whichever port last reported. Commands on the child are forwarded here via the standard Hubitat
+// componentXxx() convention; state is pushed back down to the child via child.parse().
+@Field static final String ZF2_CHILD_DRIVER_NAME      = 'Tuya Zigbee Valve Port'
+@Field static final String ZF2_CHILD_DRIVER_NAMESPACE = 'bdwilson'
 
 String zf2ChildDni(String port) { return "${device.deviceNetworkId}-P${port == '02' ? '2' : '1'}" }
 
@@ -1739,16 +1760,35 @@ void ensureZF2ChildDevices() {
     }
 }
 
-// pushes 'switch' state down to the given port's child device, if it exists
-// (Generic Component Switch only declares the Switch capability, so 'switch' is all it understands)
-void pushChildSwitchEvent(String port, String onOffValue, String descriptionText, String type = 'physical') {
+// pushes a sendEvent-style map down to the given port's child device, if it exists
+void pushChildEvent(String port, String attrName, value, String descriptionText, String type = 'physical') {
     com.hubitat.app.ChildDeviceWrapper cd = getZF2ChildDevice(port)
     if (cd == null) { return }
-    cd.parse([[name: 'switch', value: onOffValue, descriptionText: descriptionText, type: type]])
+    cd.parse([[name: attrName, value: value, descriptionText: descriptionText, type: type]])
 }
 
-void componentOn(com.hubitat.app.DeviceWrapper cd)  { getPortFromChild(cd) == '02' ? open2()  : open()  }
-void componentOff(com.hubitat.app.DeviceWrapper cd) { getPortFromChild(cd) == '02' ? close2() : close() }
+void pushChildSwitchEvent(String port, String onOffValue, String descriptionText, String type = 'physical') {
+    pushChildEvent(port, 'switch', onOffValue, descriptionText, type)
+    pushChildEvent(port, 'valve', onOffValue == 'on' ? 'open' : 'closed', descriptionText, type)
+}
+
+// Sends a per-port irrigation stat: to the parent's own attribute (mirrored to port 1's child) when
+// isPort2Flag is false, or to port 2's child only when true - port 2 has no "...2"-suffixed attribute
+// on the parent, its full irrigation history lives entirely on its child device.
+void routedSendEvent(boolean isPort2Flag, String attrName, value, String descText, String type = 'physical') {
+    if (isPort2Flag) {
+        pushChildEvent('02', attrName, value, descText, type)
+    }
+    else {
+        sendEvent(name: attrName, value: value, descriptionText: descText, type: type)
+        if (isSonoffZF2()) { pushChildEvent('01', attrName, value, descText, type) }
+    }
+}
+
+void componentOpen(com.hubitat.app.DeviceWrapper cd)  { getPortFromChild(cd) == '02' ? open2()  : open()  }
+void componentClose(com.hubitat.app.DeviceWrapper cd) { getPortFromChild(cd) == '02' ? close2() : close() }
+void componentOn(com.hubitat.app.DeviceWrapper cd)  { componentOpen(cd) }
+void componentOff(com.hubitat.app.DeviceWrapper cd) { componentClose(cd) }
 void componentRefresh(com.hubitat.app.DeviceWrapper cd) { refresh() }   // refresh() already covers both ports for ZF2
 // -----------------------------------------------------------------------------------------------------
 
@@ -1864,9 +1904,9 @@ void refresh() {
             cmds += zigbee.readAttribute(0xFC11, 0x5011, [:], delay = 204) // lackWaterCloseValveTimeout for firmware 1.0.4 or later
         }
         if (isSonoffZF2()) {
-            // port 2 (endpoint 02) - own genOnOff state and irrigation duration/volume
+            // port 2 (endpoint 02) - own genOnOff state and irrigation duration/volume/daily water consumed
             cmds += zigbee.readAttribute(0x0006, 0x0000, [destEndpoint: 0x02], delay = 205)
-            cmds += zigbee.readAttribute(0xFC11, [0x5006, 0x5007], [destEndpoint: 0x02], delay = 206)
+            cmds += zigbee.readAttribute(0xFC11, [0x5006, 0x5007, 0x500F], [destEndpoint: 0x02], delay = 206)
         }
         // reporting
         // Read Reporting Configuration Response, status=SUCCESS, endpoint=0x01, cluster=0x0001, attribute=0x0021, minPeriod=1, maxPeriod=7200      , data:[00, 00, 21, 00, 20, 01, 00, 20, 1C, 02],
