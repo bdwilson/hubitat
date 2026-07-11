@@ -105,10 +105,32 @@ Changes in this fork (v1.8.0):
   only, as they did before v1.9.2; the child driver no longer declares
   them, and `refresh()` no longer queries them on endpoint 02.
 
-**Install order matters**: import `Tuya Zigbee Valve Port.groovy` into
-Drivers Code first (so the child driver exists), then import/save
-`Tuya Zigbee Valve.groovy` and press **Configure** on the ZF2 device to
-create its two child devices.
+  v1.9.6 fixed event spam introduced by v1.9.3: the FC11 `501F`
+  "running" status floods every ~6 seconds while a schedule is active,
+  and since v1.9.3 routed it through `sendSwitchEvent()`/
+  `sendValve2Event()` unconditionally, every flood re-fired an
+  identical open/closed event (and child push) - those functions' own
+  dedup is a 300ms debounce window meant for near-simultaneous
+  duplicate signals, not for suppressing a value reported unchanged
+  many seconds apart. `500D`/`500E`/`501F` now check
+  `device.currentValue()` first and only call `sendSwitchEvent()`/
+  `sendValve2Event()` when the value actually changed.
+
+## Install
+
+This is a standalone fork, hosted and maintained here independently -
+not submitted upstream, since maintaining a parent/child device pair
+alongside upstream's single-device model would be confusing for both
+projects. Install both files via **Drivers Code → Import** (the child
+first, since the parent's `configure()` looks it up by name):
+
+```
+https://raw.githubusercontent.com/bdwilson/hubitat/master/Tuya-Zigbee-Valve/Tuya%20Zigbee%20Valve%20Port.groovy
+https://raw.githubusercontent.com/bdwilson/hubitat/master/Tuya-Zigbee-Valve/Tuya%20Zigbee%20Valve.groovy
+```
+
+Not published via Hubitat Package Manager - it's specific enough to
+one device model that sharing the raw URLs directly is simpler.
 
 See the changelog at the top of the driver file for the full version history
 (both upstream and this fork's additions).

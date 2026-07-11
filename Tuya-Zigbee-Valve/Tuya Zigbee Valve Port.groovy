@@ -36,11 +36,15 @@
  *                                  per-channel irrigation duration attribute), so they were never really per-port
  *                                  data - they were incorrectly duplicated onto each child in v1.1.0. They remain on
  *                                  the parent device only.
+ *  ver. 1.3.1 2026-07-11 bdwilson - updated importUrl to this fork's own repo/master branch (was pointing at the
+ *                                  claude/tuya-zigbee-valve-dual-port-bbcxk4 working branch). This is a standalone
+ *                                  fork with its own parent/child device pair, hosted and maintained independently
+ *                                  rather than submitted upstream to kkossev/Hubitat.
  */
-static String version() { '1.3.0' }
+static String version() { '1.3.1' }
 
 metadata {
-    definition(name: 'Tuya Zigbee Valve Port', namespace: 'bdwilson', author: 'Brian Wilson', component: true, importUrl: 'https://raw.githubusercontent.com/bdwilson/hubitat/claude/tuya-zigbee-valve-dual-port-bbcxk4/Tuya-Zigbee-Valve/Tuya%20Zigbee%20Valve%20Port.groovy') {
+    definition(name: 'Tuya Zigbee Valve Port', namespace: 'bdwilson', author: 'Brian Wilson', component: true, importUrl: 'https://raw.githubusercontent.com/bdwilson/hubitat/master/Tuya-Zigbee-Valve/Tuya%20Zigbee%20Valve%20Port.groovy') {
         capability 'Actuator'
         capability 'Valve'
         capability 'Switch'

@@ -123,6 +123,12 @@
  *                                  reported many seconds apart. 500D/500E/501F now check device.currentValue() first and only call
  *                                  sendSwitchEvent()/sendValve2Event() when the value has actually changed, restoring the old suppression
  *                                  behavior while keeping the 1.9.3 fix (single choke point, whichever signal arrives first) for real transitions.
+ *  ver. 1.9.7 2026-07-11 bdwilson - updated importUrl to this fork's own repo/master branch (was pointing at the
+ *                                  claude/tuya-zigbee-valve-dual-port-bbcxk4 working branch). This is a standalone
+ *                                  fork with its own parent/child device pair, hosted and maintained independently
+ *                                  rather than submitted upstream to kkossev/Hubitat (namespace/author metadata left
+ *                                  as upstream's, since changing it would orphan the driver-type reference on
+ *                                  already-installed devices).
  *
  *                                  TODO: @rgr - add a timer to the driver that shows how much time is left before the valve closes ''
  *                                  TODO: document the attributes (per valve model) in GitHub; add links to the HE forum and GitHub pages;
@@ -132,15 +138,15 @@ import groovy.json.*
 import groovy.transform.Field
 import hubitat.zigbee.zcl.DataType
 
-static String version() { '1.9.6' }
-static String timeStamp() { '2026/07/11 12:45 PM' }
+static String version() { '1.9.7' }
+static String timeStamp() { '2026/07/11 01:00 PM' }
 
 @Field static final Boolean _DEBUG = false
 @Field static final Boolean DEFAULT_DEBUG_LOGGING = false               // disable it for the production release !
 @Field static final String SIMULATED_PROFILE = 'TS0601_TZE284_VALVE'    // in _DEBUG mode only
 
 metadata {
-    definition(name: 'Tuya Zigbee Valve', namespace: 'kkossev', author: 'Krassimir Kossev', importUrl: 'https://raw.githubusercontent.com/kkossev/Hubitat/development/Drivers/Tuya%20Zigbee%20Valve/Tuya%20Zigbee%20Valve.groovy', singleThreaded: true ) {
+    definition(name: 'Tuya Zigbee Valve', namespace: 'kkossev', author: 'Krassimir Kossev', importUrl: 'https://raw.githubusercontent.com/bdwilson/hubitat/master/Tuya-Zigbee-Valve/Tuya%20Zigbee%20Valve.groovy', singleThreaded: true ) {
         capability 'Actuator'
         capability 'Valve'
         capability 'Refresh'
