@@ -129,6 +129,13 @@
  *                                  rather than submitted upstream to kkossev/Hubitat (namespace/author metadata left
  *                                  as upstream's, since changing it would orphan the driver-type reference on
  *                                  already-installed devices).
+ *  ver. 1.10.0 2026-07-11 bdwilson - added per-port auto-off timers for SWV-ZF2: new autoOffTimer1/autoOffTimer2 preferences (in minutes,
+ *                                  0 = disabled). The ZF2 has no documented per-channel hardware auto-off (zigbee-herdsman-converters exposes
+ *                                  the manual irrigation default duration, FC11 0x501D, as a single device-level setting, not per endpoint),
+ *                                  so these are driver-side runIn timers: scheduled off the observed open transition (any source - driver
+ *                                  command, physical button, eWeLink app), cancelled on the observed close, never restarted by repeated or
+ *                                  refresh reports of an unchanged state. Note: the valve firmware also closes a manually-opened port after
+ *                                  its own manual-mode default duration (10 min out of the box, set in eWeLink), which caps longer timers.
  *
  *                                  TODO: @rgr - add a timer to the driver that shows how much time is left before the valve closes ''
  *                                  TODO: document the attributes (per valve model) in GitHub; add links to the HE forum and GitHub pages;
@@ -138,8 +145,8 @@ import groovy.json.*
 import groovy.transform.Field
 import hubitat.zigbee.zcl.DataType
 
-static String version() { '1.9.7' }
-static String timeStamp() { '2026/07/11 01:00 PM' }
+static String version() { '1.10.0' }
+static String timeStamp() { '2026/07/11 01:30 PM' }
 
 @Field static final Boolean _DEBUG = false
 @Field static final Boolean DEFAULT_DEBUG_LOGGING = false               // disable it for the production release !
@@ -219,6 +226,10 @@ metadata {
             }
             if (isSASWELL() || isGIEX() || (isSonoff() && !isSonoffZF2()) || isFankEver() || isTZE284()) {
                 input(name: 'autoOffTimer', type: 'number', title: '<b>Auto off timer (Irrigation Duration)</b> ', description: 'Automatically turn off after how many <b>seconds</b> (most models) or <b>minutes</b> (SWV-ZN: 0–719 min; TZE284).<br>Zero value disables the auto-off!', defaultValue: DEFAULT_AUTOOFF_TIMER, required: false)
+            }
+            if (isSonoffZF2()) {
+                input(name: 'autoOffTimer1', type: 'number', title: '<b>Port 1 Auto-off Timer, minutes</b>', description: 'Automatically close port 1 this many <b>minutes</b> after it opens (driver-side timer; also applies to physical/app opens). Zero disables it.<br>Note: the valve firmware itself closes a manually-opened port after its own default duration (10 minutes out of the box, configurable in the eWeLink app), so a longer driver timer will find the port already closed.', defaultValue: 0, range: '0..1440', required: false)
+                input(name: 'autoOffTimer2', type: 'number', title: '<b>Port 2 Auto-off Timer, minutes</b>', description: 'Automatically close port 2 this many <b>minutes</b> after it opens (driver-side timer; also applies to physical/app opens). Zero disables it.<br>Note: the valve firmware itself closes a manually-opened port after its own default duration (10 minutes out of the box, configurable in the eWeLink app), so a longer driver timer will find the port already closed.', defaultValue: 0, range: '0..1440', required: false)
             }
             if (isSASWELL() || isGIEX()) {
                 input(name: 'irrigationCapacity', type: 'number', title: '<b>Irrigation Capacity</b>', description: 'Automatically turn off agter how many liters?', defaultValue: DEFAULT_CAPACITY, required: false)
@@ -756,6 +767,7 @@ void sendSwitchEvent(final String switchValue) {
         state.states['debounce']   = true
         state.states['lastSwitch'] = value
         runInMillis(DEBOUNCING_TIMER, switchDebouncingClear, [overwrite: true])
+        if (isSonoffZF2()) { zf2ScheduleAutoClose('01', value) }    // per-port software auto-off timer (port 1)
     }
     else {
         state.states['debounce'] = true
@@ -818,8 +830,34 @@ void sendValve2Event(final String switchValue) {
     if (txtEnable) { log.info descriptionText }
     sendEvent(name: 'valve2', value: value, descriptionText: descriptionText, type: type)
     pushChildSwitchEvent('02', value == 'open' ? 'on' : 'off', descriptionText, type)
+    zf2ScheduleAutoClose('02', value)    // per-port software auto-off timer (port 2); the dedup return above guarantees this is a real transition
     clearIsDigital2()
 }
+
+// SONOFF_SWV_ZF2_VALVE per-port software auto-off timers (autoOffTimer1/autoOffTimer2 preferences, in minutes).
+// The ZF2 has no documented per-channel hardware auto-off: zigbee-herdsman-converters exposes the manual
+// irrigation default duration (FC11 0x501D) as a single device-level setting, not per endpoint - so a driver-side
+// runIn timer is used instead. It is scheduled off the *observed* open transition (any source: driver command,
+// physical button, eWeLink app) and cancelled on the observed close, so it never restarts on repeated/refresh
+// reports of an unchanged state. Note: the valve firmware also auto-closes a manually-opened port after its own
+// manual-mode default duration (10 minutes out of the box, configurable in the eWeLink app), so a driver timer
+// longer than that will find the port already closed when it fires (harmless - the close is a no-op).
+void zf2ScheduleAutoClose(String port, String value) {
+    String handlerName = port == '02' ? 'zf2AutoClosePort2' : 'zf2AutoClosePort1'
+    if (value == 'open') {
+        int minutes = safeToInt(port == '02' ? settings?.autoOffTimer2 : settings?.autoOffTimer1, 0)
+        if (minutes > 0) {
+            logInfo "port ${port == '02' ? '2' : '1'} auto-off timer started - closing in ${minutes} minute${minutes == 1 ? '' : 's'}"
+            runIn(minutes * 60, handlerName, [overwrite: true])
+        }
+    }
+    else if (value == 'closed') {
+        unschedule(handlerName)
+    }
+}
+
+void zf2AutoClosePort1() { logInfo 'port 1 auto-off timer expired - closing'; close() }
+void zf2AutoClosePort2() { logInfo 'port 2 auto-off timer expired - closing'; close2() }
 
 
 
@@ -2054,6 +2092,9 @@ void configure() {
             // port 2 (endpoint 02) - bind and configure reporting for its own genOnOff cluster
             cmds += "zdo bind 0x${device.deviceNetworkId} 0x02 0x01 0x0006 {${device.zigbeeId}} {}" // genOnOff (valve2 / port 2)
             cmds += zigbee.configureReporting(0x0006, 0x0000, DataType.BOOLEAN, 1, 1800, 0, [destEndpoint: 0x02])
+            // cancel any pending per-port auto-off job whose timer was just disabled in preferences
+            if (safeToInt(settings?.autoOffTimer1, 0) == 0) { unschedule('zf2AutoClosePort1') }
+            if (safeToInt(settings?.autoOffTimer2, 0) == 0) { unschedule('zf2AutoClosePort2') }
         }
 
         if (!isSonoffZN() && !isSonoffZF2()) {
@@ -2224,6 +2265,10 @@ void initializeVars(boolean fullInit = true) {
     if (fullInit == true || settings?.advancedOptions == null) { device.updateSetting('advancedOptions', [value:false, type:'bool']) }               // toggle
     if (isSASWELL() || isGIEX() || (isSonoff() && !isSonoffZF2()) || isFankEver()) {
         if (fullInit == true || settings?.autoOffTimer == null) { device.updateSetting('autoOffTimer', [value: DEFAULT_AUTOOFF_TIMER, type: 'number']) }
+    }
+    if (isSonoffZF2()) {
+        if (fullInit == true || settings?.autoOffTimer1 == null) { device.updateSetting('autoOffTimer1', [value: 0, type: 'number']) }
+        if (fullInit == true || settings?.autoOffTimer2 == null) { device.updateSetting('autoOffTimer2', [value: 0, type: 'number']) }
     }
     if (fullInit == true || settings?.autoSendTimer == null) { device.updateSetting('autoSendTimer', (isGIEX() ? true : false)) }
     if (fullInit == true || settings?.threeStateEnable == null) { device.updateSetting('threeStateEnable', false) }
