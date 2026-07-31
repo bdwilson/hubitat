@@ -89,7 +89,7 @@
         "Weather"
       ],
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Weewx/packageManifest.json",
-      "description": "Allows you to bring capabilities like outdoor temp, rain status, etc into Hubitat.  Switch will control if its wet/dry for use with Simple Irrigation app"
+      "description": "Allows you to bring capabilities like outdoor temp, humidity, wind, pressure and detailed rain totals (rate, today, yesterday, 2-7 day, week) from Weewx into Hubitat.  Switch will control if its wet/dry for use with Simple Irrigation app"
     },
     {
       "name": "Envisalink for Vista Ademco/20p Alarm System",
