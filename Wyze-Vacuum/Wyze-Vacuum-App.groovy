@@ -56,7 +56,8 @@ definition(
     author: "bubba@bubba.org",
     description: "Native integration for Wyze Robot Vacuums (unofficial API)",
     category: "My Apps",
-    importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
+    // TODO: point back at master once this branch is merged
+    importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/claude/hubitat-wyze-vacuum-integration-x2euom/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
     iconUrl: "",
     iconX2Url: "",
     singleInstance: true

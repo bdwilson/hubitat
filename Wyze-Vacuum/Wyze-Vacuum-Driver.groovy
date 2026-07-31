@@ -17,7 +17,8 @@ metadata {
         name: "Wyze Robot Vacuum Driver",
         namespace: "brianwilson-hubitat",
         author: "Brian Wilson",
-        importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-Driver.groovy"
+        // TODO: point back at master once this branch is merged
+        importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/claude/hubitat-wyze-vacuum-integration-x2euom/Wyze-Vacuum/Wyze-Vacuum-Driver.groovy"
     ) {
         capability "Battery"
         capability "Refresh"
