@@ -1,7 +1,7 @@
 /**
  * Wyze Robot Vacuum Driver
  *
- * 1.2.0 - Brian Wilson / bubba@bubba.org
+ * 1.3.0 - Brian Wilson / bubba@bubba.org
  *
  * Child driver for the Wyze Vacuum Connect App. All network calls happen in the
  * parent app (which owns the Wyze session); this driver just relays commands to it
@@ -31,6 +31,8 @@ metadata {
         command "cleanRooms", [[name: "roomNames*", type: "STRING", description: "Comma-separated room names to clean now, e.g. 'Kitchen, Living Room'"]]
         command "cleanNextRooms"
         command "resetBinTimer"
+        command "learnRoomTimes"
+        command "cancelLearning"
 
         attribute "status", "STRING"        // Standby / Cleaning / Returning to charge / Docked / Mapping / Paused / Error
         attribute "mode", "STRING"          // finer-grained device mode text
@@ -42,6 +44,7 @@ metadata {
         attribute "lastCleanedRooms", "STRING"       // rooms confirmed cleaned by the most recent room-clean run
         attribute "roomsPendingThisCycle", "NUMBER"  // rotation rooms not cleaned within the configured cycle window
         attribute "hoursSinceEmptied", "NUMBER"      // cumulative cleaning hours since the bin was last reset
+        attribute "learningStatus", "STRING"         // Idle / Learning <room> (N more queued) / Stopped early
         attribute "lastRefresh", "STRING"
     }
 
@@ -101,6 +104,17 @@ def refresh() {
 def resetBinTimer() {
     ifDebug("resetBinTimer() called")
     parent.resetBinTimer(device.deviceNetworkId)
+}
+
+def learnRoomTimes() {
+    ifDebug("learnRoomTimes() called")
+    sendEvent(name: "status", value: "Cleaning")
+    parent.startLearningMode(device.deviceNetworkId)
+}
+
+def cancelLearning() {
+    ifDebug("cancelLearning() called")
+    parent.cancelLearningMode(device.deviceNetworkId)
 }
 
 def logsOff() {

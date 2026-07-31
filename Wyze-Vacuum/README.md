@@ -57,6 +57,7 @@ Hubitat creates a child device per vacuum, named after its Wyze nickname.
 | `lastCleanedRooms` | string | Rooms confirmed cleaned by the most recent room-clean run |
 | `roomsPendingThisCycle` | number | Rotation rooms not cleaned within the configured cycle window |
 | `hoursSinceEmptied` | number | Cumulative cleaning hours since the bin was last reset |
+| `learningStatus` | string | `Idle` / `Learning <room> (N more queued)` / `Stopped early` |
 | `lastRefresh` | string | Timestamp of the last successful poll |
 
 ## Device Commands
@@ -71,6 +72,8 @@ Hubitat creates a child device per vacuum, named after its Wyze nickname.
 | `cleanNextRooms()` | Clean whichever rotation rooms have gone longest without a clean (see below) |
 | `refresh()` | Force an immediate status poll |
 | `resetBinTimer()` | Reset the cumulative cleaning-hours counter used for the bin-empty reminder |
+| `learnRoomTimes()` | Start Learning Mode — cleans each rotation room by itself to directly measure its clean time (see below) |
+| `cancelLearning()` | Stop Learning Mode after the room currently in progress finishes |
 
 ---
 
@@ -103,14 +106,35 @@ This is a heuristic, not a ground-truth signal from the vacuum (Wyze doesn't exp
 
 | Attribute | Description |
 |---|---|
-| `lastCleanedRooms` | Rooms targeted by the most recent room-clean dispatch |
+| `lastCleanedRooms` | Rooms confirmed cleaned by the most recent room-clean run |
 | `roomsPendingThisCycle` | How many of your selected rotation rooms are currently due (not cleaned within the cycle window) |
 
 ### Limitations
 
 - Room discovery requires the vacuum to already have a saved map with named rooms in the Wyze app — name your rooms there first.
-- The per-room time estimate starts from a flat 15-minute guess and self-corrects from real cleaning-time data reported by the vacuum after each run; expect the first few time-budget runs to be rougher than later ones.
+- The per-room time estimate starts from a flat 15-minute guess and self-corrects from real cleaning-time data reported by the vacuum after each run; expect the first few time-budget runs to be rougher than later ones. **Learning Mode** (below) gets you accurate numbers immediately instead of waiting on that gradual self-correction.
 - If Wyze changes the internal map format, room discovery (not the rest of the integration) is the piece most likely to need a fix.
+
+---
+
+## Learning Mode — measuring exact per-room clean times
+
+Normal rotation runs often clean several rooms in one dispatch, so their timing data only tells you the *combined* elapsed time — it's split evenly across the batch as a rough estimate, not measured per room. **Learning Mode** instead cleans every room **by itself, one at a time**, so each room's clean time is a direct measurement, not an inferred split.
+
+### How it works
+
+1. Click **Learn Room Times** under `<vacuum> — Room Timing` (or run the driver's `learnRoomTimes()` command). It queues up every room selected for rotation — or, if none are selected yet, every room Discover Rooms found.
+2. It dispatches the first room alone, waits (across normal polling) for that single-room clean to end, records however many minutes it actually took, then automatically dispatches the next room in the queue. This repeats until every queued room has been measured — expect it to take a while, since it's really running the vacuum through each room in sequence.
+3. Each room's recorded time **overwrites** whatever estimate existed before (a dedicated single-room pass is treated as ground truth, unlike the gradual blending that happens from normal multi-room rotation runs). You'll see the results under "Known room times" on the app page as they come in.
+4. If the run is paused or the vacuum reports an error mid-room, Learning Mode stops itself right there rather than guessing at a number — you'll get a notification (if enabled) saying it stopped early, and whatever rooms were already measured keep their results. Re-run **Learn Room Times** to pick up where you left off (it starts the queue over, but already-measured rooms just get re-measured/overwritten — harmless, just redundant).
+5. **Cancel Learning** stops the queue after the room currently in progress finishes (it doesn't interrupt an in-progress room).
+
+Learning Mode also updates each room's "last cleaned" timestamp like any other room clean, so it counts toward your rotation cycle too — it's not wasted cleaning.
+
+### Notes
+
+- This runs over many poll cycles (it depends on your configured poll interval to notice when each room finishes), so don't expect it to fly through all your rooms in a couple of minutes even though each individual room clean might be quick.
+- There's currently no automatic timeout if a dispatch silently fails to start (e.g. a dropped API call) — if it looks stuck, check the `learningStatus` attribute and Hubitat's logs, and use **Cancel Learning** to reset it.
 
 ---
 

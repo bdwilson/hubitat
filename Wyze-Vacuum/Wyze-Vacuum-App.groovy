@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.2.0 - Brian Wilson / bubba@bubba.org
+ * 1.3.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -172,6 +172,25 @@ def mainPage() {
                         }
                     }
 
+                    section("<b>${vacLabel} — Room Timing</b>") {
+                        def learning = state.learningMode?.getAt(mac)
+                        if (learning) {
+                            paragraph "Learning mode running — ${(learning.queue?.size() ?: 0)} more room(s) queued after the current one."
+                            input "btnCancelLearning_${mac}", "button", title: "Cancel Learning", width: 3
+                        } else {
+                            paragraph "Cleans every selected rotation room by itself, one at a time, to directly measure each room's real clean " +
+                                      "time (used to drive the \"time budget\" rotation mode) instead of estimating from mixed multi-room runs. " +
+                                      "Takes a while — it works through every room in sequence."
+                            input "btnLearnRooms_${mac}", "button", title: "Learn Room Times", width: 3
+                        }
+                        def avg = state.roomAvgMinutes?.getAt(mac)
+                        if (avg) {
+                            def known = state.discoveredRooms?.getAt(mac) ?: []
+                            def lines = avg.collect { k, v -> "${known.find { it.id.toString() == k }?.name ?: "Room ${k}"}: ${String.format('%.1f', (v as Double))} min" }
+                            paragraph "Known room times — ${lines.join(', ')}"
+                        }
+                    }
+
                     section("<b>${vacLabel} — Bin Reminder</b>") {
                         input "emptyBinHours_${mac}", "number",
                             title: "Notify to empty the bin after this many cumulative cleaning hours (0 = disabled)",
@@ -206,6 +225,10 @@ def appButtonHandler(btn) {
         discoverRooms(mac)
     } else if (btn.startsWith("btnResetBin_")) {
         resetBinTimer(btn - "btnResetBin_")
+    } else if (btn.startsWith("btnLearnRooms_")) {
+        startLearningMode(btn - "btnLearnRooms_")
+    } else if (btn.startsWith("btnCancelLearning_")) {
+        cancelLearningMode(btn - "btnCancelLearning_")
     }
 }
 
@@ -448,7 +471,7 @@ def pollVacuum(String mac) {
         state.cleaningSessionStart[mac] = now()
         if (settings.notifyCleaningStarted) sendVacuumNotification("${d.displayName} started cleaning.")
     } else if (prevStatus == "Cleaning" && newStatus != null && newStatus != "Cleaning") {
-        handleCleaningSessionEnd(mac, props?.cleanTime, d)
+        handleCleaningSessionEnd(mac, props?.cleanTime, d, newStatus)
     }
 
     d.sendEvent(name: "roomsPendingThisCycle", value: pendingRoomCount(mac))
@@ -473,14 +496,17 @@ private void updateFaultAttribute(def d, String mac, Map props) {
 
 // Fires once per Cleaning -> non-Cleaning transition, regardless of whether the
 // clean finished naturally, was paused, or was interrupted by a dock/stop.
-private void handleCleaningSessionEnd(String mac, def reportedCleanTimeMinutes, def d) {
+private void handleCleaningSessionEnd(String mac, def reportedCleanTimeMinutes, def d, String newStatus) {
     def sessionStart = state.cleaningSessionStart?.getAt(mac)
     def reported = toInt(reportedCleanTimeMinutes)
     Integer elapsedMin = (reported != null && reported > 0)
         ? reported
         : (sessionStart ? (Math.max(0, Math.round((now() - sessionStart) / 60000.0)) as Integer) : 0)
 
-    if (state.activeCleanRun?.getAt(mac)) {
+    def run = state.activeCleanRun?.getAt(mac)
+    if (run?.learning) {
+        handleLearningRoomEnd(mac, run, elapsedMin, newStatus)
+    } else if (run) {
         finishActiveCleanRun(mac, elapsedMin)
     }
 
@@ -696,6 +722,101 @@ private void finishActiveCleanRun(String mac, Integer elapsedMin) {
 
     state.activeCleanRun.remove(mac)
     ifDebug("finishActiveCleanRun(${mac}): elapsedMin=${elapsedMin} completed=${completed} incomplete=${incomplete}")
+}
+
+// =================== Room-timing learning mode ===================
+//
+// Cleans the rotation rooms (or all discovered rooms, if none are selected
+// for rotation yet) one at a time and records each one's directly-measured
+// clean time -- a ground-truth reading rather than an inferred split of a
+// multi-room batch. Runs across many poll cycles: each room dispatch sets a
+// single-room activeCleanRun, and handleLearningRoomEnd advances to the next
+// room once that one's Cleaning session ends.
+
+def startLearningMode(String mac) {
+    def d = getChildDevice(mac)
+    if (d?.currentValue("status") == "Cleaning") {
+        log.warn "Wyze Vacuum: ${mac} is already cleaning — dock or pause it before starting learning mode."
+        return
+    }
+
+    def rooms = (settings["rotationRooms_${mac}"] ?: []).collect { it as Integer }
+    if (!rooms) {
+        rooms = (state.discoveredRooms?.getAt(mac) ?: []).collect { it.id as Integer }
+    }
+    if (!rooms) { log.warn "Wyze Vacuum: no rooms to learn for ${mac} — discover/select rooms first"; return }
+
+    def known = state.discoveredRooms?.getAt(mac) ?: []
+    def firstId = rooms[0]
+    def firstRoom = known.find { it.id == firstId } ?: [id: firstId, name: "Room ${firstId}"]
+
+    state.learningMode = state.learningMode ?: [:]
+    state.learningMode[mac] = [queue: rooms.drop(1)]
+    ifDebug("startLearningMode(${mac}): queue=${rooms}")
+    dispatchLearningRoom(mac, firstRoom)
+}
+
+def cancelLearningMode(String mac) {
+    state.learningMode?.remove(mac)
+    getChildDevice(mac)?.sendEvent(name: "learningStatus", value: "Idle")
+    ifDebug("cancelLearningMode(${mac})")
+}
+
+private void dispatchLearningRoom(String mac, Map room) {
+    def id = room.id as Integer
+    state.activeCleanRun = state.activeCleanRun ?: [:]
+    state.activeCleanRun[mac] = [roomIds: [id], startedAt: now(), learning: true]
+    venusControl(mac, 0, 1, [id]) // GLOBAL_SWEEPING / START, scoped to this one room
+
+    def remaining = state.learningMode?.getAt(mac)?.queue?.size() ?: 0
+    def d = getChildDevice(mac)
+    d?.sendEvent(name: "lastCleanedRooms", value: "Learning: ${room.name}")
+    d?.sendEvent(name: "learningStatus", value: "Learning ${room.name} (${remaining} more queued)")
+    pollVacuum(mac)
+}
+
+// Fires once the current learning-mode room's Cleaning session ends. Only a
+// clean exit (not "Paused"/"Error") is trusted as a real measurement --
+// anything else aborts the whole learning sequence rather than guessing.
+private void handleLearningRoomEnd(String mac, Map run, Integer elapsedMin, String newStatus) {
+    def d = getChildDevice(mac)
+    def roomId = run.roomIds ? (run.roomIds[0] as Integer) : null
+
+    if (newStatus == "Paused" || newStatus == "Error") {
+        sendVacuumNotification("${d?.displayName ?: mac} learning mode stopped early — ${newStatus == "Paused" ? "cleaning was paused" : "the vacuum reported an error"} before this room's measurement finished.")
+        d?.sendEvent(name: "learningStatus", value: "Stopped early")
+        state.activeCleanRun.remove(mac)
+        state.learningMode?.remove(mac)
+        return
+    }
+
+    if (roomId != null && elapsedMin && elapsedMin > 0) {
+        // A dedicated single-room pass is ground truth -- overwrite outright
+        // rather than blending it in gradually like the multi-room EMA does.
+        state.roomAvgMinutes = state.roomAvgMinutes ?: [:]
+        def avgMap = state.roomAvgMinutes[mac] ?: [:]
+        avgMap[roomId.toString()] = elapsedMin as Double
+        state.roomAvgMinutes[mac] = avgMap
+        markRoomsCleaned(mac, [roomId])
+        ifDebug("learning mode (${mac}): room ${roomId} measured at ${elapsedMin} min")
+    }
+
+    state.activeCleanRun.remove(mac)
+
+    def queue = state.learningMode?.getAt(mac)?.queue ?: []
+    if (!queue) {
+        sendVacuumNotification("${d?.displayName ?: mac} finished learning room times for all rooms.")
+        d?.sendEvent(name: "learningStatus", value: "Idle")
+        state.learningMode?.remove(mac)
+        return
+    }
+
+    def nextId = queue[0]
+    state.learningMode[mac] = [queue: queue.drop(1)]
+    def known = state.discoveredRooms?.getAt(mac) ?: []
+    def nextRoom = known.find { it.id == nextId } ?: [id: nextId, name: "Room ${nextId}"]
+    ifDebug("learning mode (${mac}): advancing to ${nextRoom.name}")
+    dispatchLearningRoom(mac, nextRoom)
 }
 
 private Integer pendingRoomCount(String mac) {
