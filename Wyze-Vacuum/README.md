@@ -74,6 +74,21 @@ Hubitat creates a child device per vacuum, named after its Wyze nickname.
 | `resetBinTimer()` | Reset the cumulative cleaning-hours counter used for the bin-empty reminder |
 | `learnRoomTimes()` | Start Learning Mode — cleans each rotation room by itself to directly measure its clean time (see below) |
 | `cancelLearning()` | Stop Learning Mode after the room currently in progress finishes |
+| `cleanRoomSlot1()` … `cleanRoomSlot8()` | Clean whichever room is assigned to that slot (see Room Buttons below) — no arguments, so it's Dashboard-tile-friendly |
+
+---
+
+## Room Buttons — one-tap Dashboard tiles per room, no child devices
+
+Hubitat Dashboard tiles don't support popping up a room picker at tap time — a tile always fires one fixed action. To still get a "tap to clean the kitchen" button without creating a separate device per room, the driver exposes 8 fixed, no-argument commands (`cleanRoomSlot1()` … `cleanRoomSlot8()`) on the vacuum device itself. You assign a room to each slot once; from then on that slot's command always cleans that room.
+
+**Setup:**
+
+1. Under `<vacuum> — Room Buttons` in the app, pick a room for each slot you want to use (leave the rest "not assigned").
+2. In Hubitat Dashboard, add the vacuum device as a tile — once per slot you're using. For each tile, pick the specific `cleanRoomSlotN` command as its action (rather than the default tile template). You'll end up with, say, 4 tiles all pointing at the same vacuum device, each labeled/laid out for a different room, each firing a different slot command.
+3. Tapping a tile cleans that one room — same ground-truth single-room completion tracking as `cleanRooms()`, so it also counts toward rotation and gets an accurate time measurement.
+
+8 slots is a fixed limit today (Hubitat driver commands have to be declared statically, so this isn't dynamically expandable per-install) — if you have more rooms than that, the extras are still reachable via `cleanRooms("Room Name")`, just not as a one-tap tile.
 
 ---
 

@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.3.1 - Brian Wilson / bubba@bubba.org
+ * 1.4.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -188,6 +188,21 @@ def mainPage() {
                             def known = state.discoveredRooms?.getAt(mac) ?: []
                             def lines = avg.collect { k, v -> "${known.find { it.id.toString() == k }?.name ?: "Room ${k}"}: ${String.format('%.1f', (v as Double))} min" }
                             paragraph "Known room times — ${lines.join(', ')}"
+                        }
+                    }
+
+                    section("<b>${vacLabel} — Room Buttons</b>") {
+                        def rooms = state.discoveredRooms?.getAt(mac)
+                        if (rooms) {
+                            paragraph "Assign rooms to fixed slots. Each slot is its own no-argument command (cleanRoomSlot1() … cleanRoomSlot8()) " +
+                                      "on this vacuum's device — add one Dashboard tile per slot (same device, a different command each) for a " +
+                                      "one-tap \"clean this room\" button. No typing, no picker, no extra devices."
+                            def slotOptions = ["": "-- not assigned --"] + rooms.collectEntries { [(it.id.toString()): it.name] }
+                            (1..8).each { n ->
+                                input "roomSlot${n}_${mac}", "enum", title: "Slot ${n} room", options: slotOptions, required: false, submitOnChange: true
+                            }
+                        } else {
+                            paragraph "Discover rooms first to assign room buttons."
                         }
                     }
 
@@ -607,6 +622,18 @@ private void venusControl(String mac, int type, int value, List rooms = null) {
 }
 
 // =================== Room rotation ===================
+
+def cleanRoomSlot(String mac, int slot) {
+    def roomIdStr = settings["roomSlot${slot}_${mac}"]
+    if (!roomIdStr) { log.warn "Wyze Vacuum: slot ${slot} has no room assigned for ${mac} — set it under Room Buttons"; return }
+
+    def known = state.discoveredRooms?.getAt(mac) ?: []
+    def room = known.find { it.id.toString() == roomIdStr }
+    if (!room) { log.warn "Wyze Vacuum: slot ${slot} room (id ${roomIdStr}) not found for ${mac} — try Discover Rooms again"; return }
+
+    ifDebug("cleanRoomSlot(${mac}, ${slot}) -> ${room.name}")
+    dispatchRoomClean(mac, [room])
+}
 
 def cleanSpecificRooms(String mac, String roomNamesCsv) {
     def rooms = state.discoveredRooms?.getAt(mac)

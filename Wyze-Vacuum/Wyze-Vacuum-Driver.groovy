@@ -1,7 +1,7 @@
 /**
  * Wyze Robot Vacuum Driver
  *
- * 1.3.0 - Brian Wilson / bubba@bubba.org
+ * 1.4.0 - Brian Wilson / bubba@bubba.org
  *
  * Child driver for the Wyze Vacuum Connect App. All network calls happen in the
  * parent app (which owns the Wyze session); this driver just relays commands to it
@@ -33,6 +33,20 @@ metadata {
         command "resetBinTimer"
         command "learnRoomTimes"
         command "cancelLearning"
+
+        // Fixed, no-argument, one-tap Dashboard-tile-friendly commands. Map each
+        // slot to a room in the app's "Room Buttons" section, then add one
+        // Dashboard tile per slot (same device, different command) for a
+        // one-tap "clean this room" button with no typing/picker and no
+        // extra child devices.
+        command "cleanRoomSlot1"
+        command "cleanRoomSlot2"
+        command "cleanRoomSlot3"
+        command "cleanRoomSlot4"
+        command "cleanRoomSlot5"
+        command "cleanRoomSlot6"
+        command "cleanRoomSlot7"
+        command "cleanRoomSlot8"
 
         attribute "status", "STRING"        // Standby / Cleaning / Returning to charge / Docked / Mapping / Paused / Error
         attribute "mode", "STRING"          // finer-grained device mode text
@@ -115,6 +129,21 @@ def learnRoomTimes() {
 def cancelLearning() {
     ifDebug("cancelLearning() called")
     parent.cancelLearningMode(device.deviceNetworkId)
+}
+
+def cleanRoomSlot1() { cleanRoomSlot(1) }
+def cleanRoomSlot2() { cleanRoomSlot(2) }
+def cleanRoomSlot3() { cleanRoomSlot(3) }
+def cleanRoomSlot4() { cleanRoomSlot(4) }
+def cleanRoomSlot5() { cleanRoomSlot(5) }
+def cleanRoomSlot6() { cleanRoomSlot(6) }
+def cleanRoomSlot7() { cleanRoomSlot(7) }
+def cleanRoomSlot8() { cleanRoomSlot(8) }
+
+private void cleanRoomSlot(int slot) {
+    ifDebug("cleanRoomSlot(${slot}) called")
+    sendEvent(name: "status", value: "Cleaning")
+    parent.cleanRoomSlot(device.deviceNetworkId, slot)
 }
 
 def logsOff() {
