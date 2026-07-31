@@ -5,8 +5,8 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "",
   "dateReleased": "2026-07-31",
-  "releaseNotes": "1.1.0 — Room-based cleaning and a rotation scheduler: discovers named rooms from the vacuum's saved map (decoded on-hub from Wyze's zlib/protobuf map blob), adds cleanRooms()/cleanNextRooms() commands, and learns per-room clean-time estimates from real runs to support a 'clean for about X minutes' rotation mode.",
-  "version": "1.1.0",
+  "releaseNotes": "1.2.0 — Room rotation now only credits a room as cleaned once its run actually finishes (inferred from elapsed vs. estimated clean time), so an interrupted run no longer skips unfinished rooms for a whole cycle. Adds optional notifications (cleaning started/finished, fault detected) and a per-vacuum cumulative-cleaning-hours bin-empty reminder with a manual reset.",
+  "version": "1.2.0",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -14,7 +14,7 @@
       "namespace": "brianwilson-hubitat",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-Driver.groovy",
       "required": true,
-      "version": "1.1.0"
+      "version": "1.2.0"
     }
   ],
   "apps": [
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.1.0"
+      "version": "1.2.0"
     }
   ]
 }

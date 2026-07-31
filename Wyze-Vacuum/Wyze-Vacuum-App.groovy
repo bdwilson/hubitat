@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.1.0 - Brian Wilson / bubba@bubba.org
+ * 1.2.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -25,6 +25,14 @@
  *     cleanNextRooms() command then cleans whichever selected rooms have gone
  *     longest without a clean — wire it to a "everyone left" automation to work
  *     through the house over the course of a week.
+ *  6. Optionally pick notification devices and enable start/finish/stuck/bin
+ *     alerts, and set an hours-of-cleaning threshold per vacuum for bin-empty
+ *     reminders.
+ *
+ * A room only counts as "cleaned" toward rotation once its run actually
+ * finishes — if a room-scoped clean is interrupted partway through, whichever
+ * rooms didn't get their full estimated time stay eligible and are picked
+ * again next time, rather than being skipped for a whole cycle.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file
  * except in compliance with the License. You may obtain a copy of the License at:
@@ -117,6 +125,16 @@ def mainPage() {
                         defaultValue: "5", required: true
                 }
 
+                section("<b>Notifications</b>") {
+                    paragraph "Notifications are change-driven — polling by itself never triggers one."
+                    input "notifyDevices", "capability.notification", title: "Send notifications to", multiple: true, required: false, submitOnChange: true
+                    if (settings.notifyDevices) {
+                        input "notifyCleaningStarted",  "bool", title: "Notify when cleaning starts",              defaultValue: false, required: false
+                        input "notifyCleaningFinished", "bool", title: "Notify when cleaning finishes",            defaultValue: true,  required: false
+                        input "notifyStuck",            "bool", title: "Notify when the vacuum reports a fault",  defaultValue: true,  required: false
+                    }
+                }
+
                 settings.selectedVacuums.each { mac ->
                     def vacLabel = state.discoveredVacuums?.get(mac) ?: mac
                     def roomErr = state["roomError_${mac}"]
@@ -153,6 +171,15 @@ def mainPage() {
                             paragraph "Click Discover Rooms after the vacuum has completed at least one clean and has an active map with named rooms in the Wyze app."
                         }
                     }
+
+                    section("<b>${vacLabel} — Bin Reminder</b>") {
+                        input "emptyBinHours_${mac}", "number",
+                            title: "Notify to empty the bin after this many cumulative cleaning hours (0 = disabled)",
+                            defaultValue: 0, required: false
+                        def hrs = (state.cleaningHoursSinceEmpty?.getAt(mac) ?: 0.0) as Double
+                        paragraph "Cumulative cleaning time since last emptied: ${String.format('%.1f', hrs)} hours"
+                        input "btnResetBin_${mac}", "button", title: "I emptied it — reset", width: 3
+                    }
                 }
 
                 section("<b>Options</b>") {
@@ -177,6 +204,8 @@ def appButtonHandler(btn) {
         def mac = btn - "btnDiscoverRooms_"
         state["roomError_${mac}"] = null
         discoverRooms(mac)
+    } else if (btn.startsWith("btnResetBin_")) {
+        resetBinTimer(btn - "btnResetBin_")
     }
 }
 
@@ -404,7 +433,7 @@ def pollVacuum(String mac) {
         if (props.chargeState != null) d.sendEvent(name: "charging", value: (toInt(props.chargeState) == 1) ? "true" : "false")
         if (props.cleanSize != null)  d.sendEvent(name: "cleanSize", value: toInt(props.cleanSize))
         if (props.cleanTime != null)  d.sendEvent(name: "cleanTime", value: toInt(props.cleanTime))
-        d.sendEvent(name: "fault", value: (props.fault_code && toInt(props.fault_code) != 0) ? "${props.fault_type ?: props.fault_code}" : "none")
+        updateFaultAttribute(d, mac, props)
     } else {
         ifDebug("pollVacuum(${mac}): no props returned")
     }
@@ -414,12 +443,81 @@ def pollVacuum(String mac) {
     def newStatus = workStatus != null ? vacuumStatusDescription(workStatus) : null
     if (newStatus != null) d.sendEvent(name: "status", value: newStatus)
 
-    if (prevStatus == "Cleaning" && newStatus != null && newStatus != "Cleaning" && state.activeCleanRun?.getAt(mac)) {
-        finishActiveCleanRun(mac, props?.cleanTime)
+    if (prevStatus != "Cleaning" && newStatus == "Cleaning") {
+        state.cleaningSessionStart = state.cleaningSessionStart ?: [:]
+        state.cleaningSessionStart[mac] = now()
+        if (settings.notifyCleaningStarted) sendVacuumNotification("${d.displayName} started cleaning.")
+    } else if (prevStatus == "Cleaning" && newStatus != null && newStatus != "Cleaning") {
+        handleCleaningSessionEnd(mac, props?.cleanTime, d)
     }
 
     d.sendEvent(name: "roomsPendingThisCycle", value: pendingRoomCount(mac))
     d.sendEvent(name: "lastRefresh", value: new Date().format("MM/dd/yyyy HH:mm:ss", location.timeZone))
+}
+
+private void updateFaultAttribute(def d, String mac, Map props) {
+    def faultCode = toInt(props.fault_code)
+    def isFault = faultCode && faultCode != 0
+    d.sendEvent(name: "fault", value: isFault ? "${props.fault_type ?: faultCode}" : "none")
+
+    state.lastNotifiedFault = state.lastNotifiedFault ?: [:]
+    if (isFault) {
+        if (settings.notifyStuck && state.lastNotifiedFault[mac] != faultCode) {
+            sendVacuumNotification("${d.displayName} reported a fault: ${props.fault_type ?: faultCode}")
+            state.lastNotifiedFault[mac] = faultCode
+        }
+    } else {
+        state.lastNotifiedFault[mac] = null // clear so a future recurrence of the same fault code re-notifies
+    }
+}
+
+// Fires once per Cleaning -> non-Cleaning transition, regardless of whether the
+// clean finished naturally, was paused, or was interrupted by a dock/stop.
+private void handleCleaningSessionEnd(String mac, def reportedCleanTimeMinutes, def d) {
+    def sessionStart = state.cleaningSessionStart?.getAt(mac)
+    def reported = toInt(reportedCleanTimeMinutes)
+    Integer elapsedMin = (reported != null && reported > 0)
+        ? reported
+        : (sessionStart ? (Math.max(0, Math.round((now() - sessionStart) / 60000.0)) as Integer) : 0)
+
+    if (state.activeCleanRun?.getAt(mac)) {
+        finishActiveCleanRun(mac, elapsedMin)
+    }
+
+    accumulateBinHours(mac, elapsedMin)
+
+    if (settings.notifyCleaningFinished && elapsedMin > 0) {
+        sendVacuumNotification("${d?.displayName ?: mac} finished cleaning after ${elapsedMin} min.")
+    }
+
+    state.cleaningSessionStart?.remove(mac)
+}
+
+private void accumulateBinHours(String mac, Integer elapsedMin) {
+    if (!elapsedMin || elapsedMin <= 0) return
+    state.cleaningHoursSinceEmpty = state.cleaningHoursSinceEmpty ?: [:]
+    double hrs = ((state.cleaningHoursSinceEmpty[mac] ?: 0.0) as Double) + (elapsedMin / 60.0)
+
+    def threshold = (settings["emptyBinHours_${mac}"] ?: 0) as Double
+    def d = getChildDevice(mac)
+    if (threshold > 0 && hrs >= threshold) {
+        sendVacuumNotification("${d?.displayName ?: mac} has cleaned for ${String.format('%.1f', hrs)} hours since the bin was last emptied — time to empty it.")
+        hrs = 0.0
+    }
+    state.cleaningHoursSinceEmpty[mac] = hrs
+    d?.sendEvent(name: "hoursSinceEmptied", value: Math.round(hrs * 10) / 10.0)
+}
+
+def resetBinTimer(String mac) {
+    state.cleaningHoursSinceEmpty = state.cleaningHoursSinceEmpty ?: [:]
+    state.cleaningHoursSinceEmpty[mac] = 0.0
+    getChildDevice(mac)?.sendEvent(name: "hoursSinceEmptied", value: 0)
+    ifDebug("resetBinTimer(${mac})")
+}
+
+private void sendVacuumNotification(String msg) {
+    ifDebug("Notification: ${msg}")
+    settings.notifyDevices?.each { it.deviceNotification(msg) }
 }
 
 private String vacuumStatusDescription(def code) {
@@ -533,40 +631,71 @@ private void dispatchRoomClean(String mac, List rooms) {
     state.activeCleanRun[mac] = [roomIds: ids, startedAt: now()]
 
     venusControl(mac, 0, 1, ids) // GLOBAL_SWEEPING / START, scoped to rooms
-    markRoomsCleaned(mac, ids)
 
+    // Rooms are NOT marked cleaned here — only once the run actually ends
+    // (see finishActiveCleanRun), so an interrupted run doesn't skip whatever
+    // didn't get done. This just reflects what was targeted, for quick feedback.
     def d = getChildDevice(mac)
     d?.sendEvent(name: "lastCleanedRooms", value: rooms.collect { it.name }.join(", "))
     pollVacuum(mac)
 }
 
 private void markRoomsCleaned(String mac, List roomIds) {
+    if (!roomIds) return
     state.roomHistory = state.roomHistory ?: [:]
     def h = state.roomHistory[mac] ?: [:]
     roomIds.each { id -> h[id.toString()] = now() }
     state.roomHistory[mac] = h
 }
 
-private void finishActiveCleanRun(String mac, def reportedCleanTimeMinutes) {
+// Called once a room-scoped clean transitions out of "Cleaning". Wyze doesn't
+// tell us which specific rooms finished, so we infer it: walk the dispatched
+// rooms in order and consume elapsedMin against each room's known/estimated
+// duration. A room only counts as done if its *full* estimate fit inside the
+// time that elapsed — so an interrupted run under-credits rather than
+// over-credits, and whatever didn't get done stays eligible next time. The
+// time-estimate average is only refined when the whole batch completed
+// cleanly, so a partial run doesn't skew future time-budget estimates.
+private void finishActiveCleanRun(String mac, Integer elapsedMin) {
     def run = state.activeCleanRun?.getAt(mac)
     if (!run) return
-
     def rooms = run.roomIds ?: []
-    def reported = toInt(reportedCleanTimeMinutes)
-    def elapsedMin = (reported != null && reported > 0) ? reported : Math.max(1, Math.round((now() - run.startedAt) / 60000.0))
-    def perRoom = elapsedMin / Math.max(1, rooms.size())
 
     state.roomAvgMinutes = state.roomAvgMinutes ?: [:]
     def avgMap = state.roomAvgMinutes[mac] ?: [:]
+
+    double remaining = elapsedMin ?: 0
+    def completed = []
     rooms.each { id ->
-        def key = id.toString()
-        def prevAvg = avgMap[key]
-        // exponential moving average so estimates keep improving with real runs
-        avgMap[key] = prevAvg ? (prevAvg * 0.7 + perRoom * 0.3) : perRoom
+        double est = (avgMap[id.toString()] ?: 15.0) as Double
+        if (remaining >= est) {
+            completed << id
+            remaining -= est
+        }
     }
-    state.roomAvgMinutes[mac] = avgMap
+    def incomplete = rooms - completed
+
+    markRoomsCleaned(mac, completed)
+
+    if (incomplete.isEmpty() && rooms) {
+        double perRoom = (elapsedMin ?: 0) / (double) rooms.size()
+        rooms.each { id ->
+            def key = id.toString()
+            def prevAvg = avgMap[key]
+            // exponential moving average so estimates keep improving with real runs
+            avgMap[key] = prevAvg ? (prevAvg * 0.7 + perRoom * 0.3) : perRoom
+        }
+        state.roomAvgMinutes[mac] = avgMap
+    }
+
+    if (completed) {
+        def known = state.discoveredRooms?.getAt(mac) ?: []
+        def completedNames = completed.collect { id -> known.find { it.id == id }?.name ?: "Room ${id}" }
+        getChildDevice(mac)?.sendEvent(name: "lastCleanedRooms", value: completedNames.join(", "))
+    }
+
     state.activeCleanRun.remove(mac)
-    ifDebug("finishActiveCleanRun(${mac}): rooms=${rooms} elapsedMin=${elapsedMin} perRoomAvg=${perRoom}")
+    ifDebug("finishActiveCleanRun(${mac}): elapsedMin=${elapsedMin} completed=${completed} incomplete=${incomplete}")
 }
 
 private Integer pendingRoomCount(String mac) {

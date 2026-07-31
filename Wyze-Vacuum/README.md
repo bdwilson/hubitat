@@ -54,8 +54,9 @@ Hubitat creates a child device per vacuum, named after its Wyze nickname.
 | `cleanTime` | number | Minutes in the current/last cleaning run |
 | `cleanSize` | number | Area cleaned in the current/last run |
 | `fault` | string | `none`, or a fault description if the vacuum is stuck/erroring |
-| `lastCleanedRooms` | string | Rooms targeted by the most recent room-clean dispatch |
+| `lastCleanedRooms` | string | Rooms confirmed cleaned by the most recent room-clean run |
 | `roomsPendingThisCycle` | number | Rotation rooms not cleaned within the configured cycle window |
+| `hoursSinceEmptied` | number | Cumulative cleaning hours since the bin was last reset |
 | `lastRefresh` | string | Timestamp of the last successful poll |
 
 ## Device Commands
@@ -69,6 +70,7 @@ Hubitat creates a child device per vacuum, named after its Wyze nickname.
 | `cleanRooms(roomNames)` | Clean specific rooms now, e.g. `cleanRooms("Kitchen, Living Room")` |
 | `cleanNextRooms()` | Clean whichever rotation rooms have gone longest without a clean (see below) |
 | `refresh()` | Force an immediate status poll |
+| `resetBinTimer()` | Reset the cumulative cleaning-hours counter used for the bin-empty reminder |
 
 ---
 
@@ -87,6 +89,16 @@ Wyze's app lets the vacuum clean specific rooms from its saved map. This integra
 
 You can also call `cleanRooms("Kitchen, Living Room")` directly (e.g. from a button or a one-off automation) to clean specific named rooms regardless of rotation state — it still updates that room's "last cleaned" time, so it counts toward the rotation too.
 
+### What happens if a room-clean run is interrupted
+
+Wyze's API doesn't tell this integration which specific rooms actually finished — only how much cleaning time elapsed. So a room only gets marked "cleaned" (and excluded from the rotation) once its dispatched run ends, and only if its *full* estimated clean time actually elapsed before that happened:
+
+- Dispatch 2 rooms (each estimated ~15 min), and the vacuum is stopped after 5 minutes → **neither** room is marked cleaned. Both stay pending and will be picked again next time `cleanNextRooms()` runs (most likely first, since they're now the most overdue).
+- Dispatch 3 rooms (~15 min each), and it runs 20 minutes before being stopped → the **first** room is marked cleaned (its estimate fully elapsed), the other two stay pending.
+- If the whole dispatched batch's estimated time elapses without interruption, everything in it is marked cleaned, and that run's actual timing is used to refine the per-room time estimates. A partial/interrupted run does **not** update the estimates, so one bad interruption doesn't skew future time-budget planning.
+
+This is a heuristic, not a ground-truth signal from the vacuum (Wyze doesn't expose one) — it deliberately under-credits rather than over-credits, so an interrupted room is more likely to get re-cleaned sooner than to be silently skipped for a whole cycle.
+
 ### Room rotation attributes
 
 | Attribute | Description |
@@ -99,6 +111,23 @@ You can also call `cleanRooms("Kitchen, Living Room")` directly (e.g. from a but
 - Room discovery requires the vacuum to already have a saved map with named rooms in the Wyze app — name your rooms there first.
 - The per-room time estimate starts from a flat 15-minute guess and self-corrects from real cleaning-time data reported by the vacuum after each run; expect the first few time-budget runs to be rougher than later ones.
 - If Wyze changes the internal map format, room discovery (not the rest of the integration) is the piece most likely to need a fix.
+
+---
+
+## Notifications
+
+Optional, change-driven — polling by itself never triggers a notification. Configure under the app's **Notifications** section (applies to all vacuums in this app instance):
+
+| Setting | Description |
+|---|---|
+| Send notifications to | Any `capability.notification` device(s) — e.g. a virtual notification device wired to your phone/Alexa/etc. |
+| Notify when cleaning starts | Fires the first time a poll observes `status` becoming `Cleaning` |
+| Notify when cleaning finishes | Fires when `status` leaves `Cleaning`, including the run's elapsed minutes |
+| Notify when the vacuum reports a fault | Fires once per new fault (won't repeat every poll while the same fault persists) |
+
+### Bin-empty reminder
+
+Per vacuum, under **`<vacuum> — Bin Reminder`**: set **"Notify to empty the bin after this many cumulative cleaning hours"** (0 disables it). This tracks total active cleaning time — summed across every cleaning session, room-scoped or whole-house — since the counter was last reset. When it crosses the threshold, you get one notification and the counter resets automatically. You can also reset it manually anytime with the **"I emptied it"** button on the app page, or the driver's `resetBinTimer()` command (handy to wire into whatever automation you use when you actually empty it).
 
 ---
 

@@ -1,7 +1,7 @@
 /**
  * Wyze Robot Vacuum Driver
  *
- * 1.1.0 - Brian Wilson / bubba@bubba.org
+ * 1.2.0 - Brian Wilson / bubba@bubba.org
  *
  * Child driver for the Wyze Vacuum Connect App. All network calls happen in the
  * parent app (which owns the Wyze session); this driver just relays commands to it
@@ -30,6 +30,7 @@ metadata {
         command "setSuctionLevel", [[name: "level*", type: "ENUM", description: "Suction level", constraints: ["Quiet", "Standard", "Strong"]]]
         command "cleanRooms", [[name: "roomNames*", type: "STRING", description: "Comma-separated room names to clean now, e.g. 'Kitchen, Living Room'"]]
         command "cleanNextRooms"
+        command "resetBinTimer"
 
         attribute "status", "STRING"        // Standby / Cleaning / Returning to charge / Docked / Mapping / Paused / Error
         attribute "mode", "STRING"          // finer-grained device mode text
@@ -38,8 +39,9 @@ metadata {
         attribute "cleanTime", "NUMBER"     // minutes, current/last cleaning run
         attribute "cleanSize", "NUMBER"     // sq ft, current/last cleaning run
         attribute "fault", "STRING"
-        attribute "lastCleanedRooms", "STRING"       // rooms targeted by the most recent room-clean dispatch
+        attribute "lastCleanedRooms", "STRING"       // rooms confirmed cleaned by the most recent room-clean run
         attribute "roomsPendingThisCycle", "NUMBER"  // rotation rooms not cleaned within the configured cycle window
+        attribute "hoursSinceEmptied", "NUMBER"      // cumulative cleaning hours since the bin was last reset
         attribute "lastRefresh", "STRING"
     }
 
@@ -94,6 +96,11 @@ def cleanNextRooms() {
 def refresh() {
     ifDebug("refresh() called")
     parent.refreshVacuum(device.deviceNetworkId)
+}
+
+def resetBinTimer() {
+    ifDebug("resetBinTimer() called")
+    parent.resetBinTimer(device.deviceNetworkId)
 }
 
 def logsOff() {
