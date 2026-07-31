@@ -54,23 +54,56 @@ Hubitat creates a child device per vacuum, named after its Wyze nickname.
 | `cleanTime` | number | Minutes in the current/last cleaning run |
 | `cleanSize` | number | Area cleaned in the current/last run |
 | `fault` | string | `none`, or a fault description if the vacuum is stuck/erroring |
+| `lastCleanedRooms` | string | Rooms targeted by the most recent room-clean dispatch |
+| `roomsPendingThisCycle` | number | Rotation rooms not cleaned within the configured cycle window |
 | `lastRefresh` | string | Timestamp of the last successful poll |
 
 ## Device Commands
 
 | Command | Description |
 |---|---|
-| `start()` | Start cleaning (or resume if paused) |
+| `start()` | Start cleaning (or resume if paused) — cleans the whole house |
 | `pause()` | Pause the current cleaning run |
 | `dock()` | Send the vacuum back to its charging dock |
 | `setSuctionLevel(level)` | Set suction to `Quiet`, `Standard`, or `Strong` |
+| `cleanRooms(roomNames)` | Clean specific rooms now, e.g. `cleanRooms("Kitchen, Living Room")` |
+| `cleanNextRooms()` | Clean whichever rotation rooms have gone longest without a clean (see below) |
 | `refresh()` | Force an immediate status poll |
+
+---
+
+## Room rotation ("clean this while we're out, work through the house over the week")
+
+Wyze's app lets the vacuum clean specific rooms from its saved map. This integration builds on that with a lightweight rotation scheduler, entirely on-hub — no cloud service involved.
+
+### How it works
+
+1. After the vacuum has completed at least one full clean and has named rooms in the Wyze app, click **Discover Rooms** on the app's config page. This decodes the vacuum's current map (Wyze returns it as a zlib-compressed protobuf blob — parsed directly in Groovy) and lists the rooms it found.
+2. Pick which of those rooms should participate in the rotation, and a rotation mode:
+   - **Fixed number of rooms per run** — e.g. clean 2 rooms every time it's triggered.
+   - **Time budget per run** — e.g. clean as many rooms as fit in ~30 minutes. The app learns each room's actual clean time from real runs (starting from a 15-minute guess) and refines the estimate over time, so the time budget gets more accurate the longer you use it.
+3. Set a **cycle length** in days (default 7). A room becomes eligible again once it's gone that long without being cleaned — there's no hard weekly reset, it's a rolling "oldest first" queue, so it self-corrects if you trigger it more or less often than expected.
+4. Wire the child device's `cleanNextRooms()` command to whatever "everyone left" automation you use (presence, mode change, etc.) in Rule Machine or similar. Each time it fires, it cleans the least-recently-cleaned room(s) from your rotation list and marks them done — so over a week of normal comings and goings, it works its way through the whole rotation list.
+
+You can also call `cleanRooms("Kitchen, Living Room")` directly (e.g. from a button or a one-off automation) to clean specific named rooms regardless of rotation state — it still updates that room's "last cleaned" time, so it counts toward the rotation too.
+
+### Room rotation attributes
+
+| Attribute | Description |
+|---|---|
+| `lastCleanedRooms` | Rooms targeted by the most recent room-clean dispatch |
+| `roomsPendingThisCycle` | How many of your selected rotation rooms are currently due (not cleaned within the cycle window) |
+
+### Limitations
+
+- Room discovery requires the vacuum to already have a saved map with named rooms in the Wyze app — name your rooms there first.
+- The per-room time estimate starts from a flat 15-minute guess and self-corrects from real cleaning-time data reported by the vacuum after each run; expect the first few time-budget runs to be rougher than later ones.
+- If Wyze changes the internal map format, room discovery (not the rest of the integration) is the piece most likely to need a fix.
 
 ---
 
 ## Known limitations (v1)
 
-- **No room/zone selection.** Wyze exposes per-room cleaning via saved maps, which needs additional map-parsing work not yet implemented here. `start()` runs a full clean.
 - **Polling only.** Wyze doesn't push status changes, so state updates only happen on the poll interval or right after you issue a command.
 - **Single Wyze account.** All vacuums on the account are discoverable from one app instance.
 
