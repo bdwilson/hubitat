@@ -662,7 +662,8 @@ private Map parseProtoFields(byte[] buf, int start, int end) {
                 def len = readVarint(buf, pos)
                 pos = len[1]
                 int sliceEnd = (int) (pos + (long) len[0])
-                byte[] slice = Arrays.copyOfRange(buf, pos, sliceEnd)
+                byte[] slice = new byte[sliceEnd - pos]
+                for (int i = 0; i < slice.length; i++) slice[i] = buf[pos + i]
                 pos = sliceEnd
                 def list2 = fields[fieldNum] ?: []
                 list2 << slice
