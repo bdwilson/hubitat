@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.3.0 - Brian Wilson / bubba@bubba.org
+ * 1.3.1 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -507,7 +507,7 @@ private void handleCleaningSessionEnd(String mac, def reportedCleanTimeMinutes, 
     if (run?.learning) {
         handleLearningRoomEnd(mac, run, elapsedMin, newStatus)
     } else if (run) {
-        finishActiveCleanRun(mac, elapsedMin)
+        finishActiveCleanRun(mac, elapsedMin, newStatus)
     }
 
     accumulateBinHours(mac, elapsedMin)
@@ -682,7 +682,7 @@ private void markRoomsCleaned(String mac, List roomIds) {
 // over-credits, and whatever didn't get done stays eligible next time. The
 // time-estimate average is only refined when the whole batch completed
 // cleanly, so a partial run doesn't skew future time-budget estimates.
-private void finishActiveCleanRun(String mac, Integer elapsedMin) {
+private void finishActiveCleanRun(String mac, Integer elapsedMin, String newStatus) {
     def run = state.activeCleanRun?.getAt(mac)
     if (!run) return
     def rooms = run.roomIds ?: []
@@ -690,26 +690,44 @@ private void finishActiveCleanRun(String mac, Integer elapsedMin) {
     state.roomAvgMinutes = state.roomAvgMinutes ?: [:]
     def avgMap = state.roomAvgMinutes[mac] ?: [:]
 
-    double remaining = elapsedMin ?: 0
-    def completed = []
-    rooms.each { id ->
-        double est = (avgMap[id.toString()] ?: 15.0) as Double
-        if (remaining >= est) {
-            completed << id
-            remaining -= est
+    def completed
+    def incomplete
+    if (rooms.size() == 1) {
+        // No batch to split -- whatever happened, happened to this one room,
+        // so there's no need to guess against an estimate. Paused/Error is
+        // the only genuinely ambiguous exit (could still resume); anything
+        // else (Docked/Returning/Standby) means this room's pass is over.
+        boolean genuinelyFinished = !(newStatus == "Paused" || newStatus == "Error") && elapsedMin != null && elapsedMin > 0
+        completed = genuinelyFinished ? rooms : []
+        incomplete = genuinelyFinished ? [] : rooms
+    } else {
+        double remaining = elapsedMin ?: 0
+        completed = []
+        rooms.each { id ->
+            double est = (avgMap[id.toString()] ?: 15.0) as Double
+            if (remaining >= est) {
+                completed << id
+                remaining -= est
+            }
         }
+        incomplete = rooms - completed
     }
-    def incomplete = rooms - completed
 
     markRoomsCleaned(mac, completed)
 
     if (incomplete.isEmpty() && rooms) {
-        double perRoom = (elapsedMin ?: 0) / (double) rooms.size()
-        rooms.each { id ->
-            def key = id.toString()
-            def prevAvg = avgMap[key]
-            // exponential moving average so estimates keep improving with real runs
-            avgMap[key] = prevAvg ? (prevAvg * 0.7 + perRoom * 0.3) : perRoom
+        if (rooms.size() == 1) {
+            // A single-room batch is ground truth -- overwrite outright
+            // rather than blending, same treatment Learning Mode gives.
+            avgMap[rooms[0].toString()] = (elapsedMin ?: 0) as Double
+        } else {
+            double perRoom = (elapsedMin ?: 0) / (double) rooms.size()
+            rooms.each { id ->
+                def key = id.toString()
+                def prevAvg = avgMap[key]
+                // exponential moving average so estimates keep improving with real runs
+                avgMap[key] = prevAvg ? (prevAvg * 0.7 + perRoom * 0.3) : perRoom
+            }
         }
         state.roomAvgMinutes[mac] = avgMap
     }
