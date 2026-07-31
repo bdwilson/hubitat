@@ -525,7 +525,7 @@ private String hmacMd5Hex(String keyHexString, String message) {
     if (key.length > blockSize) key = MessageDigest.getInstance("MD5").digest(key)
 
     byte[] paddedKey = new byte[blockSize]
-    System.arraycopy(key, 0, paddedKey, 0, key.length)
+    for (int i = 0; i < key.length; i++) paddedKey[i] = key[i]  // rest defaults to 0 — zero-padding for free
 
     byte[] oKeyPad = new byte[blockSize]
     byte[] iKeyPad = new byte[blockSize]
