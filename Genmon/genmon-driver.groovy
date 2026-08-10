@@ -5,6 +5,10 @@
  *   - v2.01 - 021MAY26 - Initial Release
  *   - v2.1.0 - 30JUN26 - Native Genmon addon; Home Assistant no longer required.
  *                        Default port updated to 9084.
+ *   - v2.2.0 - 08AUG26 - Temperature and CPU temperature now reported in the
+ *                        Hubitat hub's configured temperature scale (°F or °C),
+ *                        converting automatically from whatever unit Genmon
+ *                        reports the raw value in.
  *
  * Communicates directly with the Genmon REST/WebSocket API using the native
  * Genmon addon for Hubitat.  Home Assistant is NOT required.
@@ -166,11 +170,11 @@ metadata {
         attribute "systemUptime",           "string"   //     Monitor/Platform Stats/System Uptime
         attribute "networkInterfaceUsed",   "string"   //     Monitor/Platform Stats/Network Interface Used
         attribute "systemTime",            "string"   //     Monitor/Platform Stats/System Time
-        attribute "cpuTemperature",         "number"   // °C  Tiles/CPU Temp/value
+        attribute "cpuTemperature",         "number"   // hub scale (°F or °C) — Tiles/CPU Temp/value, auto-converted
 
         // ── Monitor — weather  (Monitor/Weather/...) ─────────────────────
         attribute "weatherConditions",      "string"   //     Monitor/Weather/Conditions
-        attribute "currentTemperature",     "number"   // °F  Monitor/Weather/Current Temperature
+        attribute "currentTemperature",     "number"   // hub scale (°F or °C) — Monitor/Weather/Current Temperature, auto-converted
 
         // ── Connectivity ──────────────────────────────────────────────────
         attribute "connectionStatus",       "string"
@@ -640,10 +644,12 @@ private void parseStatus(Map data) {
 
     // ── Monitor/Weather ───────────────────────────────────────────────
     safeStringEvent("weatherConditions", pathGet(data, "Monitor/Weather/Conditions"))
-    safeNumericEvent("currentTemperature", pathGet(data, "Monitor/Weather/Current Temperature"), "°F")
+    // Genmon reports weather temperature in °F; convert to the hub's configured scale.
+    safeTemperatureEvent("currentTemperature", pathGet(data, "Monitor/Weather/Current Temperature"), "°F")
 
     // ── Tiles (CPU temp) ──────────────────────────────────────────────
-    safeNumericEvent("cpuTemperature", pathGet(data, "Tiles/CPU Temp/value"), "°C")
+    // Genmon reports CPU temperature in °C; convert to the hub's configured scale.
+    safeTemperatureEvent("cpuTemperature", pathGet(data, "Tiles/CPU Temp/value"), "°C")
 }
 
 // ── Switch capability ─────────────────────────────────────────────────────────
@@ -776,6 +782,47 @@ private void safeNumericEvent(String attr, Object raw, String defaultUnit = null
     if (newVal == curVal) return   // no change — skip sendEvent
     if (u) sendEvent(name: attr, value: num, unit: u)
     else   sendEvent(name: attr, value: num)
+}
+
+// Reports a temperature attribute in the Hubitat hub's configured temperature
+// scale (location.temperatureScale — "F" or "C"), converting from whatever
+// unit Genmon reported the raw value in. If Genmon's reported unit can't be
+// determined, defaultSourceUnit (the unit Genmon is known to use for that
+// particular field) is assumed.
+private void safeTemperatureEvent(String attr, Object raw, String defaultSourceUnit) {
+    if (raw == null) return
+    def (num, unit) = extractNumeric(raw)
+    if (num == null) return
+
+    def srcUnit  = unit ?: defaultSourceUnit
+    def hubScale = ((location?.temperatureScale ?: "F") as String).toUpperCase().startsWith("C") ? "C" : "F"
+    def converted = convertTemperature(num, srcUnit, hubScale)
+
+    def newVal = converted.toString()
+    def curVal = device.currentValue(attr)?.toString()
+    if (newVal == curVal) return   // no change — skip sendEvent
+    sendEvent(name: attr, value: converted, unit: "°${hubScale}")
+}
+
+// Converts a temperature value from srcUnit into hubScale ("F" or "C").
+// srcUnit is matched loosely (contains "C" or "F") so both "°C"/"°F" and
+// bare "C"/"F" work; an unrecognized/missing srcUnit is assumed to already
+// match hubScale and is passed through unchanged. Result is rounded to one
+// decimal place.
+private BigDecimal convertTemperature(Number value, String srcUnit, String hubScale) {
+    def upperSrc = srcUnit?.toString()?.toUpperCase() ?: ""
+    def srcIsC   = upperSrc.contains("C")
+    def srcIsF   = upperSrc.contains("F")
+    double val   = value.toDouble()
+
+    if (hubScale == "C" && srcIsF) {
+        val = (val - 32.0d) * 5.0d / 9.0d
+    } else if (hubScale == "F" && srcIsC) {
+        val = (val * 9.0d / 5.0d) + 32.0d
+    }
+    // Otherwise source already matches hub scale (or unit unknown — assume it matches).
+
+    return (new BigDecimal(val)).setScale(1, java.math.RoundingMode.HALF_UP)
 }
 
 private void safeStringEvent(String attr, Object raw) {
