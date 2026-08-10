@@ -130,6 +130,24 @@ Changes in this fork (v1.8.0):
   manually-opened port after its own default duration (10 minutes out of
   the box, configurable in eWeLink), which caps longer driver timers.
 
+  v1.11.0 added a per-run duration argument to `open()`/`open2()`, e.g.
+  `open(30)` opens port 1 for 30 minutes for that one run - targeting a
+  specific runtime to an individual valve, rather than being stuck with
+  whatever `autoOffTimer1`/`autoOffTimer2` (or the firmware's own
+  default) happens to be set to. For SWV-ZF2, this writes the manual-run
+  default duration (FC11 `0x501D`) immediately before the on command -
+  the same technique the classic ZN single-valve driver code already
+  uses - so the **firmware itself** closes the run at the requested
+  time (more robust than a Hubitat-side timer alone, since it survives
+  the hub being offline/rebooted mid-run). `0x501D` has no per-endpoint
+  declaration in zigbee-herdsman-converters (same category as the
+  shared flow-meter attributes), so this assumes ports are run
+  sequentially - never two different durations overlapping. The
+  driver-side auto-off timer is also armed as a backup for the same
+  duration in case the firmware write doesn't take effect as expected.
+  Component child devices (`Tuya Zigbee Valve Port.groovy` v1.4.0+)
+  also accept `open(duration)` and forward it to the parent.
+
 ## Install
 
 This is a standalone fork, hosted and maintained here independently -
