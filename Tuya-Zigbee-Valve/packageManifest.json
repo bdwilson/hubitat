@@ -1,12 +1,12 @@
 {
   "packageName": "Tuya Zigbee Valve - SONOFF SWV-ZF2 dual-port",
   "author": "Brian Wilson",
-  "version": "1.14.0",
+  "version": "1.15.0",
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Tuya-Zigbee-Valve",
   "communityLink": "https://community.hubitat.com/t/sonoff-zigbee-sprinklers-on-pre-order-sale/162398",
   "dateReleased": "2026-08-15",
-  "releaseNotes": "v1.14.0: reverted v1.13.0's open()/openFor() split. Confirmed by testing that the actual problem was simply having command 'open', [[duration...]] declared at all alongside capability 'Valve' (which already registers 'open') - that redeclaration registered the name twice and threw regardless of what the parameter metadata said, so the fix is to not redeclare it, not to rename the entry point. Single open(duration = null) restored as the only entry point on both the parent (port 1) and child driver; Maker API's /devices/{id}/open/N still binds N to the method's own optional parameter without separate command metadata for it - the only practical tradeoff is the admin UI's command tester no longer shows a labelled Duration field for open (that came from the removed metadata). open2() (port 2) untouched throughout this whole investigation - it was never a capability-provided name, so it was never part of the problem. v1.12.0-1.13.0 history: reworked SWV-ZF2 open(duration)/open2(duration) to close entirely on the Hubitat side via a runIn() timer armed synchronously at open time, instead of writing the valve firmware's shared (not per-port) manual-run duration setting - that write was never confirmed to latch to the correct port, and is believed to be the cause of a report where open(duration: 30) closed after 5 minutes instead. v1.11.0 added the open(duration)/open2(duration) per-run duration parameter and per-port autoOffTimer1/autoOffTimer2 preferences; v1.9.x-1.10.x added parent/child devices (Tuya Zigbee Valve Port, one per physical port) with independent irrigation history, fixed several real-device-log-driven bugs (port-2 traffic corrupting port-1 state, dropped port-2 genOnOff reports, a race that could leave a child device's state stale, event spam during active irrigation). See the changelog block at the top of each driver file for full version-by-version detail.",
+  "releaseNotes": "v1.15.0: restored command 'open', [[duration...]], removed in v1.14.0. That removal turned out to be a bigger regression than intended: it also removed the ability to send a duration to open() at all, via Maker API AND the admin UI's own command tester, which needs this declaration to render the Duration field in the first place - confirmed by live testing on the actual device, not just device-dump inspection. Whether the redeclaration is actually what caused the original Maker API 500 is unconfirmed; losing real functionality wasn't worth continuing to guess about it. open()/open2() now wrap their bodies in a try/catch that logs the real exception via log.error before rethrowing (mirrored by open() on the v1.7.0+ child driver), so if this does throw again, the hub's own Logs will show the actual cause - Maker API's generic error response for a thrown command hides the real class/message, which is why this couldn't be root-caused from the HTTP response alone across several earlier attempts. v1.14.0 history: reverted v1.13.0's open()/openFor() split, on the theory that having command 'open' declared at all alongside capability 'Valve' registered the name twice and threw regardless of parameter metadata. v1.12.0-1.13.0 history: reworked SWV-ZF2 open(duration)/open2(duration) to close entirely on the Hubitat side via a runIn() timer armed synchronously at open time, instead of writing the valve firmware's shared (not per-port) manual-run duration setting - that write was never confirmed to latch to the correct port, and is believed to be the cause of a report where open(duration: 30) closed after 5 minutes instead. v1.11.0 added the open(duration)/open2(duration) per-run duration parameter and per-port autoOffTimer1/autoOffTimer2 preferences; v1.9.x-1.10.x added parent/child devices (Tuya Zigbee Valve Port, one per physical port) with independent irrigation history, fixed several real-device-log-driven bugs (port-2 traffic corrupting port-1 state, dropped port-2 genOnOff reports, a race that could leave a child device's state stale, event spam during active irrigation). See the changelog block at the top of each driver file for full version-by-version detail.",
   "drivers": [
     {
       "id": "d82ce2cc-92a0-4abf-a774-d593a402b95b",
@@ -14,7 +14,7 @@
       "namespace": "kkossev",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Tuya-Zigbee-Valve/Tuya%20Zigbee%20Valve.groovy",
       "required": true,
-      "version": "1.14.0"
+      "version": "1.15.0"
     },
     {
       "id": "ddbda288-2c93-4a35-9372-930c28ec2943",
@@ -22,7 +22,7 @@
       "namespace": "bdwilson",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Tuya-Zigbee-Valve/Tuya%20Zigbee%20Valve%20Port.groovy",
       "required": true,
-      "version": "1.6.0"
+      "version": "1.7.0"
     }
   ]
 }
