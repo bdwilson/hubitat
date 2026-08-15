@@ -43,8 +43,20 @@
  *  ver. 1.4.0 2026-07-11 bdwilson - open() now takes an optional duration parameter (minutes): open(30) opens this
  *                                  port for 30 minutes, overriding the port's auto-off preference on the parent for
  *                                  that one run. Forwarded to the parent's componentOpen(device, duration).
+ *  ver. 1.5.0 2026-08-15 bdwilson - split open(duration) into a plain open() and a separately-named openFor(duration),
+ *                                  believing the duplicate "open" entry in this device's Maker API command list was
+ *                                  ambiguous dispatch. Reverted in 1.6.0 - keeping both entry points was unnecessary.
+ *  ver. 1.6.0 2026-08-15 bdwilson - reverted 1.5.0's openFor() split. Confirmed by testing: the actual problem was
+ *                                  simply having `command 'open', [[duration...]]` declared AT ALL alongside
+ *                                  `capability 'Valve'` (which already registers 'open') - that redeclaration is
+ *                                  what registered 'open' twice and threw. The fix is just to not redeclare it, not
+ *                                  to rename it. Single open(duration = null) restored as the only entry point;
+ *                                  Maker API's /devices/{id}/open/N still binds N to the method's own optional
+ *                                  parameter without needing separate `command` metadata for it - the only
+ *                                  practical tradeoff is the admin UI's command tester no longer shows a labelled
+ *                                  Duration input for it (that came from the removed metadata).
  */
-static String version() { '1.4.0' }
+static String version() { '1.6.0' }
 
 metadata {
     definition(name: 'Tuya Zigbee Valve Port', namespace: 'bdwilson', author: 'Brian Wilson', component: true, importUrl: 'https://raw.githubusercontent.com/bdwilson/hubitat/master/Tuya-Zigbee-Valve/Tuya%20Zigbee%20Valve%20Port.groovy') {
@@ -53,7 +65,10 @@ metadata {
         capability 'Switch'
         capability 'Refresh'
 
-        command 'open', [[name:'duration', type:'NUMBER', description:'Optional: open this port for the given number of minutes (overrides this port\'s auto-off preference on the parent for this run)']]
+        // No `command 'open', [[duration...]]` here - capability 'Valve' already registers 'open'. Redeclaring it
+        // with parameter metadata (v1.4.0-1.5.0 did, one way or another) registers the name twice, which is what
+        // threw a generic Maker API 500 calling open/N. open(duration = null) below still takes the duration via
+        // Maker API through its own optional parameter - it just isn't separately declared.
 
         attribute 'irrigationStartTime', 'string'
         attribute 'irrigationEndTime', 'string'

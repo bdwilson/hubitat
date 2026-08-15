@@ -172,6 +172,34 @@
  *                                  within 15 seconds of the command, silently falling back to the (shorter) autoOffTimer2 preference
  *                                  otherwise. zf2ArmAutoCloseOverride() and zf2WarnIfFirmwareClosesFirst() removed - both existed only to
  *                                  manage/diagnose the firmware write this version drops.
+ *  ver. 1.13.0 2026-08-15 bdwilson - found the actual root cause of the Maker API 500 v1.12.0 could only guess at:
+ *                                  capability 'Valve' already declares a zero-arg open() command, and this driver's
+ *                                  own `command 'open', [[duration...]]` (added in 1.11.0) gave the device TWO
+ *                                  same-named "open" commands - confirmed directly in a device dump's "commands"
+ *                                  array showing "open" twice. Maker API resolves commands by name only and has no
+ *                                  way to pick an overload from a URL, so open/N hit the wrong/ambiguous one and
+ *                                  threw. (The admin UI's own command tester never showed this, since it renders
+ *                                  each declared signature as its own section - which is also how the admin UI's
+ *                                  own "Run" with a Duration field kept working fine throughout.) Confirmed against
+ *                                  kkossev/Hubitat's original upstream driver this fork extended: it never
+ *                                  overloads open() either - manual duration is a distinct, separately-named
+ *                                  command (setManualIrrigationDuration()) set as its own step before opening.
+ *                                  open() is now unconditionally the plain zero-arg capability command; the timed
+ *                                  variant is the newly-added, uniquely-named openFor(duration) instead (mirrored
+ *                                  by Tuya Zigbee Valve Port.groovy v1.5.0+ on the ZF2 child devices). open2()
+ *                                  (port 2) was never renamed - it was never a capability name to begin with, so
+ *                                  it never collided.
+ *  ver. 1.14.0 2026-08-15 bdwilson - reverted 1.13.0's open()/openFor() split. Confirmed by testing that the actual
+ *                                  problem was just having `command 'open', [[duration...]]` declared AT ALL
+ *                                  alongside `capability 'Valve'` (which already registers 'open') - that
+ *                                  redeclaration is what registered the name twice and threw, regardless of what the
+ *                                  parameter metadata said. The fix is to not redeclare it, not to rename the entry
+ *                                  point. Single open(duration = null) restored; Maker API's /devices/{id}/open/N
+ *                                  still binds N to the method's own optional parameter without separate `command`
+ *                                  metadata - the only practical tradeoff is the admin UI's command tester no
+ *                                  longer shows a labelled Duration field for it. componentOpen() simplified back to
+ *                                  a single call. open2() (port 2) untouched throughout - it was never a capability
+ *                                  name, so it was never part of this problem.
  *
  *                                  TODO: @rgr - add a timer to the driver that shows how much time is left before the valve closes ''
  *                                  TODO: document the attributes (per valve model) in GitHub; add links to the HE forum and GitHub pages;
@@ -181,8 +209,8 @@ import groovy.json.*
 import groovy.transform.Field
 import hubitat.zigbee.zcl.DataType
 
-static String version() { '1.12.0' }
-static String timeStamp() { '2026/08/15 12:00 PM' }
+static String version() { '1.14.0' }
+static String timeStamp() { '2026/08/15 05:00 PM' }
 
 @Field static final Boolean _DEBUG = false
 @Field static final Boolean DEFAULT_DEBUG_LOGGING = false               // disable it for the production release !
@@ -230,7 +258,13 @@ metadata {
         command 'setIrrigationMode', [[name:'select the mode (Saswell and GiEX)', type: 'ENUM', description: 'Set Irrigation Mode', constraints: ['duration', 'capacity']]]
         command 'setValveOpenThreshold', [[name:'Valve Open Threshold, % (FrankEver FK_V02)', type: 'NUMBER', description: 'Valve Open Threshold, % (FrankEver FK_V02)', constraints: ['0..100']]]
         command 'setValve2', [[name:'select state (TZE284, SWV-ZF2)', type: 'ENUM', description: 'Set the second port/valve mode (GiEX TZE284 double valves and Sonoff SWV-ZF2 dual-port valve)', constraints: ['open', 'closed']]]
-        command 'open',  [[name:'duration', type:'NUMBER', description:'Optional, SWV-ZF2 only: open for this many minutes (overrides the Port 1 auto-off preference for this run)']]
+        // No `command 'open', [[duration...]]` here - capability 'Valve' already registers 'open' as a command.
+        // Redeclaring it with parameter metadata (as v1.11.0-1.13.0 did) registers 'open' a second time for the
+        // same name, which is what actually threw a generic Maker API 500 calling open/N on this device -
+        // confirmed by field testing, not just device-dump inspection. open(duration = null) below still accepts
+        // a duration positional argument via Maker API (Groovy binds it to the method's own optional parameter),
+        // it's just no longer separately declared - the tradeoff is the admin UI's command tester no longer shows
+        // a labelled Duration field for it, since that came from the removed metadata.
         command 'open2', [[name:'duration', type:'NUMBER', description:'Open the second port (SWV-ZF2). Optional: open for this many minutes (overrides the Port 2 auto-off preference for this run)']]
         command 'close2', [[name:'Close the second port (SWV-ZF2)']]
         command 'updateZigbeeFirmware', [[name:'Update Zigbee Firmware', description: 'Request Zigbee OTA update for supported devices']]
@@ -880,10 +914,10 @@ void sendValve2Event(final String switchValue) {
 // instead (as of v1.12.0) - so if autoOffArmed{port} is already set when this fires, that run's timer is already
 // correctly armed and this must NOT touch it (falling through to the preference default here would silently
 // replace a longer/shorter explicit duration with the preference value - this is what actually caused a report
-// of a 30-minute open(duration) closing after 5, back when this instead read a short-lived override map that a
-// slow open-confirmation could miss). Note: the valve firmware also auto-closes a manually-opened port after its
-// own manual-mode default duration (configurable in the eWeLink app), so a driver timer longer than that will
-// find the port already closed when it fires (harmless - the close is a no-op).
+// of a 30-minute duration-based open closing after 5, back when this instead read a short-lived override map
+// that a slow open-confirmation could miss). Note: the valve firmware also auto-closes a manually-opened port
+// after its own manual-mode default duration (configurable in the eWeLink app), so a driver timer longer than
+// that will find the port already closed when it fires (harmless - the close is a no-op).
 void zf2ScheduleAutoClose(String port, String value) {
     String handlerName = port == '02' ? 'zf2AutoClosePort2' : 'zf2AutoClosePort1'
     String armedKey    = port == '02' ? 'autoOffArmed2'    : 'autoOffArmed1'
