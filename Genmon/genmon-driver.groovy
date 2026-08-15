@@ -2,13 +2,19 @@
  * Genmon Generator Monitor — Hubitat Driver
  *
  *   - Converted by Brian Wilson based on https://github.com/jgyates/genmon-ha using Claude Code
- *   - v2.01 - 021MAY26 - Initial Release
- *   - v2.1.0 - 30JUN26 - Native Genmon addon; Home Assistant no longer required.
- *                        Default port updated to 9084.
- *   - v2.2.0 - 08AUG26 - Temperature and CPU temperature now reported in the
- *                        Hubitat hub's configured temperature scale (°F or °C),
- *                        converting automatically from whatever unit Genmon
- *                        reports the raw value in.
+ *   - v2.01  - 021MAY26 - Initial Release
+ *   - v2.1.0 - 30JUN26  - Native Genmon addon; Home Assistant no longer required.
+ *                         Default port updated to 9084.
+ *   - v2.2.0 - 08AUG26  - Temperature and CPU temperature now reported in the
+ *                         Hubitat hub's configured temperature scale (°F or °C),
+ *                         converting automatically from whatever unit Genmon
+ *                         reports the raw value in.
+ *   - v2.2.1 - 15AUG26  - Fix spurious events: numeric attributes were firing on
+ *                         every parse cycle due to Double.toString() vs Hubitat's
+ *                         stored value string format mismatch. Comparison is now
+ *                         numeric (BigDecimal). Also fixed refresh() firing
+ *                         connectionStatus and lastUpdate unconditionally on
+ *                         every poll regardless of whether the value changed.
  *
  * Communicates directly with the Genmon REST/WebSocket API using the native
  * Genmon addon for Hubitat.  Home Assistant is NOT required.
@@ -447,18 +453,20 @@ def refresh() {
                 def body      = resp.data
                 def stateData = body?.state ?: body
                 parseStatus(stateData)
-                sendEvent(name: "lastUpdate", value: new Date().toString())
+                // Use change-guarded helpers so polling at short intervals
+                // doesn't generate spurious events when values are stable.
+                updateStringIfChanged("lastUpdate", new Date().toString())
                 if (!state.wsConnected) {
-                    sendEvent(name: "connectionStatus", value: "connected (poll)")
+                    updateStringIfChanged("connectionStatus", "connected (poll)")
                 }
             } else {
                 log.warn "Genmon: /api/status returned HTTP ${resp.status}"
-                sendEvent(name: "connectionStatus", value: "error: HTTP ${resp.status}")
+                updateStringIfChanged("connectionStatus", "error: HTTP ${resp.status}")
             }
         }
     } catch (Exception e) {
         log.error "Genmon: refresh failed — ${e.message}"
-        sendEvent(name: "connectionStatus", value: "error: ${e.message}")
+        updateStringIfChanged("connectionStatus", "error: ${e.message}")
     }
 }
 
@@ -513,9 +521,9 @@ private void parseStatus(Map data) {
             def kw    = (unit == "W") ? num / 1000.0 : num
             def kwVal = kw.round(3)
             def wVal  = (kw * 1000).round(0)
-            if (kwVal.toString() != device.currentValue("outputPower")?.toString())
+            if (!numericEquals(kwVal, device.currentValue("outputPower")))
                 sendEvent(name: "outputPower", value: kwVal, unit: "kW")
-            if (wVal.toString() != device.currentValue("power")?.toString())
+            if (!numericEquals(wVal, device.currentValue("power")))
                 sendEvent(name: "power", value: wVal, unit: "W")
         }
     }
@@ -772,14 +780,24 @@ private List extractNumeric(Object raw) {
     return [null, null]
 }
 
+// Numeric equality check that avoids Double.toString() vs Hubitat stored-value
+// format mismatches (e.g. "120.0" vs "120"). Compares via BigDecimal so that
+// 120.0 == 120 == 120.00, preventing spurious events when the value is stable.
+private boolean numericEquals(Number newNum, Object curRaw) {
+    if (curRaw == null) return false
+    try {
+        return new BigDecimal(newNum.toString()).compareTo(new BigDecimal(curRaw.toString())) == 0
+    } catch (Exception e) {
+        return false
+    }
+}
+
 private void safeNumericEvent(String attr, Object raw, String defaultUnit = null) {
     if (raw == null) return
     def (num, unit) = extractNumeric(raw)
     if (num == null) return
-    def u        = unit ?: defaultUnit
-    def newVal   = num.toString()
-    def curVal   = device.currentValue(attr)?.toString()
-    if (newVal == curVal) return   // no change — skip sendEvent
+    def u = unit ?: defaultUnit
+    if (numericEquals(num, device.currentValue(attr))) return   // no change — skip sendEvent
     if (u) sendEvent(name: attr, value: num, unit: u)
     else   sendEvent(name: attr, value: num)
 }
@@ -794,13 +812,11 @@ private void safeTemperatureEvent(String attr, Object raw, String defaultSourceU
     def (num, unit) = extractNumeric(raw)
     if (num == null) return
 
-    def srcUnit  = unit ?: defaultSourceUnit
-    def hubScale = ((location?.temperatureScale ?: "F") as String).toUpperCase().startsWith("C") ? "C" : "F"
+    def srcUnit   = unit ?: defaultSourceUnit
+    def hubScale  = ((location?.temperatureScale ?: "F") as String).toUpperCase().startsWith("C") ? "C" : "F"
     def converted = convertTemperature(num, srcUnit, hubScale)
 
-    def newVal = converted.toString()
-    def curVal = device.currentValue(attr)?.toString()
-    if (newVal == curVal) return   // no change — skip sendEvent
+    if (numericEquals(converted, device.currentValue(attr))) return   // no change — skip sendEvent
     sendEvent(name: attr, value: converted, unit: "°${hubScale}")
 }
 
