@@ -151,6 +151,27 @@
  *                                  report's expectedStartTime/expectedEndTime) if the requested or configured duration ends up longer than the
  *                                  firmware's own scheduled run length regardless.
  *                                  Component child devices (Tuya Zigbee Valve Port.groovy v1.4.0+) forward open(duration) to the parent too.
+ *  ver. 1.12.0 2026-08-15 bdwilson - reworked SWV-ZF2 open(duration)/open2(duration): dropped the firmware manual-run-duration write
+ *                                  (FC11 0x501D via buildZNManualDefaultSettingsCmd()) entirely - that write is device-level, not
+ *                                  per-endpoint, and there was never confirmation it actually latched to whichever port opened next
+ *                                  rather than only port 1's own future opens (see the now-removed 1.11.0 comment); it was also going
+ *                                  through Maker API's command path when a caller (e.g. the dashboard's Maker API-driven "open for N
+ *                                  minutes" picker) hit a 500 invoking open2(duration) - root cause unconfirmed, but this write was the
+ *                                  most unusual thing in that path. A per-run duration is now closed entirely on the Hubitat side: armed
+ *                                  synchronously inside open()/open2() via runIn(duration*60, ...) the moment the command runs, rather
+ *                                  than deferred to zf2ScheduleAutoClose() on the next observed open-confirmation report. runIn()
+ *                                  schedules survive a hub restart, so this doesn't give up the resilience the firmware write was
+ *                                  chasing; the device's own onboard manual-open default duration remains untouched as an independent
+ *                                  backstop if the hub itself is down when the driver timer should fire. zf2ScheduleAutoClose() now only
+ *                                  covers the plain-open case (no explicit duration - physical button, eWeLink app, bare on()/open()),
+ *                                  via the autoOffTimer1/autoOffTimer2 preferences, and skips arming entirely when open()/open2() already
+ *                                  armed a duration-based timer for this run (autoOffArmed{port} already set) so it can't clobber that
+ *                                  with a shorter/longer preference-based one when the confirmation report arrives afterward - this is
+ *                                  also believed to be the actual cause of a report where a 30-minute open(duration) closed after 5: the
+ *                                  removed autoOffOverride1/2 handoff only honored a duration override if the open confirmation arrived
+ *                                  within 15 seconds of the command, silently falling back to the (shorter) autoOffTimer2 preference
+ *                                  otherwise. zf2ArmAutoCloseOverride() and zf2WarnIfFirmwareClosesFirst() removed - both existed only to
+ *                                  manage/diagnose the firmware write this version drops.
  *
  *                                  TODO: @rgr - add a timer to the driver that shows how much time is left before the valve closes ''
  *                                  TODO: document the attributes (per valve model) in GitHub; add links to the HE forum and GitHub pages;
@@ -160,8 +181,8 @@ import groovy.json.*
 import groovy.transform.Field
 import hubitat.zigbee.zcl.DataType
 
-static String version() { '1.11.0' }
-static String timeStamp() { '2026/07/11 02:15 PM' }
+static String version() { '1.12.0' }
+static String timeStamp() { '2026/08/15 12:00 PM' }
 
 @Field static final Boolean _DEBUG = false
 @Field static final Boolean DEFAULT_DEBUG_LOGGING = false               // disable it for the production release !
@@ -851,30 +872,26 @@ void sendValve2Event(final String switchValue) {
 }
 
 // SONOFF_SWV_ZF2_VALVE per-port software auto-off timers (autoOffTimer1/autoOffTimer2 preferences, in minutes).
-// The ZF2 has no documented per-channel hardware auto-off: zigbee-herdsman-converters exposes the manual
-// irrigation default duration (FC11 0x501D) as a single device-level setting, not per endpoint - so a driver-side
-// runIn timer is used instead. It is scheduled off the *observed* open transition (any source: driver command,
-// physical button, eWeLink app) and cancelled on the observed close, so it never restarts on repeated/refresh
-// reports of an unchanged state. Note: the valve firmware also auto-closes a manually-opened port after its own
-// manual-mode default duration (10 minutes out of the box, configurable in the eWeLink app), so a driver timer
-// longer than that will find the port already closed when it fires (harmless - the close is a no-op).
+// The ZF2 has no documented per-channel hardware auto-off, so a driver-side runIn timer is used instead. This
+// only covers the *plain*-open case (no explicit per-run duration - physical button, eWeLink app, or a bare
+// on()/open()/open2()): it's scheduled off the *observed* open transition (any of those sources) and cancelled
+// on the observed close, so it never restarts on repeated/refresh reports of an unchanged state. An explicit
+// per-run duration from open(duration)/open2(duration) is armed directly and synchronously in those functions
+// instead (as of v1.12.0) - so if autoOffArmed{port} is already set when this fires, that run's timer is already
+// correctly armed and this must NOT touch it (falling through to the preference default here would silently
+// replace a longer/shorter explicit duration with the preference value - this is what actually caused a report
+// of a 30-minute open(duration) closing after 5, back when this instead read a short-lived override map that a
+// slow open-confirmation could miss). Note: the valve firmware also auto-closes a manually-opened port after its
+// own manual-mode default duration (configurable in the eWeLink app), so a driver timer longer than that will
+// find the port already closed when it fires (harmless - the close is a no-op).
 void zf2ScheduleAutoClose(String port, String value) {
     String handlerName = port == '02' ? 'zf2AutoClosePort2' : 'zf2AutoClosePort1'
-    String overrideKey = port == '02' ? 'autoOffOverride2' : 'autoOffOverride1'
     String armedKey    = port == '02' ? 'autoOffArmed2'    : 'autoOffArmed1'
     if (value == 'open') {
-        // a per-run duration from open(duration)/open2(duration) overrides the port's auto-off preference,
-        // but only if the open is observed shortly after the command - a stale override (command sent but the
-        // valve never reported open, then something else opened it much later) must not apply.
-        int minutes = 0
-        Map override = state.states[overrideKey] as Map
-        if (override != null) {
-            state.states.remove(overrideKey)
-            if (now() - (override.ts as Long) < 15000) { minutes = safeToInt(override.minutes, 0) }
-        }
-        if (minutes <= 0) { minutes = safeToInt(port == '02' ? settings?.autoOffTimer2 : settings?.autoOffTimer1, 0) }
+        if (safeToInt(state.states[armedKey], 0) > 0) { return }   // open(duration)/open2(duration) already armed this run
+        int minutes = safeToInt(port == '02' ? settings?.autoOffTimer2 : settings?.autoOffTimer1, 0)
         if (minutes > 0) {
-            state.states[armedKey] = minutes    // remembered so the 501F start report can compare against the firmware's own scheduled end
+            state.states[armedKey] = minutes
             logInfo "port ${port == '02' ? '2' : '1'} auto-off timer started - closing in ${minutes} minute${minutes == 1 ? '' : 's'}"
             runIn(minutes * 60, handlerName, [overwrite: true])
         }
@@ -882,22 +899,6 @@ void zf2ScheduleAutoClose(String port, String value) {
     else if (value == 'closed') {
         unschedule(handlerName)
         state.states.remove(armedKey)
-    }
-}
-
-void zf2ArmAutoCloseOverride(String port, int minutes) {
-    if (state.states == null) { state.states = [:] }
-    state.states[port == '02' ? 'autoOffOverride2' : 'autoOffOverride1'] = [minutes: minutes, ts: now()]
-}
-
-// called from the 501F start/running handler with the firmware's own scheduled run duration for the port -
-// warns when the driver-side backup timer cannot win the race because the firmware will close the port first.
-// For open(duration)/open2(duration) runs this normally will NOT fire, since those write the firmware's own
-// duration setting first - if it does fire for one of those, it means that write didn't take effect as expected.
-void zf2WarnIfFirmwareClosesFirst(boolean isPort2, long firmwareDurationSec) {
-    int armedMin = safeToInt(state.states[isPort2 ? 'autoOffArmed2' : 'autoOffArmed1'], 0)
-    if (armedMin > 0 && armedMin * 60L > firmwareDurationSec + 60) {
-        logWarn "port ${isPort2 ? '2' : '1'} wants a ${armedMin} min run, but the valve firmware is only scheduled to close it after ${(firmwareDurationSec / 60).toInteger()} min - the firmware will close it first regardless of the driver's timer. If this was a plain auto-off timer (no explicit duration), raise the manual-run 'Default duration' in the eWeLink app."
     }
 }
 
@@ -1575,12 +1576,10 @@ void parseSonoffCluster(Map it, String description) {
                 // cause one port's timestamp event to be silently skipped as a false "duplicate" of the other port's.
                 String statusStateKey = isPort2 ? 'znLastScheduleStatus2' : 'znLastScheduleStatus'
                 String offsetStateKey = isPort2 ? 'znDeviceEpochOffset2'  : 'znDeviceEpochOffset'
-                long firmwareDurationSec = -1   // the firmware's own scheduled run length, decoded on a start/running transition
                 if (bytes.size() >= 15 && schedStatus != (state.states[statusStateKey] as Integer)) {
                     long expStart = (long)(bytes[7]  & 0xFF) << 24 | (long)(bytes[8]  & 0xFF) << 16 | (long)(bytes[9]  & 0xFF) << 8 | (long)(bytes[10] & 0xFF)
                     long expEnd   = (long)(bytes[11] & 0xFF) << 24 | (long)(bytes[12] & 0xFF) << 16 | (long)(bytes[13] & 0xFF) << 8 | (long)(bytes[14] & 0xFF)
                     logDebug "501F: expStart=0x${Long.toHexString(expStart)} expEnd=0x${Long.toHexString(expEnd)} (device uptime seconds)"
-                    if ((schedStatus == 0 || schedStatus == 2) && expEnd > expStart) { firmwareDurationSec = expEnd - expStart }
                     if (bytes.size() >= 19) {
                         // 24-byte form (running/end): bytes[15-18] = deviceCurrentTime (running) or actualEndTime (end)
                         long devNow = (long)(bytes[15] & 0xFF) << 24 | (long)(bytes[16] & 0xFF) << 16 | (long)(bytes[17] & 0xFF) << 8 | (long)(bytes[18] & 0xFF)
@@ -1629,9 +1628,6 @@ void parseSonoffCluster(Map it, String description) {
                 } else {
                     logDebug '501F irrigationScheduleStatus: valve/switch state inference skipped during Refresh'
                 }
-                // compare the firmware's scheduled run length with the driver-side auto-off timer, AFTER the
-                // valve/switch update above - that is what arms the timer, so checking earlier would miss it
-                if (firmwareDurationSec > 0) { zf2WarnIfFirmwareClosesFirst(isPort2, firmwareDurationSec) }
             } catch (e) {
                 logWarn "501F irrigationScheduleStatus parse error: ${e}"
             }
@@ -1796,23 +1792,19 @@ void open(duration = null) {
         cmds = sendTuyaCommand('65', DP_TYPE_BOOL, '01')
     }
     else if (isSonoffZF2()) {
-        // port 1 (endpoint 01). Optional per-run duration: writes the manual-run default duration (FC11 0x501D,
-        // same mechanism the classic ZN single-valve driver code uses) immediately before the on command, so the
-        // FIRMWARE itself closes this run at the requested time - more robust than a Hubitat-side timer alone,
-        // since it survives the hub being offline/rebooted mid-run. 0x501D has no per-endpoint declaration in
-        // zigbee-herdsman-converters (same category as the shared flow-meter attributes), so this assumes ports
-        // are run sequentially, never with two different durations overlapping - true for this driver's expected
-        // usage (confirmed), but a concurrent open on the other port with a different duration could retroactively
-        // affect an in-progress run if the setting doesn't independently latch per port at open-time (untested).
-        // The driver-side runIn timer (zf2ArmAutoCloseOverride/zf2ScheduleAutoClose) is also armed as a backup.
+        // port 1 (endpoint 01). Optional per-run duration: closed entirely on the Hubitat side via a runIn()
+        // timer (zf2AutoClosePort1) armed synchronously right here - see the v1.12.0 changelog entry above for
+        // why this replaced writing the firmware's shared manual-run duration (FC11 0x501D).
         int durationMin = safeToInt(duration, 0)
-        cmds = []
         if (durationMin > 0) {
-            cmds += buildZNManualDefaultSettingsCmd(durationMin)
-            cmds += 'delay 300'
-            zf2ArmAutoCloseOverride('01', durationMin)
+            logInfo "port 1: opening for ${durationMin} minute${durationMin == 1 ? '' : 's'} (driver-side timer)"
+            if (state.states == null) { state.states = [:] }
+            state.states['autoOffArmed1'] = durationMin
+            runIn(durationMin * 60, 'zf2AutoClosePort1', [overwrite: true])
+        } else {
+            unschedule('zf2AutoClosePort1')
         }
-        cmds += zigbee.on()
+        cmds = zigbee.on()
     }
     else if (getModelGroup().contains('SONOFF')) {
         if (isSonoffZN()) {
@@ -1885,16 +1877,16 @@ void open2(duration = null) {
     state.states['isDigital2'] = true
     scheduleCommandTimeoutCheck()
     int durationMin = safeToInt(duration, 0)
-    List<String> cmds = []
+    // Closed entirely on the Hubitat side via a runIn() timer (zf2AutoClosePort2) - see open()'s isSonoffZF2()
+    // branch and the v1.12.0 changelog entry above for why this replaced the firmware duration write.
     if (durationMin > 0) {
-        // same firmware-write mechanism as open() - see the comment there, including the sequential-use
-        // assumption. 0x501D always writes to endpoint 01 (device-level setting); the port-2 open that
-        // immediately follows is what (assuming it latches per port at open-time) applies it to this run.
-        cmds += buildZNManualDefaultSettingsCmd(durationMin)
-        cmds += 'delay 300'
-        zf2ArmAutoCloseOverride('02', durationMin)
+        logInfo "port 2: opening for ${durationMin} minute${durationMin == 1 ? '' : 's'} (driver-side timer)"
+        state.states['autoOffArmed2'] = durationMin
+        runIn(durationMin * 60, 'zf2AutoClosePort2', [overwrite: true])
+    } else {
+        unschedule('zf2AutoClosePort2')
     }
-    cmds += zigbeeCommandEp('02', 0x0006, 0x01)
+    List<String> cmds = zigbeeCommandEp('02', 0x0006, 0x01)
     runInMillis(DIGITAL_TIMER, clearIsDigital2, [overwrite: true])
     logDebug "open2()... sent cmds=${cmds}"
     sendZigbeeCommands(cmds)
