@@ -213,6 +213,14 @@
  *                                  API's error response for a thrown command ("An unexpected error occurred") is a
  *                                  generic wrapper that hides the real class/message, which is why this couldn't
  *                                  be root-caused from the HTTP response alone across several earlier attempts.
+ *  ver. 1.16.0 2026-08-15 bdwilson - switched `command 'open'`'s declaration from the richer
+ *                                  [[name:..., type:..., description:...]] map form to the simple array form,
+ *                                  `['number']` - matching a driver ('Simple Valve Driver': `capability "Valve"` +
+ *                                  `command "open", ["number"]` + `def open(mins) { parent.open(mins) }`)
+ *                                  confirmed to have worked for this exact capability-plus-redeclared-'open'
+ *                                  pattern in the past, in case the map form's extra metadata was itself part of
+ *                                  what Maker API choked on. open2() left in its existing map form - it was never
+ *                                  implicated in any of this, since it was never a capability-provided name.
  *
  *                                  TODO: @rgr - add a timer to the driver that shows how much time is left before the valve closes ''
  *                                  TODO: document the attributes (per valve model) in GitHub; add links to the HE forum and GitHub pages;
@@ -222,8 +230,8 @@ import groovy.json.*
 import groovy.transform.Field
 import hubitat.zigbee.zcl.DataType
 
-static String version() { '1.15.0' }
-static String timeStamp() { '2026/08/15 07:00 PM' }
+static String version() { '1.16.0' }
+static String timeStamp() { '2026/08/15 08:30 PM' }
 
 @Field static final Boolean _DEBUG = false
 @Field static final Boolean DEFAULT_DEBUG_LOGGING = false               // disable it for the production release !
@@ -272,13 +280,13 @@ metadata {
         command 'setValveOpenThreshold', [[name:'Valve Open Threshold, % (FrankEver FK_V02)', type: 'NUMBER', description: 'Valve Open Threshold, % (FrankEver FK_V02)', constraints: ['0..100']]]
         command 'setValve2', [[name:'select state (TZE284, SWV-ZF2)', type: 'ENUM', description: 'Set the second port/valve mode (GiEX TZE284 double valves and Sonoff SWV-ZF2 dual-port valve)', constraints: ['open', 'closed']]]
         // v1.14.0 removed this, on the theory that redeclaring 'open' (already provided by capability 'Valve')
-        // registered it twice and caused a Maker API 500. Restored in v1.15.0: removing it also removed the
-        // ability to send a duration to open() at all - via Maker API AND the admin UI's own command tester,
-        // which needs this declaration to render the Duration input field in the first place. Whatever is
-        // actually throwing via Maker API, losing real functionality wasn't an acceptable trade to guess around
-        // it - see the try/catch in open()/open2() below, added instead to capture the real exception directly
-        // from the hub's own logs next time, rather than continuing to guess from indirect symptoms.
-        command 'open',  [[name:'duration', type:'NUMBER', description:'Optional, SWV-ZF2 only: open port 1 for this many minutes (overrides the Port 1 auto-off preference for this run)']]
+        // registered it twice and caused a Maker API 500. Restored in v1.15.0 (map-typed form) after that removal
+        // also killed the ability to send a duration to open() at all. v1.16.0 switched to the simple array form
+        // below - matching a driver ('Simple Valve Driver', command "open", ["number"]) confirmed to have worked
+        // for this exact pattern (capability 'Valve' + a re-declared, parameterized 'open') in the past, in case
+        // the richer [[name:..., type:..., description:...]] form was itself part of the problem. Optional,
+        // SWV-ZF2 only: open port 1 for this many minutes (overrides the Port 1 auto-off preference for this run).
+        command 'open', ['number']
         command 'open2', [[name:'duration', type:'NUMBER', description:'Open the second port (SWV-ZF2). Optional: open for this many minutes (overrides the Port 2 auto-off preference for this run)']]
         command 'close2', [[name:'Close the second port (SWV-ZF2)']]
         command 'updateZigbeeFirmware', [[name:'Update Zigbee Firmware', description: 'Request Zigbee OTA update for supported devices']]

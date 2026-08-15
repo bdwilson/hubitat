@@ -60,8 +60,12 @@
  *                                  exception via log.error before rethrowing, so the hub's own Logs will show the
  *                                  actual cause next time this is exercised, rather than Maker API's generic
  *                                  "An unexpected error occurred" hiding it.
+ *  ver. 1.8.0 2026-08-15 bdwilson - switched `command 'open'`'s declaration from the map form to the simple array
+ *                                  form, `['number']` - matching a driver ('Simple Valve Driver') confirmed to
+ *                                  have worked for this exact pattern in the past. See the parent driver's v1.16.0
+ *                                  changelog entry for detail.
  */
-static String version() { '1.7.0' }
+static String version() { '1.8.0' }
 
 metadata {
     definition(name: 'Tuya Zigbee Valve Port', namespace: 'bdwilson', author: 'Brian Wilson', component: true, importUrl: 'https://raw.githubusercontent.com/bdwilson/hubitat/master/Tuya-Zigbee-Valve/Tuya%20Zigbee%20Valve%20Port.groovy') {
@@ -70,7 +74,11 @@ metadata {
         capability 'Switch'
         capability 'Refresh'
 
-        command 'open', [[name:'duration', type:'NUMBER', description:'Optional: open this port for the given number of minutes (overrides this port\'s auto-off preference on the parent for this run)']]
+        // Simple array form (matches a driver - 'Simple Valve Driver', command "open", ["number"] - confirmed to
+        // have worked for this exact capability 'Valve' + re-declared 'open' pattern in the past), not the richer
+        // [[name:..., type:..., description:...]] map form v1.4.0-1.6.0 used. Optional: open this port for the
+        // given number of minutes (overrides this port's auto-off preference on the parent for this run).
+        command 'open', ['number']
 
         attribute 'irrigationStartTime', 'string'
         attribute 'irrigationEndTime', 'string'

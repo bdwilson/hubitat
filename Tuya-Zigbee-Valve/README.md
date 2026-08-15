@@ -204,6 +204,16 @@ Changes in this fork (v1.8.0):
   whole investigation - it was never a capability-provided name, so it
   was never part of the problem.
 
+  **v1.16.0** switched `command 'open'`'s declaration from that richer
+  `[[name:..., type:..., description:...]]` map form to the simple
+  array form, `['number']` - matching an older driver ("Simple Valve
+  Driver": `capability "Valve"` + `command "open", ["number"]` +
+  `def open(mins) { parent.open(mins) }`) confirmed to have worked for
+  this exact capability-plus-redeclared-`open` pattern in the past, in
+  case the map form's extra metadata was itself part of what Maker API
+  choked on. `open2()` left in its existing map form throughout - still
+  never implicated in any of this.
+
 ## Install
 
 This is a standalone fork, hosted and maintained here independently -
