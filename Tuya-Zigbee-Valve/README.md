@@ -165,6 +165,24 @@ Changes in this fork (v1.8.0):
   manual-open default duration remains untouched as an independent
   backstop if the hub itself is down when the driver timer should fire.
 
+  v1.12.0 also turned out to have kept a real bug from v1.11.0: this
+  driver's `command 'open', [[duration...]]` sat directly on top of
+  `capability 'Valve'`'s own zero-arg `open()`, giving the device two
+  same-named `open` commands - visible directly in a device dump's
+  `commands` array as `open` appearing twice. Maker API resolves
+  commands by name only, with no way to pick an overload from a URL,
+  so calling `open` with a value via Maker API hit the wrong/ambiguous
+  one and threw a generic `500`. (The admin UI's own command tester
+  never showed this, since it renders each declared signature as its
+  own section - which is also why manually running it with a Duration
+  field there kept working the whole time.) **v1.13.0** fixes this:
+  `open()` is unconditionally the plain zero-arg capability command
+  again, and the timed variant is the separately-named
+  **`openFor(duration)`** instead (mirrored by
+  `Tuya Zigbee Valve Port.groovy` v1.5.0+ on the child devices).
+  `open2()` (port 2) was never renamed - it was never a capability
+  name to begin with, so it never collided.
+
 ## Install
 
 This is a standalone fork, hosted and maintained here independently -

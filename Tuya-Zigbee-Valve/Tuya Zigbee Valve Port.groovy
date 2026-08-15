@@ -43,8 +43,18 @@
  *  ver. 1.4.0 2026-07-11 bdwilson - open() now takes an optional duration parameter (minutes): open(30) opens this
  *                                  port for 30 minutes, overriding the port's auto-off preference on the parent for
  *                                  that one run. Forwarded to the parent's componentOpen(device, duration).
+ *  ver. 1.5.0 2026-08-15 bdwilson - split open(duration) into a plain open() and a separately-named openFor(duration).
+ *                                  capability 'Valve' already declares a zero-arg open() command; redeclaring
+ *                                  `command 'open', [[duration...]]` on top of it (as v1.4.0 did) gave this device
+ *                                  two same-named "open" commands in Maker API's command list (visible directly in
+ *                                  /devices/{id}: "commands":[...,"open","open",...]) - Maker API resolves commands
+ *                                  by name only, with no way to pick an overload from a URL, and calling open/N hit
+ *                                  the wrong/ambiguous one and threw a generic 500 (the admin UI's own command
+ *                                  tester never showed this, since it renders each declared signature separately).
+ *                                  openFor(duration) has no such collision. Forwards to the parent's
+ *                                  componentOpen(device, duration); plain open() forwards with no duration.
  */
-static String version() { '1.4.0' }
+static String version() { '1.5.0' }
 
 metadata {
     definition(name: 'Tuya Zigbee Valve Port', namespace: 'bdwilson', author: 'Brian Wilson', component: true, importUrl: 'https://raw.githubusercontent.com/bdwilson/hubitat/master/Tuya-Zigbee-Valve/Tuya%20Zigbee%20Valve%20Port.groovy') {
@@ -53,7 +63,7 @@ metadata {
         capability 'Switch'
         capability 'Refresh'
 
-        command 'open', [[name:'duration', type:'NUMBER', description:'Optional: open this port for the given number of minutes (overrides this port\'s auto-off preference on the parent for this run)']]
+        command 'openFor', [[name:'duration', type:'NUMBER', description:'Open this port for the given number of minutes (overrides this port\'s auto-off preference on the parent for this run)']]
 
         attribute 'irrigationStartTime', 'string'
         attribute 'irrigationEndTime', 'string'
@@ -71,7 +81,8 @@ void installed() { }
 
 void updated() { }
 
-void open(duration = null)  { parent?.componentOpen(device, duration) }
+void open()             { parent?.componentOpen(device) }
+void openFor(duration)  { parent?.componentOpen(device, duration) }
 void close() { parent?.componentClose(device) }
 void on()    { parent?.componentOpen(device) }
 void off()   { parent?.componentClose(device) }
