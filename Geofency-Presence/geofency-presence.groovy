@@ -22,7 +22,8 @@ definition(
     iconUrl: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience.png",
     iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
     iconX3Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
-	importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/geofency-presence.groovy", 
+	importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/geofency-presence.groovy",
+    version: "1.2.0",
     oauth: true)
 
 
@@ -92,8 +93,6 @@ def listLocations() {
     return resp
 }
 
-def deviceHandler(evt) {}
-
 def correctURL () {
 	def msg = ["Yep, this is the right URL, just put it into Geofency Web Hook, set to POST and do a test. Make sure your Geofency location name matches the device location and user (${params.user}) configured in the preferences"]
 	ifDebug("${msg}")
@@ -118,36 +117,32 @@ void updateLocation() {
 
 def update (devices) {
    	def data = request.JSON
-   	def location = data.name
+   	def location = data.name?.trim()
    	def event = data.entry
-   	def user = params.user
+   	def user = params.user?.trim()
    	def deviceName = location + "-" + user
-    //def device = devices.find { it.displayName == deviceName }
-    def device = devices.find { it.currentValue("region") + "-" + it.currentValue("user") == deviceName }
+    def device = devices.find {
+        (it.currentValue("region")?.trim() + "-" + it.currentValue("user")?.trim()).equalsIgnoreCase(deviceName)
+    }
 
    	ifDebug("event: ${event} device: ${device} location: ${location} user: ${user} deviceName: ${deviceName}")
-      
- 	if (location){
+
+ 	if (location) {
         if (!device) {
-            def msg = ["Error: device not found. Make sure a device a with type: Geofency Virtual Mobile Presence Device exists AND is configured with the proper location and user settings."]
-			ifDebug("${msg}")
-            // render's aren't working. maybe someone can fix this. 
-            // render contentType: "text/html", msg: out, status: 404
+            log.error "Geofency: device not found for '${deviceName}'. Make sure a device with type: Geofency Virtual Mobile Presence Device exists AND is configured with the proper location and user settings."
         } else {
-            if(event == "0"){
-                def msg = "${user} has exited ${location} - turning ${device} off"
-                ifDebug("${msg}")
-                device.off();
-                //render contentType: "text/html", data: msg, status: 200
+            if (event == "0") {
+                log.info "Geofency: ${user} has exited ${location} - turning ${device} off"
+                device.off()
+            } else if (event == "1") {
+                log.info "Geofency: ${user} has entered ${location} - turning ${device} on"
+                device.on()
             } else {
-                def msg = "${user} has entered ${location} - turning ${device} on"
-                ifDebug("${msg}")
-                device.on();
-                //render contentType: "text/html", msg: out, status: 200
+                log.warn "Geofency: unexpected event value '${event}' received for ${deviceName}"
             }
         }
      } else {
-		ifDebug("Location not found. You need to make sure you configure the name of your location on Geofency to match the settings configured in your Geofency Virtual Mobile Presence Device.")
+        log.error "Geofency: no location in payload. Make sure your Geofency location name matches the location configured in your Geofency Virtual Mobile Presence Device."
 	 }
 }
 
