@@ -1,0 +1,28 @@
+{
+  "packageName": "Tuya Zigbee Valve - SONOFF SWV-ZF2 dual-port",
+  "author": "Brian Wilson",
+  "version": "1.12.0",
+  "minimumHEVersion": "0.0",
+  "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Tuya-Zigbee-Valve",
+  "communityLink": "https://community.hubitat.com/t/sonoff-zigbee-sprinklers-on-pre-order-sale/162398",
+  "dateReleased": "2026-08-15",
+  "releaseNotes": "v1.12.0: reworked SWV-ZF2 open(duration)/open2(duration) to close entirely on the Hubitat side via a runIn() timer armed synchronously at open time, instead of writing the valve firmware's shared (not per-port) manual-run duration setting - that write was never confirmed to latch to the correct port, and is believed to be the cause of a report where open(duration: 30) closed after 5 minutes instead. v1.11.0 added the open(duration)/open2(duration) per-run duration parameter and per-port autoOffTimer1/autoOffTimer2 preferences; v1.9.x-1.10.x added parent/child devices (Tuya Zigbee Valve Port, one per physical port) with independent irrigation history, fixed several real-device-log-driven bugs (port-2 traffic corrupting port-1 state, dropped port-2 genOnOff reports, a race that could leave a child device's state stale, event spam during active irrigation). See the changelog block at the top of each driver file for full version-by-version detail.",
+  "drivers": [
+    {
+      "id": "d82ce2cc-92a0-4abf-a774-d593a402b95b",
+      "name": "Tuya Zigbee Valve",
+      "namespace": "kkossev",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Tuya-Zigbee-Valve/Tuya%20Zigbee%20Valve.groovy",
+      "required": true,
+      "version": "1.12.0"
+    },
+    {
+      "id": "ddbda288-2c93-4a35-9372-930c28ec2943",
+      "name": "Tuya Zigbee Valve Port",
+      "namespace": "bdwilson",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Tuya-Zigbee-Valve/Tuya%20Zigbee%20Valve%20Port.groovy",
+      "required": true,
+      "version": "1.4.0"
+    }
+  ]
+}

@@ -148,6 +148,23 @@ Changes in this fork (v1.8.0):
   Component child devices (`Tuya Zigbee Valve Port.groovy` v1.4.0+)
   also accept `open(duration)` and forward it to the parent.
 
+  **v1.12.0 fixes a real bug in v1.11.0's approach**: field testing found
+  `open(duration: 30)` closing after only ~5 minutes instead. The
+  `0x501D` firmware write was dropped entirely - it's a device-level
+  setting, not per-port, and there was never confirmation it actually
+  latched to whichever port opened next rather than only affecting a
+  future open of port 1. A per-run duration is now closed **entirely on
+  the Hubitat side**: `open()`/`open2()` arm a `runIn()` timer
+  synchronously the moment the command runs, rather than deferring to
+  the open-confirmation report via a short-lived (15s) override that a
+  slow confirmation could silently miss and fall back to the (shorter)
+  `autoOffTimer1`/`autoOffTimer2` preference instead - which is believed
+  to be the actual mechanism behind the 30-minutes-closes-after-5
+  report. `runIn()` schedules survive a hub restart, so this keeps the
+  resilience the firmware write was chasing; the device's own onboard
+  manual-open default duration remains untouched as an independent
+  backstop if the hub itself is down when the driver timer should fire.
+
 ## Install
 
 This is a standalone fork, hosted and maintained here independently -
