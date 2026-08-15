@@ -179,20 +179,40 @@ Changes in this fork (v1.8.0):
   by renaming the timed variant to a separately-named `openFor(duration)`,
   leaving `open()` as the plain zero-arg capability command.
 
-  **v1.14.0 reverted that rename** after confirming by testing that the
-  rename wasn't actually the fix - the problem was just declaring
+  v1.14.0 reverted that rename on the theory that declaring
   `command 'open', [[duration...]]` **at all** alongside
-  `capability 'Valve'`, regardless of what the parameter metadata said.
-  The real fix is to not redeclare the command, not to rename the entry
-  point. `open(duration = null)` is restored as the single entry point
-  (on both the parent, for port 1, and `Tuya Zigbee Valve Port.groovy`
-  v1.6.0+ on the child devices) - Maker API's `/devices/{id}/open/N`
-  still binds `N` to the method's own optional parameter without needing
-  separate `command` metadata for it; the only practical tradeoff is the
-  admin UI's command tester no longer shows a labelled Duration field
-  for `open`. `open2()` (port 2) was untouched throughout this whole
-  investigation - it was never a capability-provided name, so it was
-  never part of the problem.
+  `capability 'Valve'` registered the name twice and threw, regardless
+  of what the parameter metadata said - so it removed the declaration
+  entirely rather than renaming it.
+
+  **v1.15.0 restored `command 'open', [[duration...]]`.** Removing it
+  in v1.14.0 turned out to be a bigger regression than intended: it
+  also removed the ability to send a duration to `open()` at all - via
+  Maker API *and* the admin UI's own command tester, which needs this
+  declaration to render the Duration field in the first place -
+  confirmed by live testing on the actual device, not just device-dump
+  inspection. Whether the redeclaration is actually what caused the
+  original Maker API `500` is unconfirmed; losing real, working
+  functionality wasn't worth continuing to guess about it. `open()`/
+  `open2()` now wrap their bodies in a `try`/`catch` that logs the real
+  exception via `log.error` before rethrowing (mirrored by `open()` on
+  the child driver, v1.7.0+), so if this does throw again, the hub's
+  own Logs will show the actual cause - Maker API's error response for
+  a thrown command hides the real class/message, which is why this
+  couldn't be root-caused from the HTTP response alone across several
+  earlier attempts. `open2()` (port 2) was untouched throughout this
+  whole investigation - it was never a capability-provided name, so it
+  was never part of the problem.
+
+  **v1.16.0** switched `command 'open'`'s declaration from that richer
+  `[[name:..., type:..., description:...]]` map form to the simple
+  array form, `['number']` - matching an older driver ("Simple Valve
+  Driver": `capability "Valve"` + `command "open", ["number"]` +
+  `def open(mins) { parent.open(mins) }`) confirmed to have worked for
+  this exact capability-plus-redeclared-`open` pattern in the past, in
+  case the map form's extra metadata was itself part of what Maker API
+  choked on. `open2()` left in its existing map form throughout - still
+  never implicated in any of this.
 
 ## Install
 

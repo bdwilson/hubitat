@@ -200,6 +200,27 @@
  *                                  longer shows a labelled Duration field for it. componentOpen() simplified back to
  *                                  a single call. open2() (port 2) untouched throughout - it was never a capability
  *                                  name, so it was never part of this problem.
+ *  ver. 1.15.0 2026-08-15 bdwilson - restored `command 'open', [[duration...]]`, removed in 1.14.0. That removal
+ *                                  turned out to be a bigger regression than intended: it also removed the ability
+ *                                  to send a duration to open() at all, via Maker API AND the admin UI's own
+ *                                  command tester, which needs this declaration to render the Duration field in
+ *                                  the first place - confirmed by live testing on the actual device, not just
+ *                                  device-dump inspection. Whether the redeclaration is actually what caused the
+ *                                  original Maker API 500 is unconfirmed; losing real functionality wasn't worth
+ *                                  continuing to guess about it. open()/open2() now wrap their bodies in a
+ *                                  try/catch that logs the real exception via log.error before rethrowing, so if
+ *                                  this does throw again, the hub's own Logs will show the actual cause - Maker
+ *                                  API's error response for a thrown command ("An unexpected error occurred") is a
+ *                                  generic wrapper that hides the real class/message, which is why this couldn't
+ *                                  be root-caused from the HTTP response alone across several earlier attempts.
+ *  ver. 1.16.0 2026-08-15 bdwilson - switched `command 'open'`'s declaration from the richer
+ *                                  [[name:..., type:..., description:...]] map form to the simple array form,
+ *                                  `['number']` - matching a driver ('Simple Valve Driver': `capability "Valve"` +
+ *                                  `command "open", ["number"]` + `def open(mins) { parent.open(mins) }`)
+ *                                  confirmed to have worked for this exact capability-plus-redeclared-'open'
+ *                                  pattern in the past, in case the map form's extra metadata was itself part of
+ *                                  what Maker API choked on. open2() left in its existing map form - it was never
+ *                                  implicated in any of this, since it was never a capability-provided name.
  *
  *                                  TODO: @rgr - add a timer to the driver that shows how much time is left before the valve closes ''
  *                                  TODO: document the attributes (per valve model) in GitHub; add links to the HE forum and GitHub pages;
@@ -209,8 +230,8 @@ import groovy.json.*
 import groovy.transform.Field
 import hubitat.zigbee.zcl.DataType
 
-static String version() { '1.14.0' }
-static String timeStamp() { '2026/08/15 05:00 PM' }
+static String version() { '1.16.0' }
+static String timeStamp() { '2026/08/15 08:30 PM' }
 
 @Field static final Boolean _DEBUG = false
 @Field static final Boolean DEFAULT_DEBUG_LOGGING = false               // disable it for the production release !
@@ -258,13 +279,14 @@ metadata {
         command 'setIrrigationMode', [[name:'select the mode (Saswell and GiEX)', type: 'ENUM', description: 'Set Irrigation Mode', constraints: ['duration', 'capacity']]]
         command 'setValveOpenThreshold', [[name:'Valve Open Threshold, % (FrankEver FK_V02)', type: 'NUMBER', description: 'Valve Open Threshold, % (FrankEver FK_V02)', constraints: ['0..100']]]
         command 'setValve2', [[name:'select state (TZE284, SWV-ZF2)', type: 'ENUM', description: 'Set the second port/valve mode (GiEX TZE284 double valves and Sonoff SWV-ZF2 dual-port valve)', constraints: ['open', 'closed']]]
-        // No `command 'open', [[duration...]]` here - capability 'Valve' already registers 'open' as a command.
-        // Redeclaring it with parameter metadata (as v1.11.0-1.13.0 did) registers 'open' a second time for the
-        // same name, which is what actually threw a generic Maker API 500 calling open/N on this device -
-        // confirmed by field testing, not just device-dump inspection. open(duration = null) below still accepts
-        // a duration positional argument via Maker API (Groovy binds it to the method's own optional parameter),
-        // it's just no longer separately declared - the tradeoff is the admin UI's command tester no longer shows
-        // a labelled Duration field for it, since that came from the removed metadata.
+        // v1.14.0 removed this, on the theory that redeclaring 'open' (already provided by capability 'Valve')
+        // registered it twice and caused a Maker API 500. Restored in v1.15.0 (map-typed form) after that removal
+        // also killed the ability to send a duration to open() at all. v1.16.0 switched to the simple array form
+        // below - matching a driver ('Simple Valve Driver', command "open", ["number"]) confirmed to have worked
+        // for this exact pattern (capability 'Valve' + a re-declared, parameterized 'open') in the past, in case
+        // the richer [[name:..., type:..., description:...]] form was itself part of the problem. Optional,
+        // SWV-ZF2 only: open port 1 for this many minutes (overrides the Port 1 auto-off preference for this run).
+        command 'open', ['number']
         command 'open2', [[name:'duration', type:'NUMBER', description:'Open the second port (SWV-ZF2). Optional: open for this many minutes (overrides the Port 2 auto-off preference for this run)']]
         command 'close2', [[name:'Close the second port (SWV-ZF2)']]
         command 'updateZigbeeFirmware', [[name:'Update Zigbee Firmware', description: 'Request Zigbee OTA update for supported devices']]
@@ -1795,6 +1817,7 @@ void close() {
 void on() { open() }
 
 void open(duration = null) {
+  try {
     if (state.states == null) { state.states = [:] }
     state.states['isDigital'] = true
     if (duration != null && !isSonoffZF2()) { logWarn "open(duration) is only supported for the SWV-ZF2 dual-port valve - opening normally, duration ${duration} ignored" }
@@ -1875,6 +1898,13 @@ void open(duration = null) {
     }
     logDebug "open()... sent cmds=${cmds}"
     sendZigbeeCommands(cmds)
+  } catch (Exception e) {
+    // Logs the REAL exception to the hub's own Logs before rethrowing - Maker API's error response for a thrown
+    // command is a generic wrapper ("An unexpected error occurred") that hides the actual class/message/cause,
+    // which is why this device's Maker API 500 couldn't be root-caused from the HTTP response alone.
+    log.error "open(duration=${duration}) threw: ${e}"
+    throw e
+  }
 }
 
 // second port (endpoint 02) - currently only SONOFF_SWV_ZF2_VALVE
@@ -1903,6 +1933,7 @@ void close2() {
 void on2() { open2() }
 
 void open2(duration = null) {
+  try {
     if (!isSonoffZF2()) {
         logWarn 'open2() is available for Sonoff SWV-ZF2 dual-port valves only!'
         return
@@ -1924,6 +1955,12 @@ void open2(duration = null) {
     runInMillis(DIGITAL_TIMER, clearIsDigital2, [overwrite: true])
     logDebug "open2()... sent cmds=${cmds}"
     sendZigbeeCommands(cmds)
+  } catch (Exception e) {
+    // See the matching try/catch in open() - Maker API's error response for a thrown command hides the real
+    // exception, so this logs it directly to the hub's own Logs before rethrowing.
+    log.error "open2(duration=${duration}) threw: ${e}"
+    throw e
+  }
 }
 
 void clearIsDigital2() { if (state.states == null) { state.states = [:] } ; state.states['isDigital2'] = false }
