@@ -132,6 +132,16 @@
       ],
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Genmon/packageManifest.json",
       "description": "Control your generator via Genmon using Hubitat"
+    },
+    {
+      "name": "Tuya Zigbee Valve - SONOFF SWV-ZF2 dual-port",
+      "category": "Control",
+      "tags": [
+        "Irrigation",
+        "Water"
+      ],
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Tuya-Zigbee-Valve/packageManifest.json",
+      "description": "Fork of kkossev's Tuya Zigbee Valve driver adding SONOFF SWV-ZF2 dual-port support: independent per-port child devices, per-port irrigation history and auto-off timers, and a per-run open(duration) command."
     }
   ]
 }
