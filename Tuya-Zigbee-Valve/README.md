@@ -175,13 +175,24 @@ Changes in this fork (v1.8.0):
   one and threw a generic `500`. (The admin UI's own command tester
   never showed this, since it renders each declared signature as its
   own section - which is also why manually running it with a Duration
-  field there kept working the whole time.) **v1.13.0** fixes this:
-  `open()` is unconditionally the plain zero-arg capability command
-  again, and the timed variant is the separately-named
-  **`openFor(duration)`** instead (mirrored by
-  `Tuya Zigbee Valve Port.groovy` v1.5.0+ on the child devices).
-  `open2()` (port 2) was never renamed - it was never a capability
-  name to begin with, so it never collided.
+  field there kept working the whole time.) v1.13.0 tried to fix this
+  by renaming the timed variant to a separately-named `openFor(duration)`,
+  leaving `open()` as the plain zero-arg capability command.
+
+  **v1.14.0 reverted that rename** after confirming by testing that the
+  rename wasn't actually the fix - the problem was just declaring
+  `command 'open', [[duration...]]` **at all** alongside
+  `capability 'Valve'`, regardless of what the parameter metadata said.
+  The real fix is to not redeclare the command, not to rename the entry
+  point. `open(duration = null)` is restored as the single entry point
+  (on both the parent, for port 1, and `Tuya Zigbee Valve Port.groovy`
+  v1.6.0+ on the child devices) - Maker API's `/devices/{id}/open/N`
+  still binds `N` to the method's own optional parameter without needing
+  separate `command` metadata for it; the only practical tradeoff is the
+  admin UI's command tester no longer shows a labelled Duration field
+  for `open`. `open2()` (port 2) was untouched throughout this whole
+  investigation - it was never a capability-provided name, so it was
+  never part of the problem.
 
 ## Install
 

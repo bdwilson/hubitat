@@ -189,6 +189,17 @@
  *                                  by Tuya Zigbee Valve Port.groovy v1.5.0+ on the ZF2 child devices). open2()
  *                                  (port 2) was never renamed - it was never a capability name to begin with, so
  *                                  it never collided.
+ *  ver. 1.14.0 2026-08-15 bdwilson - reverted 1.13.0's open()/openFor() split. Confirmed by testing that the actual
+ *                                  problem was just having `command 'open', [[duration...]]` declared AT ALL
+ *                                  alongside `capability 'Valve'` (which already registers 'open') - that
+ *                                  redeclaration is what registered the name twice and threw, regardless of what the
+ *                                  parameter metadata said. The fix is to not redeclare it, not to rename the entry
+ *                                  point. Single open(duration = null) restored; Maker API's /devices/{id}/open/N
+ *                                  still binds N to the method's own optional parameter without separate `command`
+ *                                  metadata - the only practical tradeoff is the admin UI's command tester no
+ *                                  longer shows a labelled Duration field for it. componentOpen() simplified back to
+ *                                  a single call. open2() (port 2) untouched throughout - it was never a capability
+ *                                  name, so it was never part of this problem.
  *
  *                                  TODO: @rgr - add a timer to the driver that shows how much time is left before the valve closes ''
  *                                  TODO: document the attributes (per valve model) in GitHub; add links to the HE forum and GitHub pages;
@@ -198,8 +209,8 @@ import groovy.json.*
 import groovy.transform.Field
 import hubitat.zigbee.zcl.DataType
 
-static String version() { '1.13.0' }
-static String timeStamp() { '2026/08/15 03:00 PM' }
+static String version() { '1.14.0' }
+static String timeStamp() { '2026/08/15 05:00 PM' }
 
 @Field static final Boolean _DEBUG = false
 @Field static final Boolean DEFAULT_DEBUG_LOGGING = false               // disable it for the production release !
@@ -247,7 +258,13 @@ metadata {
         command 'setIrrigationMode', [[name:'select the mode (Saswell and GiEX)', type: 'ENUM', description: 'Set Irrigation Mode', constraints: ['duration', 'capacity']]]
         command 'setValveOpenThreshold', [[name:'Valve Open Threshold, % (FrankEver FK_V02)', type: 'NUMBER', description: 'Valve Open Threshold, % (FrankEver FK_V02)', constraints: ['0..100']]]
         command 'setValve2', [[name:'select state (TZE284, SWV-ZF2)', type: 'ENUM', description: 'Set the second port/valve mode (GiEX TZE284 double valves and Sonoff SWV-ZF2 dual-port valve)', constraints: ['open', 'closed']]]
-        command 'openFor', [[name:'duration', type:'NUMBER', description:'SWV-ZF2 only: open port 1 for this many minutes (overrides the Port 1 auto-off preference for this run). Not named "open" - capability \'Valve\' already declares a zero-arg open() command, and a same-named custom command with a parameter gives Maker API two ambiguous "open" entries for this device (confirmed cause of a real Maker API 500 on the equivalent port-2 command).']]
+        // No `command 'open', [[duration...]]` here - capability 'Valve' already registers 'open' as a command.
+        // Redeclaring it with parameter metadata (as v1.11.0-1.13.0 did) registers 'open' a second time for the
+        // same name, which is what actually threw a generic Maker API 500 calling open/N on this device -
+        // confirmed by field testing, not just device-dump inspection. open(duration = null) below still accepts
+        // a duration positional argument via Maker API (Groovy binds it to the method's own optional parameter),
+        // it's just no longer separately declared - the tradeoff is the admin UI's command tester no longer shows
+        // a labelled Duration field for it, since that came from the removed metadata.
         command 'open2', [[name:'duration', type:'NUMBER', description:'Open the second port (SWV-ZF2). Optional: open for this many minutes (overrides the Port 2 auto-off preference for this run)']]
         command 'close2', [[name:'Close the second port (SWV-ZF2)']]
         command 'updateZigbeeFirmware', [[name:'Update Zigbee Firmware', description: 'Request Zigbee OTA update for supported devices']]
@@ -893,7 +910,7 @@ void sendValve2Event(final String switchValue) {
 // only covers the *plain*-open case (no explicit per-run duration - physical button, eWeLink app, or a bare
 // on()/open()/open2()): it's scheduled off the *observed* open transition (any of those sources) and cancelled
 // on the observed close, so it never restarts on repeated/refresh reports of an unchanged state. An explicit
-// per-run duration from openFor(duration)/open2(duration) is armed directly and synchronously in those functions
+// per-run duration from open(duration)/open2(duration) is armed directly and synchronously in those functions
 // instead (as of v1.12.0) - so if autoOffArmed{port} is already set when this fires, that run's timer is already
 // correctly armed and this must NOT touch it (falling through to the preference default here would silently
 // replace a longer/shorter explicit duration with the preference value - this is what actually caused a report
@@ -905,7 +922,7 @@ void zf2ScheduleAutoClose(String port, String value) {
     String handlerName = port == '02' ? 'zf2AutoClosePort2' : 'zf2AutoClosePort1'
     String armedKey    = port == '02' ? 'autoOffArmed2'    : 'autoOffArmed1'
     if (value == 'open') {
-        if (safeToInt(state.states[armedKey], 0) > 0) { return }   // openFor(duration)/open2(duration) already armed this run
+        if (safeToInt(state.states[armedKey], 0) > 0) { return }   // open(duration)/open2(duration) already armed this run
         int minutes = safeToInt(port == '02' ? settings?.autoOffTimer2 : settings?.autoOffTimer1, 0)
         if (minutes > 0) {
             state.states[armedKey] = minutes
@@ -1777,20 +1794,10 @@ void close() {
 
 void on() { open() }
 
-// Entry points. 'open' MUST stay a plain, zero-arg command: capability 'Valve' already declares an open()
-// command, and Maker API resolves commands purely by name - a custom `command 'open', [[duration...]]`
-// declaration here would give the device two same-named "open" commands (one from the capability, one custom),
-// which is exactly what caused a real Maker API 500 (a generic java.lang.Exception, no useful detail) calling
-// open/N on this device's ZF2 child. The admin UI's own command tester can disambiguate by showing both
-// declared signatures separately - Maker API's /devices/{id}/{command}/{value} URL scheme cannot. openFor()
-// gets its own unique command name instead.
-void open() { doOpen(null) }
-void openFor(BigDecimal duration) { doOpen(duration) }
-
-private void doOpen(duration = null) {
+void open(duration = null) {
     if (state.states == null) { state.states = [:] }
     state.states['isDigital'] = true
-    if (duration != null && !isSonoffZF2()) { logWarn "openFor(duration) is only supported for the SWV-ZF2 dual-port valve - opening normally, duration ${duration} ignored" }
+    if (duration != null && !isSonoffZF2()) { logWarn "open(duration) is only supported for the SWV-ZF2 dual-port valve - opening normally, duration ${duration} ignored" }
     if (settings?.threeStateEnable == true) {
         sendEvent(name: 'valve', value: 'opening', descriptionText: 'sent a command to open the valve', type: 'digital')
         logInfo 'opening ...'
@@ -1982,10 +1989,7 @@ void routedSendEvent(boolean isPort2Flag, String attrName, value, String descTex
     }
 }
 
-void componentOpen(com.hubitat.app.DeviceWrapper cd, duration = null) {
-    if (getPortFromChild(cd) == '02') { open2(duration); return }
-    duration != null ? openFor(duration) : open()   // open() is zero-arg now - see the comment at its declaration
-}
+void componentOpen(com.hubitat.app.DeviceWrapper cd, duration = null)  { getPortFromChild(cd) == '02' ? open2(duration)  : open(duration)  }
 void componentClose(com.hubitat.app.DeviceWrapper cd) { getPortFromChild(cd) == '02' ? close2() : close() }
 void componentOn(com.hubitat.app.DeviceWrapper cd)  { componentOpen(cd) }
 void componentOff(com.hubitat.app.DeviceWrapper cd) { componentClose(cd) }
