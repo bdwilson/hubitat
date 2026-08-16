@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.5.2 - Brian Wilson / bubba@bubba.org
+ * 1.5.3 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -784,7 +784,9 @@ private void venusControl(String mac, int type, int value, List rooms = null) {
     def body = [type: type, value: value, vacuumMopMode: 0]
     if (rooms) body["rooms_id"] = rooms
     def resp = venusRequest("POST", "/plugin/venus/${mac}/control", [:], body)
-    if (resp != null && resp.code != "1") log.warn "Wyze Vacuum control (${mac}) returned: ${resp}"
+    // Wyze returns code as an integer (1), not the string "1" -- comparing
+    // against a string here made every successful call log a false warning.
+    if (resp != null && resp.code?.toString() != "1") log.warn "Wyze Vacuum control (${mac}) returned: ${resp}"
 }
 
 // =================== Room rotation ===================
