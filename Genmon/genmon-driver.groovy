@@ -15,6 +15,11 @@
  *                         numeric (BigDecimal). Also fixed refresh() firing
  *                         connectionStatus and lastUpdate unconditionally on
  *                         every poll regardless of whether the value changed.
+ *   - v2.3.0 - 16AUG26  - Suppress always-changing diagnostic fields (monitorTime,
+ *                         generatorTime, systemTime, systemUptime, monitorRunTime,
+ *                         packetCount) from event history; stored in State Variables
+ *                         instead. Fix missing transferToGenerator attribute
+ *                         declaration that caused it to fire every poll.
  *
  * Communicates directly with the Genmon REST/WebSocket API using the native
  * Genmon addon for Hubitat.  Home Assistant is NOT required.
@@ -60,6 +65,7 @@ metadata {
         attribute "switchState",            "string"   // e.g. "Auto", "Manual"
         attribute "activeAlarms",           "string"   // "No Active Alarms" or description
         attribute "alarmActive",            "string"   // "true" / "false" derived from above
+        attribute "transferToGenerator",    "string"   // "on" when generator supplying load, else "off"
         attribute "batteryVoltage",         "number"   // V   Status/Engine/Battery Voltage
         attribute "engineRPM",             "number"   //     Status/Engine/RPM
         attribute "outputFrequency",        "number"   // Hz  Status/Engine/Frequency
@@ -129,14 +135,9 @@ metadata {
         attribute "lastRunLog",            "string"   //     Status/Last Log Entries/Logs/Run Log
         attribute "lastServiceLog",         "string"   //     Status/Last Log Entries/Logs/Service Log
 
-        // ── Status time  (path: Status/Time/...) ─────────────────────────
-        attribute "monitorTime",            "string"   //     Status/Time/Monitor Time
-        attribute "generatorTime",          "string"   //     Status/Time/Generator Time
-
         // ── Monitor — generator stats  (Monitor/Generator Monitor Stats/...) ──
         attribute "monitorHealth",          "string"   //     Monitor/Generator Monitor Stats/Monitor Health
         attribute "genmonVersion",          "string"   //     Monitor/Generator Monitor Stats/Generator Monitor Version
-        attribute "monitorRunTime",         "string"   //     Monitor/Generator Monitor Stats/Run time
         attribute "powerLogSize",           "string"   //     Monitor/Generator Monitor Stats/Power log file size
         attribute "updateAvailable",        "string"   //     Monitor/Generator Monitor Stats/Update Available
         attribute "updateVersion",          "string"   //     Monitor/Generator Monitor Stats/Update Version
@@ -156,7 +157,6 @@ metadata {
         attribute "averageTransactionTime", "string"   //     Monitor/Communication Stats/Average Transaction Time
         attribute "modbusTransport",        "string"   //     Monitor/Communication Stats/Modbus Transport
         attribute "serialDataRate",         "string"   //     Monitor/Communication Stats/Serial Data Rate
-        attribute "packetCount",           "string"   //     Monitor/Communication Stats/Packet Count
 
         // ── Monitor — platform stats  (Monitor/Platform Stats/...) ───────
         attribute "cpuUsage",              "number"   // %   Monitor/Platform Stats/CPU Utilization
@@ -173,9 +173,7 @@ metadata {
         attribute "piUndervoltage",         "string"   //     Monitor/Platform Stats/Pi Undervoltage
         attribute "osName",                "string"   //     Monitor/Platform Stats/OS Name
         attribute "osVersion",             "string"   //     Monitor/Platform Stats/OS Version
-        attribute "systemUptime",           "string"   //     Monitor/Platform Stats/System Uptime
         attribute "networkInterfaceUsed",   "string"   //     Monitor/Platform Stats/Network Interface Used
-        attribute "systemTime",            "string"   //     Monitor/Platform Stats/System Time
         attribute "cpuTemperature",         "number"   // hub scale (°F or °C) — Tiles/CPU Temp/value, auto-converted
 
         // ── Monitor — weather  (Monitor/Weather/...) ─────────────────────
@@ -553,9 +551,11 @@ private void parseStatus(Map data) {
     safeStringEvent("lastRunLog",     pathGet(data, "Status/Last Log Entries/Logs/Run Log"))
     safeStringEvent("lastServiceLog", pathGet(data, "Status/Last Log Entries/Logs/Service Log"))
 
-    // ── Status/Time ───────────────────────────────────────────────────
-    safeStringEvent("monitorTime",   pathGet(data, "Status/Time/Monitor Time"))
-    safeStringEvent("generatorTime", pathGet(data, "Status/Time/Generator Time"))
+    // ── Status/Time (stored in state — changes every second, generates no events) ──
+    def monitorTimeVal = extractString(pathGet(data, "Status/Time/Monitor Time"))
+    if (monitorTimeVal) state.monitorTime = monitorTimeVal
+    def generatorTimeVal = extractString(pathGet(data, "Status/Time/Generator Time"))
+    if (generatorTimeVal) state.generatorTime = generatorTimeVal
 
     // ── Outage ────────────────────────────────────────────────────────
     def outageRaw = pathGet(data, "Outage/System In Outage")
@@ -609,7 +609,9 @@ private void parseStatus(Map data) {
     // ── Monitor/Generator Monitor Stats ──────────────────────────────
     safeStringEvent("monitorHealth",  pathGet(data, "Monitor/Generator Monitor Stats/Monitor Health"))
     safeStringEvent("genmonVersion",  pathGet(data, "Monitor/Generator Monitor Stats/Generator Monitor Version"))
-    safeStringEvent("monitorRunTime", pathGet(data, "Monitor/Generator Monitor Stats/Run time"))
+    // monitorRunTime changes every second — store in state, not events
+    def monitorRunTimeVal = extractString(pathGet(data, "Monitor/Generator Monitor Stats/Run time"))
+    if (monitorRunTimeVal) state.monitorRunTime = monitorRunTimeVal
     safeStringEvent("powerLogSize",   pathGet(data, "Monitor/Generator Monitor Stats/Power log file size"))
     safeStringEvent("updateAvailable", pathGet(data, "Monitor/Generator Monitor Stats/Update Available"))
     safeStringEvent("updateVersion",   pathGet(data, "Monitor/Generator Monitor Stats/Update Version"))
@@ -629,7 +631,9 @@ private void parseStatus(Map data) {
     safeStringEvent("averageTransactionTime", pathGet(data, "Monitor/Communication Stats/Average Transaction Time"))
     safeStringEvent("modbusTransport",       pathGet(data, "Monitor/Communication Stats/Modbus Transport"))
     safeStringEvent("serialDataRate",        pathGet(data, "Monitor/Communication Stats/Serial Data Rate"))
-    safeStringEvent("packetCount",           pathGet(data, "Monitor/Communication Stats/Packet Count"))
+    // packetCount always increments — store in state, not events
+    def packetCountVal = extractString(pathGet(data, "Monitor/Communication Stats/Packet Count"))
+    if (packetCountVal) state.packetCount = packetCountVal
 
     // ── Monitor/Platform Stats ────────────────────────────────────────
     safeNumericEvent("cpuUsage",          pathGet(data, "Monitor/Platform Stats/CPU Utilization"),    "%")
@@ -646,9 +650,12 @@ private void parseStatus(Map data) {
     safeStringEvent("piUndervoltage",     pathGet(data, "Monitor/Platform Stats/Pi Undervoltage"))
     safeStringEvent("osName",             pathGet(data, "Monitor/Platform Stats/OS Name"))
     safeStringEvent("osVersion",          pathGet(data, "Monitor/Platform Stats/OS Version"))
-    safeStringEvent("systemUptime",       pathGet(data, "Monitor/Platform Stats/System Uptime"))
+    // systemUptime and systemTime change every second — store in state, not events
+    def systemUptimeVal = extractString(pathGet(data, "Monitor/Platform Stats/System Uptime"))
+    if (systemUptimeVal) state.systemUptime = systemUptimeVal
     safeStringEvent("networkInterfaceUsed", pathGet(data, "Monitor/Platform Stats/Network Interface Used"))
-    safeStringEvent("systemTime",         pathGet(data, "Monitor/Platform Stats/System Time"))
+    def systemTimeVal = extractString(pathGet(data, "Monitor/Platform Stats/System Time"))
+    if (systemTimeVal) state.systemTime = systemTimeVal
 
     // ── Monitor/Weather ───────────────────────────────────────────────
     safeStringEvent("weatherConditions", pathGet(data, "Monitor/Weather/Conditions"))
