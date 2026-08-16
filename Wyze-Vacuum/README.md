@@ -176,6 +176,7 @@ Per vacuum, under **`<vacuum> — Bin Reminder`**: set **"Notify to empty the bi
 
 - **Polling only.** Wyze doesn't push status changes, so state updates only happen on the poll interval or right after you issue a command.
 - **Single Wyze account.** All vacuums on the account are discoverable from one app instance.
+- **Command dispatches (start/pause/dock/cleanRooms/etc.) are still synchronous HTTP calls.** Only the scheduled poll runs fully async (see below) — command calls are one-shot, user/automation-triggered, not on a tight repeating schedule, so they're much less likely to trip Hubitat's load guardrail. If you automate these very frequently and see `LimitExceededException` on a command path, say so — those can be converted too.
 
 ## Troubleshooting
 
@@ -186,6 +187,8 @@ Per vacuum, under **`<vacuum> — Bin Reminder`**: set **"Notify to empty the bi
 **Commands silently do nothing** — enable debug logging on the app and check for `signature2`/auth errors in the logs; this usually means the access token expired and the automatic refresh failed, requiring a fresh **Re-login**.
 
 **"No Wyze vacuums found"** — confirm the vacuum is online in the Wyze app and its product model is `JA_RO2` (the 200S's internal model code).
+
+**`LimitExceededException: ... generates excessive hub load` repeating on every poll** — this was a real bug (fixed in 1.5.0): the scheduled poll used blocking `httpGet` calls, which Hubitat's platform throttles when a scheduled job does it repeatedly. The poll now uses `asynchttpGet` exclusively, which doesn't block the hub. If you're on an older version, re-import to pick up the fix. If it recurs after updating, it means something *else* is now doing repeated blocking calls — check whether a frequent automation is hammering a command (see the limitation above).
 
 ---
 

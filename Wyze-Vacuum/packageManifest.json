@@ -4,9 +4,9 @@
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "",
-  "dateReleased": "2026-07-31",
-  "releaseNotes": "1.4.0 — Adds Room Buttons: 8 fixed, no-argument cleanRoomSlot1()...cleanRoomSlot8() commands on the vacuum device, each assignable to a room in the app. Lets you build one-tap 'clean this room' Dashboard tiles (same device, different command per tile) without creating any per-room child devices.",
-  "version": "1.4.0",
+  "dateReleased": "2026-08-16",
+  "releaseNotes": "1.5.0 — Fixes LimitExceededException (\"generates excessive hub load\") firing on every scheduled poll. The poll now uses asynchttpGet exclusively instead of blocking httpGet, since Hubitat throttles apps that make synchronous HTTP calls from a scheduled job. Command dispatches (start/pause/dock/cleanRooms/etc.) remain synchronous for now, being one-shot and not on a tight repeating schedule.",
+  "version": "1.5.0",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.4.0"
+      "version": "1.5.0"
     }
   ]
 }

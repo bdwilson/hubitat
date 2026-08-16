@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.4.0 - Brian Wilson / bubba@bubba.org
+ * 1.5.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -450,47 +450,150 @@ private void discoverVacuums() {
 }
 
 // =================== Polling ===================
+//
+// The scheduled poll uses asynchttpGet exclusively -- Hubitat throttles apps
+// that make blocking HTTP calls from a scheduled job ("excessive hub load"),
+// which synchronous httpGet/httpPost from a cron-triggered handler reliably
+// tripped here. The two Venus reads (properties, status) are independent, so
+// they're fired as two separate async calls with their own handlers rather
+// than chained -- no need to synchronize their arrival. The Cleaning-session
+// end handler reads the device's last-known cleanTime attribute (kept fresh
+// by the properties poll throughout a session) instead of requiring a
+// simultaneous fresh fetch.
 
 def pollAllVacuums() {
     settings.selectedVacuums?.each { mac -> pollVacuum(mac) }
 }
 
 def pollVacuum(String mac) {
+    if (!getChildDevice(mac)) return
+    pollVacuumProps(mac)
+    pollVacuumStatus(mac)
+}
+
+private void pollVacuumProps(String mac) {
+    def keys = ["battary", "mode", "cleanlevel", "chargeState", "cleanSize", "cleanTime", "fault_code", "fault_type"]
+    venusGetAsync("/plugin/venus/get_iot_prop", [did: mac, keys: keys.join(",")], "handleVacuumPropsResponse", [mac: mac])
+}
+
+private void pollVacuumStatus(String mac) {
+    venusGetAsync("/plugin/venus/${mac}/status", [:], "handleVacuumStatusResponse", [mac: mac])
+}
+
+def handleVacuumPropsResponse(resp, data) {
+    def mac = data?.mac
     def d = getChildDevice(mac)
     if (!d) return
+    if (handleVenusAsyncError(resp, data, "handleVacuumPropsResponse")) return
+
+    def props = parseAsyncJson(resp)?.data?.props
+    if (props == null) { ifDebug("pollVacuum(${mac}): no props returned"); return }
+
+    if (props.battary != null)    d.sendEvent(name: "battery", value: toInt(props.battary), unit: "%")
+    if (props.mode != null)       d.sendEvent(name: "mode", value: vacuumModeDescription(props.mode))
+    if (props.cleanlevel != null) d.sendEvent(name: "suctionLevel", value: suctionLevelName(props.cleanlevel))
+    if (props.chargeState != null) d.sendEvent(name: "charging", value: (toInt(props.chargeState) == 1) ? "true" : "false")
+    if (props.cleanSize != null)  d.sendEvent(name: "cleanSize", value: toInt(props.cleanSize))
+    if (props.cleanTime != null)  d.sendEvent(name: "cleanTime", value: toInt(props.cleanTime))
+    updateFaultAttribute(d, mac, props)
+
+    d.sendEvent(name: "roomsPendingThisCycle", value: pendingRoomCount(mac))
+    d.sendEvent(name: "lastRefresh", value: new Date().format("MM/dd/yyyy HH:mm:ss", location.timeZone))
+}
+
+def handleVacuumStatusResponse(resp, data) {
+    def mac = data?.mac
+    def d = getChildDevice(mac)
+    if (!d) return
+    if (handleVenusAsyncError(resp, data, "handleVacuumStatusResponse")) return
+
+    def statusData = parseAsyncJson(resp)?.data
+    def workStatus = statusData?.heartBeat?.vacuum_work_status ?: statusData?.eventFlag?.vacuum_work_status
+    def newStatus = workStatus != null ? vacuumStatusDescription(workStatus) : null
+    if (newStatus == null) return
 
     def prevStatus = d.currentValue("status")
-
-    def keys = ["battary", "mode", "cleanlevel", "chargeState", "cleanSize", "cleanTime", "fault_code", "fault_type"]
-    def propsResp = venusRequest("GET", "/plugin/venus/get_iot_prop", [did: mac, keys: keys.join(",")])
-    def props = propsResp?.data?.props
-    if (props != null) {
-        if (props.battary != null)    d.sendEvent(name: "battery", value: toInt(props.battary), unit: "%")
-        if (props.mode != null)       d.sendEvent(name: "mode", value: vacuumModeDescription(props.mode))
-        if (props.cleanlevel != null) d.sendEvent(name: "suctionLevel", value: suctionLevelName(props.cleanlevel))
-        if (props.chargeState != null) d.sendEvent(name: "charging", value: (toInt(props.chargeState) == 1) ? "true" : "false")
-        if (props.cleanSize != null)  d.sendEvent(name: "cleanSize", value: toInt(props.cleanSize))
-        if (props.cleanTime != null)  d.sendEvent(name: "cleanTime", value: toInt(props.cleanTime))
-        updateFaultAttribute(d, mac, props)
-    } else {
-        ifDebug("pollVacuum(${mac}): no props returned")
-    }
-
-    def statusResp = venusRequest("GET", "/plugin/venus/${mac}/status", [:])
-    def workStatus = statusResp?.data?.heartBeat?.vacuum_work_status ?: statusResp?.data?.eventFlag?.vacuum_work_status
-    def newStatus = workStatus != null ? vacuumStatusDescription(workStatus) : null
-    if (newStatus != null) d.sendEvent(name: "status", value: newStatus)
+    d.sendEvent(name: "status", value: newStatus)
 
     if (prevStatus != "Cleaning" && newStatus == "Cleaning") {
         state.cleaningSessionStart = state.cleaningSessionStart ?: [:]
         state.cleaningSessionStart[mac] = now()
         if (settings.notifyCleaningStarted) sendVacuumNotification("${d.displayName} started cleaning.")
-    } else if (prevStatus == "Cleaning" && newStatus != null && newStatus != "Cleaning") {
-        handleCleaningSessionEnd(mac, props?.cleanTime, d, newStatus)
+    } else if (prevStatus == "Cleaning" && newStatus != "Cleaning") {
+        handleCleaningSessionEnd(mac, d.currentValue("cleanTime"), d, newStatus)
     }
 
     d.sendEvent(name: "roomsPendingThisCycle", value: pendingRoomCount(mac))
     d.sendEvent(name: "lastRefresh", value: new Date().format("MM/dd/yyyy HH:mm:ss", location.timeZone))
+}
+
+private void venusGetAsync(String path, Map query, String callbackHandler, Map data) {
+    if (!state.wyzeAccessToken) return
+
+    def nonce = now()
+    def requestId = md5Hex(md5Hex(nonce.toString()))
+    def signingKey = md5Hex("${state.wyzeAccessToken}${VENUS_SALT}")
+    def qp = new TreeMap()
+    (query ?: [:]).each { k, v -> qp[k] = v?.toString() }
+    qp["nonce"] = nonce.toString()
+    def sigString = qp.collect { k, v -> "${k}=${v}" }.join("&")
+    def headers = [
+        "access_token"   : state.wyzeAccessToken,
+        "requestid"      : requestId,
+        "appid"          : VENUS_APP_ID,
+        "appinfo"        : "wyze_android_${APP_VERSION}",
+        "phoneid"        : state.wyzePhoneId,
+        "User-Agent"     : "wyze_android_${APP_VERSION}",
+        "Accept-Encoding": "gzip",
+        "signature2"     : hmacMd5Hex(signingKey, sigString)
+    ]
+
+    def asyncData = new LinkedHashMap(data ?: [:])
+    asyncData["_venusPath"] = path
+    asyncData["_venusQuery"] = query
+    asyncData["_retried"] = false
+
+    try {
+        asynchttpGet(callbackHandler, [uri: VENUS_BASE, path: path, query: qp, headers: headers, timeout: 20], asyncData)
+    } catch (e) {
+        log.error "Wyze Venus async GET ${path} failed to dispatch: ${e}"
+    }
+}
+
+// Returns true if the caller should stop (either a retry was dispatched, or a
+// non-recoverable error was logged); false means the response is good to parse.
+private boolean handleVenusAsyncError(resp, Map data, String callbackHandler) {
+    Integer status = null
+    try { status = resp?.status as Integer } catch (e) { status = null }
+    boolean hasError = false
+    try { hasError = resp?.hasError() as boolean } catch (e) { hasError = (status != null && status >= 400) }
+    if (!hasError) return false
+
+    def mac = data?.mac
+    if (status in [401, 403] && !data?._retried) {
+        ifDebug("Wyze Venus ${callbackHandler} got ${status} for ${mac}, refreshing token and retrying once")
+        if (refreshWyzeToken()) {
+            def retryData = new LinkedHashMap(data)
+            retryData["_retried"] = true
+            venusGetAsync(data._venusPath, data._venusQuery, callbackHandler, retryData)
+            return true
+        }
+    }
+    def errMsg = null
+    try { errMsg = resp?.getErrorMessage() } catch (e) { errMsg = resp?.error }
+    log.error "Wyze Venus ${callbackHandler} failed (${status}) for ${mac}: ${errMsg}"
+    return true
+}
+
+private Map parseAsyncJson(resp) {
+    try {
+        if (resp?.json) return resp.json
+        def text = resp?.data
+        return text ? new JsonSlurper().parseText(text) : null
+    } catch (e) {
+        log.error "Wyze Vacuum: failed to parse async response: ${e}"
+        return null
+    }
 }
 
 private void updateFaultAttribute(def d, String mac, Map props) {
