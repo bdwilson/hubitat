@@ -188,7 +188,9 @@ Per vacuum, under **`<vacuum> — Bin Reminder`**: set **"Notify to empty the bi
 
 **"No Wyze vacuums found"** — confirm the vacuum is online in the Wyze app and its product model is `JA_RO2` (the 200S's internal model code).
 
-**`LimitExceededException: ... generates excessive hub load` repeating on every poll** — this was a real bug (fixed in 1.5.0): the scheduled poll used blocking `httpGet` calls, which Hubitat's platform throttles when a scheduled job does it repeatedly. The poll now uses `asynchttpGet` exclusively, which doesn't block the hub. If you're on an older version, re-import to pick up the fix. If it recurs after updating, it means something *else* is now doing repeated blocking calls — check whether a frequent automation is hammering a command (see the limitation above).
+**`LimitExceededException: ... generates excessive hub load` repeating on every poll** — this was a real bug (fixed in 1.5.0): the scheduled poll used blocking `httpGet` calls, which Hubitat's platform throttles when a scheduled job does it repeatedly. The poll now uses `asynchttpGet` exclusively, which doesn't block the hub. If you're on an older version, re-import to pick up the fix.
+
+If the same error instead shows the poll's *async callback method* (`handleVacuumPropsResponse`/`handleVacuumStatusResponse`) rather than `pollAllVacuums`, that's a second variant fixed in 1.5.1: the 401/403 retry path was still making a **synchronous** token-refresh call from inside the async callback, which trips the same guardrail, just relocated. Token refresh is now fully async too. If you were seeing this, also check whether your Wyze session had simply gone stale for an extended period (the `lastRefresh` attribute frozen at an old date is the tell) — if refresh keeps failing even after updating, click **Re-login** in the app to get a fresh session, since the stored refresh token itself may no longer be valid.
 
 ---
 

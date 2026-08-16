@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.5.0 - Brian Wilson / bubba@bubba.org
+ * 1.5.1 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -528,7 +528,10 @@ def handleVacuumStatusResponse(resp, data) {
 }
 
 private void venusGetAsync(String path, Map query, String callbackHandler, Map data) {
-    if (!state.wyzeAccessToken) return
+    if (!state.wyzeAccessToken) {
+        log.warn "Wyze Vacuum: skipping ${path} for ${data?.mac} -- not logged in. Click Log In in the app."
+        return
+    }
 
     def nonce = now()
     def requestId = md5Hex(md5Hex(nonce.toString()))
@@ -571,13 +574,11 @@ private boolean handleVenusAsyncError(resp, Map data, String callbackHandler) {
 
     def mac = data?.mac
     if (status in [401, 403] && !data?._retried) {
-        ifDebug("Wyze Venus ${callbackHandler} got ${status} for ${mac}, refreshing token and retrying once")
-        if (refreshWyzeToken()) {
-            def retryData = new LinkedHashMap(data)
-            retryData["_retried"] = true
-            venusGetAsync(data._venusPath, data._venusQuery, callbackHandler, retryData)
-            return true
-        }
+        ifDebug("Wyze Venus ${callbackHandler} got ${status} for ${mac}, refreshing token (async) and retrying once")
+        def retryContext = new LinkedHashMap(data)
+        retryContext["_retryCallback"] = callbackHandler
+        refreshTokenAsync(retryContext)
+        return true
     }
     def errMsg = null
     try { errMsg = resp?.getErrorMessage() } catch (e) { errMsg = resp?.error }
@@ -593,6 +594,64 @@ private Map parseAsyncJson(resp) {
     } catch (e) {
         log.error "Wyze Vacuum: failed to parse async response: ${e}"
         return null
+    }
+}
+
+// Async token refresh so a 401/403 encountered inside an async poll callback
+// never has to make a blocking call to recover -- a synchronous call from
+// inside an async handler tripped Hubitat's load guardrail just as much as
+// the original synchronous poll did, just relocated to a different line.
+private void refreshTokenAsync(Map retryContext) {
+    if (!state.wyzeRefreshToken) {
+        log.error "Wyze Vacuum: no refresh token available -- click Re-login in the app."
+        return
+    }
+    def payload = new LinkedHashMap()
+    payload["refresh_token"] = state.wyzeRefreshToken
+    payload["sv"] = "d91914dd28b7492ab9dd17f7707d35a3"
+    payload["access_token"] = state.wyzeAccessToken
+    payload["app_name"] = "com.hualai"
+    payload["app_ver"] = "com.hualai___${APP_VERSION}"
+    payload["app_version"] = APP_VERSION
+    payload["phone_id"] = state.wyzePhoneId
+    payload["phone_system_type"] = "2"
+    payload["sc"] = WYZE_SC
+    payload["ts"] = now()
+
+    try {
+        asynchttpPost("handleTokenRefreshResponse", [
+            uri: API_BASE, path: "/app/user/refresh_token", requestContentType: "application/json",
+            headers: ["Connection": "keep-alive"], body: JsonOutput.toJson(payload), timeout: 20
+        ], new LinkedHashMap(retryContext ?: [:]))
+    } catch (e) {
+        log.error "Wyze Vacuum: async token refresh dispatch failed: ${e}"
+    }
+}
+
+def handleTokenRefreshResponse(resp, data) {
+    boolean hasError = false
+    try { hasError = resp?.hasError() as boolean } catch (e) { hasError = false }
+
+    Map result = hasError ? null : parseAsyncJson(resp)
+    def tokenData = result?.data ?: result
+
+    if (!tokenData?.access_token) {
+        def errMsg = null
+        try { errMsg = resp?.getErrorMessage() } catch (e) { errMsg = resp?.error }
+        log.error "Wyze Vacuum: async token refresh failed for ${data?.mac}: ${result ?: errMsg}. If this keeps happening, click Re-login in the app."
+        return
+    }
+
+    state.wyzeAccessToken = tokenData.access_token
+    if (tokenData.refresh_token) state.wyzeRefreshToken = tokenData.refresh_token
+    ifDebug("Wyze token refresh succeeded (async)")
+
+    def path = data?._venusPath
+    def callbackHandler = data?._retryCallback
+    if (path && callbackHandler) {
+        def retryData = new LinkedHashMap(data)
+        retryData["_retried"] = true
+        venusGetAsync(path, data?._venusQuery, callbackHandler, retryData)
     }
 }
 

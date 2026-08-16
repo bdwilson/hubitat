@@ -5,8 +5,8 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "",
   "dateReleased": "2026-08-16",
-  "releaseNotes": "1.5.0 — Fixes LimitExceededException (\"generates excessive hub load\") firing on every scheduled poll. The poll now uses asynchttpGet exclusively instead of blocking httpGet, since Hubitat throttles apps that make synchronous HTTP calls from a scheduled job. Command dispatches (start/pause/dock/cleanRooms/etc.) remain synchronous for now, being one-shot and not on a tight repeating schedule.",
-  "version": "1.5.0",
+  "releaseNotes": "1.5.1 — Fixes a second LimitExceededException variant: the 401/403 retry path inside the async poll callbacks was still calling the synchronous, blocking token-refresh method, tripping the same excessive-hub-load guardrail from a different line. Token refresh is now fully async (refreshTokenAsync/handleTokenRefreshResponse), so no blocking calls remain anywhere in the poll path. Also logs a clear warning instead of silently no-op'ing when there's no active Wyze session.",
+  "version": "1.5.1",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.5.0"
+      "version": "1.5.1"
     }
   ]
 }
