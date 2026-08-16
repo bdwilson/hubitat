@@ -5,8 +5,8 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "",
   "dateReleased": "2026-08-16",
-  "releaseNotes": "1.5.1 — Fixes a second LimitExceededException variant: the 401/403 retry path inside the async poll callbacks was still calling the synchronous, blocking token-refresh method, tripping the same excessive-hub-load guardrail from a different line. Token refresh is now fully async (refreshTokenAsync/handleTokenRefreshResponse), so no blocking calls remain anywhere in the poll path. Also logs a clear warning instead of silently no-op'ing when there's no active Wyze session.",
-  "version": "1.5.1",
+  "releaseNotes": "1.5.2 — Adds the standard Switch capability (on()/off(), switch attribute) so the vacuum works as a plain switch in Alexa/Google routines, Rule Machine, and Dashboard, with no separate virtual switch device needed. Which action on()/off() perform is configurable per device (default: on -> Clean Next Rooms, off -> Dock). The switch attribute is also kept in sync with real vacuum state from polling, not just the last command tapped.",
+  "version": "1.5.2",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -14,7 +14,7 @@
       "namespace": "brianwilson-hubitat",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-Driver.groovy",
       "required": true,
-      "version": "1.4.0"
+      "version": "1.5.0"
     }
   ],
   "apps": [
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.5.1"
+      "version": "1.5.2"
     }
   ]
 }

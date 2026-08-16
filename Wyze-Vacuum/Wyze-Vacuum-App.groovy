@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.5.1 - Brian Wilson / bubba@bubba.org
+ * 1.5.2 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -514,6 +514,10 @@ def handleVacuumStatusResponse(resp, data) {
 
     def prevStatus = d.currentValue("status")
     d.sendEvent(name: "status", value: newStatus)
+    // Keep the Switch capability's "switch" attribute honest against real
+    // vacuum state, not just the last on()/off() the user tapped -- it flips
+    // to "off" on its own once a clean actually finishes, gets docked, etc.
+    d.sendEvent(name: "switch", value: newStatus == "Cleaning" ? "on" : "off")
 
     if (prevStatus != "Cleaning" && newStatus == "Cleaning") {
         state.cleaningSessionStart = state.cleaningSessionStart ?: [:]

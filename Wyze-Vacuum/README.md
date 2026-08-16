@@ -47,6 +47,7 @@ Hubitat creates a child device per vacuum, named after its Wyze nickname.
 | Attribute | Type | Description |
 |---|---|---|
 | `battery` | number | Battery level (%) |
+| `switch` | enum | `on` / `off` — see Switch Capability below |
 | `status` | string | `Standby` / `Cleaning` / `Returning to charge` / `Docked` / `Mapping` / `Paused` / `Error` |
 | `mode` | string | Finer-grained device mode text |
 | `suctionLevel` | string | `Quiet` / `Standard` / `Strong` |
@@ -75,6 +76,22 @@ Hubitat creates a child device per vacuum, named after its Wyze nickname.
 | `learnRoomTimes()` | Start Learning Mode — cleans each rotation room by itself to directly measure its clean time (see below) |
 | `cancelLearning()` | Stop Learning Mode after the room currently in progress finishes |
 | `cleanRoomSlot1()` … `cleanRoomSlot8()` | Clean whichever room is assigned to that slot (see Room Buttons below) — no arguments, so it's Dashboard-tile-friendly |
+| `on()` / `off()` | Standard Switch capability — see below |
+
+---
+
+## Switch Capability
+
+The vacuum implements the standard `Switch` capability (`on()`/`off()`, `switch` attribute) so it works as a plain switch anywhere Hubitat expects one — Alexa/Google Home routines, Rule Machine's switch triggers/conditions, a basic switch tile on Dashboard — with no separate virtual switch device required.
+
+What `on()`/`off()` actually do is configurable per device, under the driver's own preferences (device page → Preferences):
+
+| Setting | Options | Default |
+|---|---|---|
+| Switch "on" action | Clean Next Rooms (rotation) / Start (whole house) | **Clean Next Rooms** |
+| Switch "off" action | Dock / Pause | **Dock** |
+
+The `switch` attribute isn't just a dumb toggle — it's kept in sync with the vacuum's real state on every poll (`on` while `status` is `Cleaning`, `off` otherwise), so it correctly flips to `off` on its own once a clean finishes, gets docked, errors out, etc., not only when you explicitly call `off()`.
 
 ---
 

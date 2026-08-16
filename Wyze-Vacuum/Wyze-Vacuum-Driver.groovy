@@ -1,7 +1,7 @@
 /**
  * Wyze Robot Vacuum Driver
  *
- * 1.4.0 - Brian Wilson / bubba@bubba.org
+ * 1.5.0 - Brian Wilson / bubba@bubba.org
  *
  * Child driver for the Wyze Vacuum Connect App. All network calls happen in the
  * parent app (which owns the Wyze session); this driver just relays commands to it
@@ -22,6 +22,7 @@ metadata {
     ) {
         capability "Battery"
         capability "Refresh"
+        capability "Switch"
 
         command "start"
         command "pause"
@@ -63,6 +64,12 @@ metadata {
     }
 
     preferences {
+        input "switchOnAction", "enum", title: "Switch \"on\" action",
+            options: ["cleanNextRooms": "Clean Next Rooms (rotation)", "start": "Start (whole house)"],
+            defaultValue: "cleanNextRooms", required: true
+        input "switchOffAction", "enum", title: "Switch \"off\" action",
+            options: ["dock": "Dock", "pause": "Pause"],
+            defaultValue: "dock", required: true
         input "isDebug", "bool", title: "Enable Debug Logging", defaultValue: false
     }
 }
@@ -73,6 +80,24 @@ def installed() {
 
 def updated() {
     if (isDebug) runIn(3600, logsOff)
+}
+
+// Switch capability -- lets the vacuum be turned on/off like any other
+// switch (Alexa/Google routines, Rule Machine switch triggers, a plain
+// switch Dashboard tile) without a separate virtual device. Which real
+// action "on"/"off" perform is configurable above.
+def on() {
+    def action = switchOnAction ?: "cleanNextRooms"
+    ifDebug("on() called -> ${action}")
+    sendEvent(name: "switch", value: "on")
+    if (action == "start") start() else cleanNextRooms()
+}
+
+def off() {
+    def action = switchOffAction ?: "dock"
+    ifDebug("off() called -> ${action}")
+    sendEvent(name: "switch", value: "off")
+    if (action == "pause") pause() else dock()
 }
 
 def start() {
