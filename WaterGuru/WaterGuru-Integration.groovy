@@ -1,7 +1,7 @@
 /**
  * WaterGuru Integration App
  *
- * 2.2.4 - Brian Wilson / bubba@bubba.org
+ * 2.3.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration — no external Python/Flask server required.
  * Authenticates directly with AWS Cognito (SRP flow) and calls the
@@ -32,6 +32,20 @@
  *    (Status, statusMsg) still reflect the raw WaterGuru state.
  *  - Import URL fix (2.2.4): corrected importUrl in both app and driver to
  *    point to the bdwilson/hubitat repository on master.
+ *  - Full chemistry panel (2.3.0): parse and surface every reading WaterGuru
+ *    returns — Total Alkalinity, Calcium Hardness, Cyanuric Acid, Salt,
+ *    Phosphates, Copper, Iron, Saturation Index, Total Hardness — each with a
+ *    per-reading RED/YELLOW/GREEN status and effective target, plus the lab-
+ *    results timestamp so lab-sourced (Salt/Phosphates/Copper/Iron) readings
+ *    are identifiable as stale. Also surfaces pool volume (sizeGallons),
+ *    WaterGuru's own "add X of chemical Y" advice (doseAdvice), and the
+ *    equipment/product config (chlorine + acid type and strengths, filter,
+ *    surface, cover) — address and other PII deliberately excluded. Additive:
+ *    existing attributes are unchanged.
+ *    Also: (a) persist the Cognito refresh token after an SRP login so polls
+ *    use REFRESH_TOKEN_AUTH instead of a full handshake every time (the
+ *    refresh path was previously unreachable); (b) convert water temperature
+ *    to the hub's °C/°F scale rather than always emitting the raw °F value.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at:
@@ -472,7 +486,17 @@ private Map getAuthTokens() {
         state.wgRefreshToken     = null
         state.wgRefreshTokenTime = null
     }
-    return srpAuthenticate()
+    // Full SRP login. Persist the refresh token so subsequent polls can use
+    // the (much cheaper) REFRESH_TOKEN_AUTH path above instead of a fresh SRP
+    // handshake every time. Without this the refresh branch is unreachable —
+    // state.wgRefreshToken is never set — and every poll does a full login.
+    // A refresh response omits RefreshToken, so only overwrite when present.
+    def ar = srpAuthenticate()
+    if (ar?.RefreshToken) {
+        state.wgRefreshToken     = ar.RefreshToken
+        state.wgRefreshTokenTime = now()
+    }
+    return ar
 }
 
 // =================== AWS Signature V4 ===================
@@ -606,7 +630,12 @@ private void processWaterGuruData(def response) {
 
         ifDebug("Processing: ${item.name}")
         def name                 = item.name
+        // WaterGuru reports water temperature in °F; convert to the hub's
+        // configured scale so a °C hub doesn't display an °F magnitude.
+        def tempScale            = location.temperatureScale ?: "F"
         def temp                 = item.waterTemp
+        if (temp != null && tempScale == "C")
+            temp = Math.round(((temp - 32) / 1.8) * 10) / 10.0
         def status               = item.status
         def LastMeasurementHuman = item.latestMeasureTimeHuman
         def LastMeasurement      = item.latestMeasureTime
@@ -642,13 +671,63 @@ private void processWaterGuruData(def response) {
         }
         if (!notifyStatusMsg) notifyStatusMsg = "None"
 
-        def index = item.measurements?.findIndexOf { it.type == "FREE_CL" }
-        def freeChlorine = (index != null && index >= 0) ? item.measurements[index].floatValue : null
-        index = item.measurements?.findIndexOf { it.type == "PH" }
-        def pH = (index != null && index >= 0) ? item.measurements[index].floatValue : null
-        index = item.measurements?.findIndexOf { it.type == "SKIMMER_FLOW" }
-        def rate = (index != null && index >= 0) ? item.measurements[index].intValue : null
+        // WaterGuru's own dosing recommendations, surfaced verbatim. Each alert
+        // (water-body and per-measurement) may carry advice.action.summary such
+        // as "Add 2.4 cups of dry acid"; join them for the doseAdvice attribute.
+        def adviceLines = []
+        def collectAdvice = { al -> def s = al?.advice?.action?.summary; if (s) adviceLines << s.toString() }
+        rawAlerts.each { collectAdvice(it) }
+        item.measurements?.each { mm -> mm.alerts?.each { collectAdvice(it) } }
+        def doseAdvice = adviceLines ? adviceLines.unique().join("\n") : "None"
+
+        // Index every measurement by WaterGuru type so the whole panel is
+        // available, not just the three the app historically surfaced.
+        def measByType = [:]
+        item.measurements?.each { m -> if (m.type) measByType[m.type] = m }
+        def measVal  = { String t -> def m = measByType[t]; m == null ? null : (m.floatValue != null ? m.floatValue : m.intValue) }
+        def measStat = { String t -> measByType[t]?.status }
+        def measTgt  = { String t -> measByType[t]?.target }
+
+        def freeChlorine = measVal("FREE_CL")
+        def pH           = measVal("PH")
+        def rate         = measVal("SKIMMER_FLOW")
         ifDebug("measurements: freeChlorine=${freeChlorine} pH=${pH} rate=${rate}")
+
+        // Full chemistry panel (2.1.0): the readings older versions discarded.
+        // Salt/Phosphates/Copper/Iron are lab-sourced (see labResultsTime) and
+        // may be stale; they are still surfaced so a rule/dashboard can decide.
+        def totalAlkalinity     = measVal("TA")
+        def calciumHardness     = measVal("CH")
+        def cyanuricAcid        = measVal("CYA")
+        def saturationIndex     = measVal("SATURATION_INDEX")
+        def totalHardness       = measVal("TH")
+        def salt                = measVal("SALT")
+        def phosphates          = measVal("PHOSPHATES")
+        def copper              = measVal("COPPER")
+        def iron                = measVal("IRON")
+        def labResultsTime      = item.labResultsTime
+        def labResultsTimeHuman = item.labResultsTimeHuman
+
+        // Pool volume + equipment/product config from WaterGuru's pool settings
+        // (the waterBody sub-object). Address and other PII are intentionally
+        // not read. Product fields let a dosing app adopt the user's own products.
+        def wbCfg              = item.waterBody ?: [:]
+        def poolVolume         = wbCfg.sizeGallons
+        def sanitizerType      = item.sanitizerType
+        def chlorineType       = wbCfg.userCl
+        def chlorineProductPct = wbCfg.userClLiqProductPct
+        def calHypoPct         = wbCfg.userCalHypoPct
+        def acidType           = wbCfg.userAcid
+        def acidMuriaticPct    = wbCfg.userAcidMuriaticPct
+        def acidBisulfatePct   = wbCfg.userAcidBisulfatePct
+        def equipmentParts     = []
+        if (wbCfg.type)       equipmentParts << wbCfg.type.toString().toLowerCase().replace("_", " ")
+        if (wbCfg.surface)    equipmentParts << wbCfg.surface.toString().toLowerCase()
+        if (wbCfg.filterType) equipmentParts << "${wbCfg.filterType.toString().toLowerCase()} filter"
+        if (wbCfg.cover)      equipmentParts << "${wbCfg.cover.toString().toLowerCase()} cover"
+        def equipment          = equipmentParts ? equipmentParts.join(" · ") : null
+
+        def index   // reused by the pod / refillable lookups below
 
         def rssi = item.pods ? item.pods[0]?.rssiInfo?.rssi : null
         def CassetteStatus, batteryStatus, CassettePercent, CassetteTimeLeft, CassetteChecksLeft, batteryPct
@@ -690,7 +769,7 @@ private void processWaterGuruData(def response) {
         if (d.currentValue("CassettePercent") != CassettePercent || force)
             d.sendEvent(name: "CassettePercent", value: CassettePercent, isStateChange: true)
         if (d.currentValue("temperature") != temp || force)
-            d.sendEvent(name: "temperature", value: temp, isStateChange: true)
+            d.sendEvent(name: "temperature", value: temp, unit: "°${tempScale}", isStateChange: true)
         if (d.currentValue("CassetteStatus") != CassetteStatus || force) {
             d.sendEvent(name: "CassetteStatus", value: CassetteStatus, isStateChange: true)
             switch (CassetteStatus) {
@@ -720,6 +799,61 @@ private void processWaterGuruData(def response) {
             d.sendEvent(name: "pH", value: pH, isStateChange: true)
         if (d.currentValue("rate") != rate || force)
             d.sendEvent(name: "rate", unit: "GPM", value: rate, isStateChange: true)
+
+        // ---- Full chemistry panel (2.1.0) --------------------------------
+        // Change-gated emitter, mirroring the per-attribute pattern above.
+        // Skips nulls so absent readings don't clobber a prior value.
+        def emit = { String attr, def val ->
+            if (val != null && (d.currentValue(attr)?.toString() != val.toString() || force))
+                d.sendEvent(name: attr, value: val, isStateChange: true)
+        }
+
+        emit("totalAlkalinity",  totalAlkalinity)
+        emit("calciumHardness",  calciumHardness)
+        emit("cyanuricAcid",     cyanuricAcid)
+        emit("saturationIndex",  saturationIndex)
+        emit("totalHardness",    totalHardness)
+        emit("salt",             salt)
+        emit("phosphates",       phosphates)
+        emit("copper",           copper)
+        emit("iron",             iron)
+
+        emit("freeChlorineStatus",    measStat("FREE_CL"))
+        emit("pHStatus",              measStat("PH"))
+        emit("skimmerFlowStatus",     measStat("SKIMMER_FLOW"))
+        emit("totalAlkalinityStatus", measStat("TA"))
+        emit("calciumHardnessStatus", measStat("CH"))
+        emit("cyanuricAcidStatus",    measStat("CYA"))
+        emit("saturationIndexStatus", measStat("SATURATION_INDEX"))
+        emit("totalHardnessStatus",   measStat("TH"))
+        emit("saltStatus",            measStat("SALT"))
+        emit("phosphatesStatus",      measStat("PHOSPHATES"))
+        emit("copperStatus",          measStat("COPPER"))
+        emit("ironStatus",            measStat("IRON"))
+
+        // Targets: per-reading target, falling back to the waterBody's
+        // *TargetEffective for readings that expose one there.
+        emit("freeChlorineTarget",    measTgt("FREE_CL")      ?: item.freeClTargetEffective)
+        emit("pHTarget",              measTgt("PH")           ?: item.phTargetEffective)
+        emit("skimmerFlowTarget",     measTgt("SKIMMER_FLOW") ?: item.flowGpmTargetEffective)
+        emit("totalAlkalinityTarget", measTgt("TA")           ?: item.taTargetEffective)
+        emit("calciumHardnessTarget", measTgt("CH")           ?: item.chTargetEffective)
+        emit("cyanuricAcidTarget",    measTgt("CYA")          ?: item.cyaTargetEffective)
+        emit("saltTarget",            measTgt("SALT")         ?: item.saltTargetEffective)
+
+        emit("labResultsTime",        labResultsTime)
+        emit("labResultsTimeHuman",   labResultsTimeHuman)
+
+        emit("poolVolume",            poolVolume)
+        emit("doseAdvice",            doseAdvice)
+        emit("sanitizerType",         sanitizerType)
+        emit("chlorineType",          chlorineType)
+        emit("chlorineProductPct",    chlorineProductPct)
+        emit("calHypoPct",            calHypoPct)
+        emit("acidType",              acidType)
+        emit("acidMuriaticPct",       acidMuriaticPct)
+        emit("acidBisulfatePct",      acidBisulfatePct)
+        emit("equipment",             equipment)
 
         evaluateNotifications(id, name, [
             lastMeasurement : LastMeasurement,
