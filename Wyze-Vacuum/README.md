@@ -125,7 +125,7 @@ Wyze's app lets the vacuum clean specific rooms from its saved map. This integra
 
 1. After the vacuum has completed at least one full clean and has named rooms in the Wyze app, click **Discover Rooms** on the app's config page. This decodes the vacuum's current map (Wyze returns it as a zlib-compressed protobuf blob — parsed directly in Groovy) and lists the rooms it found.
 2. Pick which of those rooms should participate in the rotation, and a rotation mode:
-   - **Fixed number of rooms per run** — e.g. clean 2 rooms every time it's triggered.
+   - **Fixed number of rooms per run** — e.g. clean 2 rooms every time it's triggered. Defaults to **1**: a single-room dispatch is always ground truth for that room's clean time (nothing to split/infer), and since each run always picks whichever room is most overdue, you'll naturally cycle through every room in turn — so leaving this at 1 doubles as a no-effort way to build up real per-room timing data through normal use. Raise it once every room's been cleaned at least once, if you want faster multi-room runs.
    - **Time budget per run** — e.g. clean as many rooms as fit in ~30 minutes. The app learns each room's actual clean time from real runs (starting from a 15-minute guess) and refines the estimate over time, so the time budget gets more accurate the longer you use it.
 3. Set a **cycle length** in days (default 7) for normal-traffic rooms. A room becomes eligible again once it's gone that long without being cleaned — there's no hard weekly reset, it's a rolling "oldest first" queue, so it self-corrects if you trigger it more or less often than expected.
 3a. Optionally mark some rooms **High-traffic** and give them their own (shorter) cycle length, e.g. 3 days for roughly twice a week — see below.
@@ -197,6 +197,12 @@ Normal rotation runs often clean several rooms in one dispatch, so their timing 
 5. **Cancel Learning** stops the queue after the room currently in progress finishes (it doesn't interrupt an in-progress room).
 
 Learning Mode also updates each room's "last cleaned" timestamp like any other room clean, so it counts toward your rotation cycle too — it's not wasted cleaning.
+
+In practice, you may not need Learning Mode at all: leaving **Rooms per run** at its default of 1 (see Room Rotation above) gets you the same real per-room measurements gradually through normal `cleanNextRooms()` triggers, since a single-room dispatch is always ground truth. Learning Mode is really just that same mechanism run as one dedicated front-loaded sweep instead of spread out over your normal week.
+
+### Manually setting room times
+
+Under `<vacuum> — Room Timing`, below "Known room times," each discovered room has its own editable minutes field, plus a **Save Room Times** button. This is a direct override — useful after reinstalling this app (which resets all learned timing data, since it's stored in app state, not persisted anywhere else) so you don't have to re-earn every room's timing from scratch, or just to correct a number you know is wrong. Leave a field blank to leave that room's current estimate untouched; only fields you actually fill in get applied when you click Save. The fields show whatever was known as of when the page last loaded, not live — reopen the page to see current learned numbers before editing.
 
 ### Notes
 

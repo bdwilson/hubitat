@@ -17,6 +17,21 @@ Does it abandon the current room and switch immediately? No evidence of
 command queuing in the reverse-engineered API, so "abandons and switches" is
 the working assumption, but unconfirmed.
 
+## ~~8. Default to 1 room per run + manual room-time overrides~~ — DONE (1.12.0)
+
+User feedback: the high-traffic-tier/urgency-fraction machinery above (item
+7) is more than actually needed for the core "know each room's real clean
+time" goal -- if rotation dispatches exactly one room per run, every run is
+already ground truth (see `finishActiveCleanRun`'s single-room branch), and
+since rotation always advances to the currently-most-overdue room, repeated
+`cleanNextRooms()` triggers naturally cycle through every room over time.
+So: `rotationCount_${mac}` now defaults to 1 instead of 2, with a paragraph
+explaining to raise it once every room has real timing data. Also added a
+manual override UI (`<vacuum> — Room Timing`): one editable minutes field
+per discovered room + a "Save Room Times" button, so timing data can be
+restored/corrected by hand (state.roomAvgMinutes is app-local and doesn't
+survive an app reinstall).
+
 ## ~~7. High-traffic rooms — clean some rooms more often than others~~ — DONE (1.11.0)
 
 Added a "High-traffic rooms" multi-select per vacuum with its own (shorter)

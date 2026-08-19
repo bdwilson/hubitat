@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.11.0 - Brian Wilson / bubba@bubba.org
+ * 1.12.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -166,7 +166,16 @@ def mainPage() {
                                 if ((settings["rotationMode_${mac}"] ?: "count") == "time") {
                                     input "rotationMinutes_${mac}", "number", title: "Target minutes per run", defaultValue: 30, required: true
                                 } else {
-                                    input "rotationCount_${mac}", "number", title: "Rooms per run", defaultValue: 2, required: true
+                                    // Default is 1, not more, on purpose: a single-room dispatch is always
+                                    // ground truth for that room's clean time (see finishActiveCleanRun --
+                                    // nothing to split, so the real elapsed time overwrites the estimate
+                                    // outright). Since each run always picks whichever room is most overdue,
+                                    // rotation naturally cycles through every room in turn -- keep this at 1
+                                    // until every room has been cleaned at least once and you've built up a
+                                    // real timing corpus, then raise it if you want faster multi-room runs.
+                                    input "rotationCount_${mac}", "number", title: "Rooms per run", defaultValue: 1, required: true
+                                    paragraph "Tip: leave this at 1 until every rotation room has been cleaned at least once -- each single-room " +
+                                              "run directly measures that room's real clean time. Raise it later once you have real timings for everything."
                                 }
                                 input "rotationCycleDays_${mac}", "number",
                                     title: "Cycle length (days) for normal-traffic rooms — a room becomes eligible again after this many days, even if already cleaned this cycle",
@@ -208,6 +217,20 @@ def mainPage() {
                             def known = state.discoveredRooms?.getAt(mac) ?: []
                             def lines = avg.collect { k, v -> "${known.find { it.id.toString() == k }?.name ?: "Room ${k}"}: ${String.format('%.1f', (v as Double))} min" }
                             paragraph "Known room times — ${lines.join(', ')}"
+                        }
+
+                        def roomsForTiming = state.discoveredRooms?.getAt(mac)
+                        if (roomsForTiming) {
+                            paragraph "Manually set or correct a room's clean-time estimate below — e.g. after reinstalling this app (which resets " +
+                                      "learned timing data) so you don't have to re-earn it from scratch, or to fix a number you know is wrong. " +
+                                      "Leave a field blank to leave that room's estimate untouched; only fields you fill in get applied. Fields show " +
+                                      "the value as of when this page last loaded, not live — reopen the page to see the latest learned numbers."
+                            roomsForTiming.each { room ->
+                                input "roomTimeOverride_${mac}_${room.id}", "decimal",
+                                    title: "${room.name} (minutes)",
+                                    defaultValue: (avg?.getAt(room.id.toString())), required: false, width: 4
+                            }
+                            input "btnSetRoomTimes_${mac}", "button", title: "Save Room Times", width: 3
                         }
                     }
 
@@ -296,7 +319,33 @@ def appButtonHandler(btn) {
             d?.sendEvent(name: "lastCleanedRooms", value: names.join(", "))
             if (d) updateRotationPreviewAttributes(d, mac)
         }
+    } else if (btn.startsWith("btnSetRoomTimes_")) {
+        setRoomTimesManually(btn - "btnSetRoomTimes_")
     }
+}
+
+// Lets a room's clean-time estimate be set/corrected directly, rather than
+// only ever earned back through real cleaning runs -- e.g. after
+// reinstalling this app (state.roomAvgMinutes is app-local and doesn't
+// survive that) so timing data doesn't have to be re-learned from scratch,
+// or to fix a number known to be wrong. Only rooms with a filled-in field
+// are touched; anything left blank keeps whatever estimate it already had.
+private void setRoomTimesManually(String mac) {
+    def known = state.discoveredRooms?.getAt(mac) ?: []
+    if (!known) return
+
+    state.roomAvgMinutes = state.roomAvgMinutes ?: [:]
+    def avgMap = state.roomAvgMinutes[mac] ?: [:]
+    def updated = []
+    known.each { room ->
+        def val = settings["roomTimeOverride_${mac}_${room.id}"]
+        if (val != null) {
+            avgMap[room.id.toString()] = (val as Double)
+            updated << room.name
+        }
+    }
+    state.roomAvgMinutes[mac] = avgMap
+    ifDebug("setRoomTimesManually(${mac}): manually set ${updated}")
 }
 
 // =================== Lifecycle ===================
