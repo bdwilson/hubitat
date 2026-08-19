@@ -5,8 +5,8 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "",
   "dateReleased": "2026-08-19",
-  "releaseNotes": "1.12.0 — Rooms per run now defaults to 1: a single-room dispatch is always ground truth for that room's clean time, and since rotation always picks the most-overdue room, this builds a real per-room timing corpus through normal use with no separate Learning Mode pass needed. Also adds manual room-time overrides under Room Timing (per-room editable minutes fields + Save Room Times) so timing data can be corrected or restored by hand, e.g. after reinstalling the app resets learned state.",
-  "version": "1.12.0",
+  "releaseNotes": "1.13.0 — Fixes a real mis-crediting bug: a room-clean run that returns to charge because the battery got critically low (not because the room actually finished) was being treated as a genuine finish, wrongly crediting the room as done and locking in a too-short time estimate. Now detected via the battery level at the transition and left 'active' (excluded from re-picking, not credited) with elapsed time carried forward, resolving itself once the vacuum resumes and finishes for real -- or force-finished after 3+ hours parked with no resume, so nothing gets stuck.",
+  "version": "1.13.0",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.12.0"
+      "version": "1.13.0"
     }
   ]
 }

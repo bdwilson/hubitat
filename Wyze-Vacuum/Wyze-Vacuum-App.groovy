@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.12.0 - Brian Wilson / bubba@bubba.org
+ * 1.13.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -672,6 +672,7 @@ def handleVacuumStatusResponse(resp, data) {
     }
     state.lastKnownStatus[mac] = newStatus
     rescheduleDynamicPoll()
+    checkStaleActiveCleanRun(mac)
 
     updateRotationPreviewAttributes(d, mac)
     d.sendEvent(name: "lastRefresh", value: new Date().format("MM/dd/yyyy HH:mm:ss", location.timeZone))
@@ -897,6 +898,19 @@ private List ignoredFaultCodesList() {
     return raw.split(",").collect { toInt(it.trim()) }.findAll { it != null }
 }
 
+// A return-to-charge while the battery is already critically low is very
+// likely Wyze's own built-in low-battery behavior kicking in mid-room, not
+// the room actually finishing -- reuses whatever "low battery" threshold is
+// already configured (see Low Battery Protection), or a sensible default if
+// that's disabled, since a critically low battery is critically low either way.
+private boolean isBatteryForcedReturn(String mac, def d) {
+    def battery = toInt(d?.currentValue("battery"))
+    if (battery == null) return false
+    def configured = (settings["lowBatteryDockPercent_${mac}"] ?: 0) as Integer
+    def threshold = configured > 0 ? configured : 25
+    return battery <= threshold
+}
+
 // Fires once per Cleaning -> non-Cleaning transition, regardless of whether the
 // clean finished naturally, was paused, or was interrupted by a dock/stop.
 private void handleCleaningSessionEnd(String mac, def reportedCleanTimeMinutes, def d, String newStatus) {
@@ -910,7 +924,24 @@ private void handleCleaningSessionEnd(String mac, def reportedCleanTimeMinutes, 
     if (run?.learning) {
         handleLearningRoomEnd(mac, run, elapsedMin, newStatus)
     } else if (run) {
-        finishActiveCleanRun(mac, elapsedMin, newStatus)
+        if (newStatus != "Paused" && newStatus != "Error" && isBatteryForcedReturn(mac, d)) {
+            // Not a genuine finish -- leave the run "active" (still excluded
+            // from future room picks, see previewNextRooms) rather than
+            // crediting/clearing it now, carrying this segment's elapsed
+            // time forward so it isn't lost if the vacuum resumes and later
+            // finishes for real. Wyze's own firmware appears to auto-resume
+            // on its own once charged, so this normally just resolves itself
+            // on a later poll; checkStaleActiveCleanRun() is the safety net
+            // in case that resume never actually happens.
+            state.activeCleanRun[mac] = run + [
+                pausedElapsedMin: ((run.pausedElapsedMin ?: 0) as Integer) + elapsedMin,
+                pausedAt: now()
+            ]
+            ifDebug("handleCleaningSessionEnd(${mac}): battery-forced return (battery=${d?.currentValue('battery')}%) -- leaving run active, carrying forward ${state.activeCleanRun[mac].pausedElapsedMin} min so far")
+        } else {
+            Integer totalElapsed = elapsedMin + ((run.pausedElapsedMin ?: 0) as Integer)
+            finishActiveCleanRun(mac, totalElapsed, newStatus)
+        }
     }
 
     accumulateBinHours(mac, elapsedMin)
@@ -920,6 +951,22 @@ private void handleCleaningSessionEnd(String mac, def reportedCleanTimeMinutes, 
     }
 
     state.cleaningSessionStart?.remove(mac)
+}
+
+// Safety net for the battery-forced-return path above: if a run sits parked
+// at the dock for too long without ever resuming (e.g. the auto-resume
+// assumption turns out wrong for this model/firmware version), force-finish
+// it with whatever was measured so far rather than leaving it stuck "active"
+// forever -- which would otherwise permanently exclude that room from being
+// picked again (see previewNextRooms's in-progress exclusion).
+private void checkStaleActiveCleanRun(String mac) {
+    def run = state.activeCleanRun?.getAt(mac)
+    if (!run?.pausedAt) return
+    double hoursSincePause = (now() - (run.pausedAt as Long)) / 3600000.0
+    if (hoursSincePause >= 3.0) {
+        log.warn "Wyze Vacuum ${mac}: room-clean run parked at the dock for ${String.format('%.1f', hoursSincePause)}h without resuming -- finishing it as-is instead of leaving it stuck."
+        finishActiveCleanRun(mac, (run.pausedElapsedMin ?: 0) as Integer, "Docked")
+    }
 }
 
 private void accumulateBinHours(String mac, Integer elapsedMin) {

@@ -17,6 +17,32 @@ Does it abandon the current room and switch immediately? No evidence of
 command queuing in the reverse-engineered API, so "abandons and switches" is
 the working assumption, but unconfirmed.
 
+## ~~9. Battery-forced-return mis-crediting fix~~ — DONE (1.13.0)
+
+Real bug, confirmed live: a run that returned to charge at 21% battery after
+39 min was being treated the same as a genuine finish -- credited as done,
+with 39 min locked in as that room's "true" clean time -- even though it may
+well have just been Wyze's own low-battery behavior cutting the room short.
+Fixed via `isBatteryForcedReturn()` (battery at/below the configured Low
+Battery Protection threshold, or 25% default) -- such a transition now
+leaves the run "active" with elapsed time carried forward in
+`pausedElapsedMin`, rather than crediting/clearing it. `checkStaleActiveCleanRun()`
+force-finishes it after 3+ hours parked with no resume, so a wrong
+assumption about Wyze auto-resuming can't leave a room stuck excluded from
+rotation forever.
+
+**Still open (this is the part deliberately NOT built yet):** once a room
+*genuinely* finishes and the vacuum is just sitting there, nothing
+automatically advances to the next rotation room today -- an external
+trigger (Rule Machine, a repeat schedule, etc.) still has to call
+`cleanNextRooms()` again for each subsequent room. User asked directly:
+"we're still 'on', shouldn't we be cleaning the next room?" -- this is real
+demand for item #3 below (or a scoped-down version of it), but the actual
+stopping condition (auto-continue until the whole due-list is drained then
+stop on its own vs. keep going indefinitely until manually turned off) is a
+real design fork with consequences if guessed wrong, so it's being confirmed
+with the user before building rather than assumed.
+
 ## ~~8. Default to 1 room per run + manual room-time overrides~~ — DONE (1.12.0)
 
 User feedback: the high-traffic-tier/urgency-fraction machinery above (item

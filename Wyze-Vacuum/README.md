@@ -155,6 +155,8 @@ Wyze's API doesn't tell this integration which specific rooms actually finished 
 
 This is a heuristic, not a ground-truth signal from the vacuum (Wyze doesn't expose one) — it deliberately under-credits rather than over-credits, so an interrupted room is more likely to get re-cleaned sooner than to be silently skipped for a whole cycle.
 
+**Battery-forced returns are handled specially.** If the vacuum returns to charge while its battery is already critically low (at or below whatever threshold Low Battery Protection is set to, or 25% if that's disabled), that's treated as Wyze's own low-battery behavior kicking in mid-room, not a genuine finish — the run stays "active" (so it isn't wrongly credited, and stays excluded from being re-picked out from under itself) and its elapsed time carries forward. If the vacuum resumes and later finishes for real, the carried-forward time is added to the final total. If it sits parked at the dock for 3+ hours without ever resuming, it's force-finished with whatever was measured, so nothing gets stuck indefinitely.
+
 **Single-room dispatches are the exception** — `cleanRooms("Office")` called with just one room, or any rotation batch that happens to land on one room, has nothing to split, so there's no estimate to check against: any exit other than Paused or Error is treated as that room genuinely finishing, and its real elapsed time becomes the new estimate outright (same ground-truth treatment as Learning Mode below). This also means `cleanRooms("SomeRoom")` with a single room name is itself a quick way to re-time or re-clean just one room, without needing to run the whole Learning Mode queue.
 
 ### Job completeness — `lastRunCompleteness`
