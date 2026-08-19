@@ -1,7 +1,7 @@
 /**
  * WaterGuru Integration App
  *
- * 2.3.0 - Brian Wilson / bubba@bubba.org
+ * 2.4.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration — no external Python/Flask server required.
  * Authenticates directly with AWS Cognito (SRP flow) and calls the
@@ -46,6 +46,12 @@
  *    use REFRESH_TOKEN_AUTH instead of a full handshake every time (the
  *    refresh path was previously unreachable); (b) convert water temperature
  *    to the hub's °C/°F scale rather than always emitting the raw °F value.
+ *  - Cassette type (2.4.0): derive and surface the installed cassette model
+ *    (cassetteType: C2 / C5 / unknown) plus an optional human summary
+ *    (cassetteInfo). WaterGuru's API never prints the model, so it is derived
+ *    from whether Total Alkalinity / Calcium Hardness / Cyanuric Acid are
+ *    freshly sampled (only a C5 measures those) or the pod carries a LAB
+ *    lab-pad pack. Additive: existing attributes are unchanged.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at:
@@ -746,6 +752,57 @@ private void processWaterGuruData(def response) {
             }
         }
 
+        // ---- Cassette type: C2 vs C5 (2.4.0) -----------------------------
+        // WaterGuru never prints the cassette model (pod.product is always
+        // "SENSE"), but it's derivable. A C5 cassette additionally samples
+        // Total Alkalinity, Calcium Hardness and Cyanuric Acid on each run,
+        // while a C2 measures only free chlorine + pH; and a C5 pod carries a
+        // "LAB" refillable (its lab-pad pack). So a *fresh* TA/CH/CYA reading
+        // — one sampled at (close to) the water body's latest measurement,
+        // not a years-stale leftover — or a present LAB pad pack means a C5;
+        // a pod that reports neither means C2; nothing to go on ⇒ unknown.
+        def toEpoch = { s ->
+            if (!s) return null
+            try { return toDateTime(s.toString())?.time } catch (ignored) { return null }
+        }
+        def latestMs      = toEpoch(item.latestMeasureTime)
+        def freshWindowMs = 2 * 24 * 60 * 60 * 1000L        // within ~2 days of the latest sample
+        def chemPresent   = false
+        def chemFresh     = false
+        ["TA", "CH", "CYA"].each { t ->
+            def m = measByType[t]
+            if (m == null) return
+            chemPresent = true
+            def mMs = toEpoch(m.measureTime)
+            if (mMs != null && latestMs != null) {
+                if (Math.abs(latestMs - mMs) <= freshWindowMs) chemFresh = true
+            } else if (!(m.alerts?.any { isStaleDataAlert(it) })) {
+                // No per-measurement timestamp available: fall back to "not
+                // flagged as an outdated (stale-data) reading".
+                chemFresh = true
+            }
+        }
+
+        // Pod LAB refillable — the C5 lab-pad pack — drives cassetteInfo and
+        // is itself a positive C5 signal (a C2 has no lab pads).
+        def labPack
+        item.pods?.each { pod ->
+            def li = pod.refillables?.findIndexOf { it.label == "LAB" || it.unit == "pad" }
+            if (li != null && li >= 0) labPack = pod.refillables[li]
+        }
+
+        def cassetteType = (chemFresh || labPack != null) ? "C5" : (chemPresent ? "C2" : "unknown")
+        def cassetteInfo = null
+        if (labPack != null) {
+            def parts = [cassetteType]
+            def rt = toEpoch(labPack.refillTime)
+            if (rt != null) parts << "installed ${new Date(rt).format('MMM d, yyyy')}"
+            if (labPack.amountLeft != null && labPack.maxAmount != null)
+                parts << "${labPack.amountLeft}/${labPack.maxAmount} pads"
+            cassetteInfo = parts.join(" · ")
+        }
+        ifDebug("cassetteType=${cassetteType} cassetteInfo=${cassetteInfo}")
+
         def d = getChildDevices()?.find { it.deviceNetworkId == id }
         if (!d) {
             log.info "WaterGuru: attempting to create child device '${name} Pool' (networkId: ${id})"
@@ -854,6 +911,8 @@ private void processWaterGuruData(def response) {
         emit("acidMuriaticPct",       acidMuriaticPct)
         emit("acidBisulfatePct",      acidBisulfatePct)
         emit("equipment",             equipment)
+        emit("cassetteType",          cassetteType)
+        emit("cassetteInfo",          cassetteInfo)
 
         evaluateNotifications(id, name, [
             lastMeasurement : LastMeasurement,

@@ -5,8 +5,8 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/WaterGuru",
   "communityLink": "https://community.hubitat.com/t/release-waterguru-pool-integration/77922",
   "dateReleased": "2026-08-18",
-  "releaseNotes": "Full chemistry panel: surface every WaterGuru reading (Total Alkalinity, Calcium Hardness, Cyanuric Acid, Salt, Phosphates, Copper, Iron, Saturation Index, Total Hardness) with a per-reading status and target, plus the lab-results timestamp. Also persist the Cognito refresh token so polls avoid a full SRP login each time, and convert water temperature to the hub's scale. Additive — existing attributes unchanged.",
-  "version": "2.3.0",
+  "releaseNotes": "Cassette type: derive and surface the installed cassette model (cassetteType: C2 / C5 / unknown) plus an optional human summary (cassetteInfo). WaterGuru's API never prints the model, so it is derived from whether Total Alkalinity / Calcium Hardness / Cyanuric Acid are freshly sampled (only a C5 measures those). Additive — existing attributes unchanged.",
+  "version": "2.4.0",
   "drivers": [
     {
       "id": "20bad83b-d3db-43f6-ba69-ffa3d6e120ca",
@@ -14,7 +14,7 @@
       "namespace": "brianwilson-hubitat",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/WaterGuru/WaterGuru-Driver.groovy",
       "required": true,
-      "version": "2.1.0"
+      "version": "2.2.0"
     }
   ],
   "apps": [
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/WaterGuru/WaterGuru-Integration.groovy",
       "required": true,
       "oauth": false,
-      "version": "2.3.0"
+      "version": "2.4.0"
     }
   ]
 }
