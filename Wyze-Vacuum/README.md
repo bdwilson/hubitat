@@ -201,7 +201,7 @@ Per vacuum, under **`<vacuum> — Bin Reminder`**: set **"Notify to empty the bi
 
 **2FA loop / "invalid verification code"** — the code is time-sensitive; request a fresh one and submit quickly. SMS-based 2FA takes an extra round trip and can be more failure-prone than an authenticator app (TOTP) — consider switching your Wyze account to TOTP 2FA if you have repeated trouble.
 
-**Commands silently do nothing** — enable debug logging on the app and check for `signature2`/auth errors in the logs; this usually means the access token expired and the automatic refresh failed, requiring a fresh **Re-login**.
+**Commands silently do nothing, or polling shows "no props returned" in debug logs** — this was a real bug (fixed in 1.6.0): Wyze signals some auth failures (e.g. an expired access token) with an HTTP **200** and an error code/message in the JSON body (`{code:2001, message:"Access token error"}`) instead of a real 401/403 status. The retry-on-401/403 logic never saw those as errors at all, so the token never got refreshed and the command/poll just silently failed — a control command would log a `Wyze Vacuum control ... code:2001 ... Access token error` warning, and a poll would log `no props returned` with no further explanation. 1.6.0 checks the response body itself for this shape (on the command path, the async poll path, and general API calls) and triggers the same refresh-and-retry-once flow. If you're on an older version, re-import to pick up the fix. If it keeps happening even after updating, the refresh token itself may be dead — click **Re-login**.
 
 **"No Wyze vacuums found"** — confirm the vacuum is online in the Wyze app and its product model is `JA_RO2` (the 200S's internal model code).
 

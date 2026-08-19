@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.5.3 - Brian Wilson / bubba@bubba.org
+ * 1.6.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -574,9 +574,31 @@ private boolean handleVenusAsyncError(resp, Map data, String callbackHandler) {
     try { status = resp?.status as Integer } catch (e) { status = null }
     boolean hasError = false
     try { hasError = resp?.hasError() as boolean } catch (e) { hasError = (status != null && status >= 400) }
-    if (!hasError) return false
 
     def mac = data?.mac
+
+    if (!hasError) {
+        // Wyze signals some failures (e.g. an expired access token) with an
+        // HTTP 200 and an error code/message in the JSON body instead of a
+        // real 401/403 status -- confirmed live: {code:2001, message:"Access
+        // token error"}. That response has no "data" at all, so it was
+        // silently surfacing as "no props returned" with no retry ever
+        // firing. Treat it the same as a real 401/403.
+        def body = parseAsyncJson(resp)
+        if (isAuthErrorResponse(body)) {
+            if (!data?._retried) {
+                ifDebug("Wyze Venus ${callbackHandler} got an in-body auth error (${body?.code}: ${body?.message}) for ${mac}, refreshing token (async) and retrying once")
+                def retryContext = new LinkedHashMap(data)
+                retryContext["_retryCallback"] = callbackHandler
+                refreshTokenAsync(retryContext)
+            } else {
+                log.error "Wyze Venus ${callbackHandler} still getting an auth error for ${mac} after a retry: ${body}"
+            }
+            return true
+        }
+        return false
+    }
+
     if (status in [401, 403] && !data?._retried) {
         ifDebug("Wyze Venus ${callbackHandler} got ${status} for ${mac}, refreshing token (async) and retrying once")
         def retryContext = new LinkedHashMap(data)
@@ -588,6 +610,16 @@ private boolean handleVenusAsyncError(resp, Map data, String callbackHandler) {
     try { errMsg = resp?.getErrorMessage() } catch (e) { errMsg = resp?.error }
     log.error "Wyze Venus ${callbackHandler} failed (${status}) for ${mac}: ${errMsg}"
     return true
+}
+
+// Wyze doesn't always use HTTP status codes for auth failures -- some come
+// back as HTTP 200 with an error code/message in the body instead. Matches
+// both, since we don't have a confirmed full enumeration of error shapes.
+private boolean isAuthErrorResponse(Map result) {
+    if (result == null) return false
+    if (result.code?.toString() == "2001") return true
+    def text = "${result.message ?: ''} ${result.msg ?: ''}".toLowerCase()
+    return text.contains("access token")
 }
 
 private Map parseAsyncJson(resp) {
@@ -1208,6 +1240,17 @@ private Map venusRequest(String method, String path, Map query = [:], Map bodyMa
         log.error "Wyze Venus ${method} ${path} error: ${e}"
         return null
     }
+
+    // Wyze signals some failures (e.g. an expired access token) with an HTTP
+    // 200 and an error code/message in the body instead of a real 401/403 --
+    // confirmed live: {code:2001, message:"Access token error"}. That never
+    // threw HttpResponseException, so it was silently failing with no retry.
+    if (retry && isAuthErrorResponse(result)) {
+        ifDebug("Wyze Venus ${method} ${path} got an in-body auth error (${result?.code}: ${result?.message}), refreshing token and retrying once")
+        if (refreshWyzeToken()) {
+            return venusRequest(method, path, query, bodyMap, false)
+        }
+    }
     return result
 }
 
@@ -1241,6 +1284,13 @@ private Map apiWyzeRequest(String path, Map extraBody = [:], boolean retry = tru
     } catch (e) {
         log.error "Wyze API ${path} error: ${e}"
         return null
+    }
+
+    if (retry && isAuthErrorResponse(result)) {
+        ifDebug("Wyze API ${path} got an in-body auth error (${result?.code}: ${result?.message}), refreshing token and retrying once")
+        if (refreshWyzeToken()) {
+            return apiWyzeRequest(path, extraBody, false)
+        }
     }
     return result
 }
