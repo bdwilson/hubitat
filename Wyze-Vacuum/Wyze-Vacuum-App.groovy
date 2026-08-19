@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.9.0 - Brian Wilson / bubba@bubba.org
+ * 1.10.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -1093,6 +1093,18 @@ private void finishActiveCleanRun(String mac, Integer elapsedMin, String newStat
 
     state.roomAvgMinutes = state.roomAvgMinutes ?: [:]
     def avgMap = state.roomAvgMinutes[mac] ?: [:]
+
+    // Rough job-effectiveness read: how much of the *whole* dispatched batch's
+    // expected time actually elapsed, regardless of which individual rooms end
+    // up credited below. This doesn't need a per-room completion record --
+    // just the learned/estimated minutes for each room that was targeted --
+    // so it works even for rooms whose exact finish point is ambiguous.
+    double expectedTotal = rooms.sum { id -> (avgMap[id.toString()] ?: 15.0) as Double } ?: 0.0
+    Integer completenessPct = expectedTotal > 0 ? Math.min(100, Math.round((elapsedMin ?: 0) / expectedTotal * 100)) as Integer : null
+    if (completenessPct != null) {
+        getChildDevice(mac)?.sendEvent(name: "lastRunCompleteness", value: completenessPct, unit: "%")
+    }
+    ifDebug("finishActiveCleanRun(${mac}): elapsedMin=${elapsedMin} expectedTotal=${expectedTotal}min across ${rooms.size()} room(s) -> completeness=${completenessPct}%")
 
     def completed
     def incomplete

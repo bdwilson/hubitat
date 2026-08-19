@@ -17,6 +17,15 @@ Does it abandon the current room and switch immediately? No evidence of
 command queuing in the reverse-engineered API, so "abandons and switches" is
 the working assumption, but unconfirmed.
 
+## ~~6. Rough job-completeness metric from room time estimates~~ — DONE (1.10.0)
+
+Added `lastRunCompleteness`: sums each dispatched room's learned/estimated
+clean time and compares that total to the run's actual elapsed minutes, so
+you get a rough "how much of this job actually got done" percentage without
+needing a completion record for every individual room. Separate from (and
+complementary to) the existing per-room credit/no-credit heuristic in
+`finishActiveCleanRun` — that logic is unchanged.
+
 ## 2. Attribute showing rooms currently being cleaned
 
 `lastCleanedRooms` only reflects *confirmed-completed* rooms (as of the

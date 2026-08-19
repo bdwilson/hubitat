@@ -1,7 +1,7 @@
 /**
  * Wyze Robot Vacuum Driver
  *
- * 1.6.0 - Brian Wilson / bubba@bubba.org
+ * 1.7.0 - Brian Wilson / bubba@bubba.org
  *
  * Child driver for the Wyze Vacuum Connect App. All network calls happen in the
  * parent app (which owns the Wyze session); this driver just relays commands to it
@@ -59,6 +59,7 @@ metadata {
         attribute "cleanSize", "NUMBER"     // sq ft, current/last cleaning run
         attribute "fault", "STRING"
         attribute "lastCleanedRooms", "STRING"       // rooms confirmed cleaned by the most recent room-clean run
+        attribute "lastRunCompleteness", "NUMBER"    // rough % of the last dispatched batch's expected time that actually elapsed
         attribute "nextRoomsToClean", "STRING"       // what cleanNextRooms() would pick right now, per current rotation config
         attribute "roomsPendingThisCycle", "NUMBER"  // rotation rooms not cleaned within the configured cycle window
         attribute "hoursSinceEmptied", "NUMBER"      // cumulative cleaning hours since the bin was last reset

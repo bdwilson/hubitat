@@ -57,6 +57,7 @@ Hubitat creates a child device per vacuum, named after its Wyze nickname.
 | `cleanSize` | number | Area cleaned in the current/last run |
 | `fault` | string | `none`, or a fault description if the vacuum is stuck/erroring |
 | `lastCleanedRooms` | string | Rooms confirmed cleaned by the most recent room-clean run |
+| `lastRunCompleteness` | number | Rough % of the last room-clean run's *total* expected time that actually elapsed — see below |
 | `nextRoomsToClean` | string | What `cleanNextRooms()` would pick right now, given current rotation config and room history |
 | `roomsPendingThisCycle` | number | Rotation rooms not cleaned within the configured cycle window |
 | `hoursSinceEmptied` | number | Cumulative cleaning hours since the bin was last reset |
@@ -147,11 +148,22 @@ This is a heuristic, not a ground-truth signal from the vacuum (Wyze doesn't exp
 
 **Single-room dispatches are the exception** — `cleanRooms("Office")` called with just one room, or any rotation batch that happens to land on one room, has nothing to split, so there's no estimate to check against: any exit other than Paused or Error is treated as that room genuinely finishing, and its real elapsed time becomes the new estimate outright (same ground-truth treatment as Learning Mode below). This also means `cleanRooms("SomeRoom")` with a single room name is itself a quick way to re-time or re-clean just one room, without needing to run the whole Learning Mode queue.
 
+### Job completeness — `lastRunCompleteness`
+
+Separate from *which* individual rooms get credited (above), `lastRunCompleteness` answers a coarser question: **how much of the whole dispatched batch's expected work actually got done?** It adds up the learned/estimated clean time for every room that was targeted in the run (whether or not that room individually earned "cleaned" credit) and compares that total to how long the run actually lasted:
+
+```
+lastRunCompleteness = min(100, round(elapsed minutes / sum of each targeted room's estimated minutes * 100))
+```
+
+So dispatching 3 rooms estimated at 15 min each (45 min total) and getting interrupted at 20 minutes reports `lastRunCompleteness = 44` — roughly 44% of the job got done — even though the per-room crediting above might only have credited 1 of the 3 rooms outright. This doesn't require tracking a completion record per room; it only needs each targeted room's known/estimated time, which the app already maintains. It's a rough signal, not a precise one — accuracy depends entirely on how good the underlying per-room time estimates are (Learning Mode gets you there fastest — see below).
+
 ### Room rotation attributes
 
 | Attribute | Description |
 |---|---|
 | `lastCleanedRooms` | Rooms confirmed cleaned by the most recent room-clean run |
+| `lastRunCompleteness` | Rough % of the last run's total expected time that actually elapsed (see above) |
 | `nextRoomsToClean` | What `cleanNextRooms()` would pick right now — recomputed every poll, so it stays current as room history and rotation config change |
 | `roomsPendingThisCycle` | How many of your selected rotation rooms are currently due (not cleaned within the cycle window) |
 
