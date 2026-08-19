@@ -48,7 +48,8 @@ Hubitat creates a child device per vacuum, named after its Wyze nickname.
 |---|---|---|
 | `battery` | number | Battery level (%) |
 | `switch` | enum | `on` / `off` — see Switch Capability below |
-| `status` | string | `Standby` / `Cleaning` / `Returning to charge` / `Docked` / `Mapping` / `Paused` / `Error` |
+| `status` | string | `Standby` / `Cleaning` / `Returning to charge` / `Docked` / `Mapping` / `Paused` / `Error` — see note below on this mapping |
+| `workStatusCode` | number | The raw numeric code behind `status`, for cross-checking if the label ever looks wrong (e.g. `Returning to charge` while `charging: true`) |
 | `mode` | string | Finer-grained device mode text |
 | `suctionLevel` | string | `Quiet` / `Standard` / `Strong` |
 | `charging` | string | `true` / `false` |
@@ -61,6 +62,10 @@ Hubitat creates a child device per vacuum, named after its Wyze nickname.
 | `hoursSinceEmptied` | number | Cumulative cleaning hours since the bin was last reset |
 | `learningStatus` | string | `Idle` / `Learning <room> (N more queued)` / `Stopped early` |
 | `lastRefresh` | string | Timestamp of the last successful poll |
+
+### A note on the `status` mapping
+
+`status` labels (`Standby`/`Cleaning`/`Returning to charge`/etc.) are translated from a raw numeric code (`vacuum_work_status`) using a mapping sourced from a single third-party reverse-engineered project (`wyze-sdk`), not from Wyze directly — it has **not** been independently verified against live 200S telemetry. If you ever see a label that doesn't match reality (e.g. `status: Returning to charge` while `charging: true` and the vacuum is clearly sitting on the dock), that's a real signal the mapping may be off for this model, not something to dismiss. Check `workStatusCode` alongside `charging`/`fault`/`battery` and report the actual numbers — that's real evidence to correct the mapping with, rather than a guess in either direction.
 
 ## Device Commands
 

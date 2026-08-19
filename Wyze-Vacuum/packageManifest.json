@@ -5,8 +5,8 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "",
   "dateReleased": "2026-08-19",
-  "releaseNotes": "1.7.1 — Adds a nextRoomsToClean attribute showing what cleanNextRooms() would pick right now, recomputed every poll from current rotation config and room history. Shares selection logic with the actual dispatch (previewNextRooms()) so the two can't drift out of sync.",
-  "version": "1.7.1",
+  "releaseNotes": "1.7.2 — Adds a workStatusCode attribute exposing the raw numeric status code behind the status label. The status label mapping was sourced from a single third-party project, unverified against live 200S telemetry -- if a label ever looks wrong (e.g. Returning to charge while charging:true), this gives real numeric evidence to correct it with instead of guessing.",
+  "version": "1.7.2",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -14,7 +14,7 @@
       "namespace": "brianwilson-hubitat",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-Driver.groovy",
       "required": true,
-      "version": "1.5.1"
+      "version": "1.5.2"
     }
   ],
   "apps": [
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.7.1"
+      "version": "1.7.2"
     }
   ]
 }

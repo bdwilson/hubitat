@@ -1,7 +1,7 @@
 /**
  * Wyze Robot Vacuum Driver
  *
- * 1.5.1 - Brian Wilson / bubba@bubba.org
+ * 1.5.2 - Brian Wilson / bubba@bubba.org
  *
  * Child driver for the Wyze Vacuum Connect App. All network calls happen in the
  * parent app (which owns the Wyze session); this driver just relays commands to it
@@ -50,6 +50,7 @@ metadata {
         command "cleanRoomSlot8"
 
         attribute "status", "STRING"        // Standby / Cleaning / Returning to charge / Docked / Mapping / Paused / Error
+        attribute "workStatusCode", "NUMBER" // raw numeric code behind "status" -- unverified label mapping, useful for cross-checking
         attribute "mode", "STRING"          // finer-grained device mode text
         attribute "suctionLevel", "STRING"  // Quiet / Standard / Strong
         attribute "charging", "STRING"      // true / false

@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.7.1 - Brian Wilson / bubba@bubba.org
+ * 1.7.2 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -526,6 +526,12 @@ def handleVacuumStatusResponse(resp, data) {
     def prevStatus = state.lastKnownStatus[mac]
 
     d.sendEvent(name: "status", value: newStatus)
+    // The status label mapping (1:Standby, 2:Cleaning, 3:Returning to
+    // charge, ...) comes from a single third-party source (wyze-sdk),
+    // unverified against this model's live telemetry. Expose the raw code
+    // too so a mismatch (e.g. "Returning to charge" while charging:true)
+    // can be reported with real numbers instead of guessed at.
+    d.sendEvent(name: "workStatusCode", value: toInt(workStatus))
     // Keep the Switch capability's "switch" attribute honest against real
     // vacuum state, not just the last on()/off() the user tapped -- it flips
     // to "off" on its own once a clean actually finishes, gets docked, etc.
