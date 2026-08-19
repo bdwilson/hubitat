@@ -1,6 +1,12 @@
 /*
  * Water Guru Integration Driver
  *
+ * 2.2.0 - Cassette type: expose the installed cassette model (cassetteType:
+ *         C2 / C5 / unknown) and an optional human summary (cassetteInfo).
+ *         WaterGuru's API never prints the model, so the app derives it from
+ *         whether Total Alkalinity / Calcium Hardness / Cyanuric Acid are
+ *         freshly sampled (a C5 measures those; a C2 measures only free
+ *         chlorine + pH). Additive only.
  * 2.1.0 - Full chemistry panel: expose every WaterGuru reading (Total
  *         Alkalinity, Calcium Hardness, Cyanuric Acid, Salt, Phosphates,
  *         Copper, Iron, Saturation Index, Total Hardness) plus a per-reading
@@ -111,6 +117,14 @@ metadata {
         attribute "acidMuriaticPct",      "NUMBER"   // muriatic strength %
         attribute "acidBisulfatePct",     "NUMBER"   // dry-acid strength %
         attribute "equipment",            "STRING"   // human summary: type · surface · filter · cover
+
+        // Installed cassette model. WaterGuru's API never reports it literally
+        // (pod.product is always "SENSE"); the app derives it from whether the
+        // pod freshly samples TA/CH/CYA — a C5 does, a C2 measures only free
+        // chlorine + pH. "unknown" when there is nothing to derive from.
+        attribute "cassetteType",         "STRING"   // C2 / C5 / unknown
+        // Optional human summary, e.g. "C5 · installed Aug 12, 2026 · 28/30 pads".
+        attribute "cassetteInfo",         "STRING"
     }
 }
 
