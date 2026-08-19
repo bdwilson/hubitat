@@ -4,9 +4,9 @@
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "",
-  "dateReleased": "2026-08-18",
-  "releaseNotes": "1.6.0 — Fixes the likely real root cause of the earlier polling/command failures: Wyze signals some auth failures (expired access token) with HTTP 200 and {code:2001, message:\"Access token error\"} in the body instead of a real 401/403 status. The retry/refresh logic only ever watched for 401/403, so this failure shape was silently swallowed everywhere (control commands logged a misleading warning and never retried; polling logged \"no props returned\" with no explanation). Now detected and retried via a token refresh on the command path, the async poll path, and general API calls.",
-  "version": "1.6.0",
+  "dateReleased": "2026-08-19",
+  "releaseNotes": "1.6.1 — Adds a configurable, comma-separated list of fault_code values to treat as normal rather than real faults (default 2103,2105 — an unconfirmed community lead suggests these may just mean charging/fully charged). Every nonzero fault_code is now also logged with full context (mode, chargeState, status, battery) regardless of whether it's ignored, to build an evidence trail for confirming what each code actually means.",
+  "version": "1.6.1",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.6.0"
+      "version": "1.6.1"
     }
   ]
 }

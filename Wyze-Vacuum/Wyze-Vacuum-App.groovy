@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.6.0 - Brian Wilson / bubba@bubba.org
+ * 1.6.1 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -133,6 +133,9 @@ def mainPage() {
                         input "notifyCleaningFinished", "bool", title: "Notify when cleaning finishes",            defaultValue: true,  required: false
                         input "notifyStuck",            "bool", title: "Notify when the vacuum reports a fault",  defaultValue: true,  required: false
                     }
+                    input "ignoredFaultCodes", "text",
+                        title: "Fault codes to treat as normal, not real faults (comma-separated) — e.g. some codes may just mean \"charging\"/\"fully charged\", not an actual problem",
+                        defaultValue: "2103,2105", required: false
                 }
 
                 settings.selectedVacuums.each { mac ->
@@ -693,8 +696,19 @@ def handleTokenRefreshResponse(resp, data) {
 
 private void updateFaultAttribute(def d, String mac, Map props) {
     def faultCode = toInt(props.fault_code)
-    def isFault = faultCode && faultCode != 0
+    def hasRawFault = faultCode && faultCode != 0
+    def ignored = ignoredFaultCodesList()
+    def isFault = hasRawFault && !(faultCode in ignored)
+
     d.sendEvent(name: "fault", value: isFault ? "${props.fault_type ?: faultCode}" : "none")
+
+    // Log full context for *any* nonzero fault_code, even an ignored one --
+    // this is the evidence trail for confirming/refuting which codes are
+    // real problems vs. benign status codes (e.g. charging/fully charged)
+    // that apparently share this same field.
+    if (hasRawFault) {
+        log.info "Wyze Vacuum ${mac} fault_code=${faultCode}${faultCode in ignored ? ' (ignored)' : ''} fault_type=${props.fault_type} mode=${props.mode} chargeState=${props.chargeState} status=${d.currentValue('status')} battery=${d.currentValue('battery')}"
+    }
 
     state.lastNotifiedFault = state.lastNotifiedFault ?: [:]
     if (isFault) {
@@ -705,6 +719,11 @@ private void updateFaultAttribute(def d, String mac, Map props) {
     } else {
         state.lastNotifiedFault[mac] = null // clear so a future recurrence of the same fault code re-notifies
     }
+}
+
+private List ignoredFaultCodesList() {
+    def raw = settings.ignoredFaultCodes ?: "2103,2105"
+    return raw.split(",").collect { toInt(it.trim()) }.findAll { it != null }
 }
 
 // Fires once per Cleaning -> non-Cleaning transition, regardless of whether the

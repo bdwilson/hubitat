@@ -182,6 +182,7 @@ Optional, change-driven — polling by itself never triggers a notification. Con
 | Notify when cleaning starts | Fires the first time a poll observes `status` becoming `Cleaning` |
 | Notify when cleaning finishes | Fires when `status` leaves `Cleaning`, including the run's elapsed minutes |
 | Notify when the vacuum reports a fault | Fires once per new fault (won't repeat every poll while the same fault persists) |
+| Fault codes to treat as normal (comma-separated) | Codes here never set `fault` or notify — some `fault_code` values appear to just mean things like "charging"/"fully charged," not a real problem. Defaults to `2103,2105` based on an **unconfirmed** community lead — adjust freely as you confirm/refute codes yourself. Every nonzero fault code is still logged (`log.info`, tagged `(ignored)` when suppressed) regardless of this list, so there's a record to check codes against later. |
 
 ### Bin-empty reminder
 
