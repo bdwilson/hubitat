@@ -2,29 +2,20 @@
 
 Not yet implemented. Tracked here so they survive across sessions.
 
-## 1. Skip in-progress rooms when `cleanNextRooms()` is called again
+## ~~1. Skip in-progress rooms when `cleanNextRooms()` is called again~~ — DONE (1.8.0)
 
-**Untested — try this first before assuming it's broken.**
+Confirmed live: calling `cleanNextRooms()` again while a batch was still
+mid-clean re-selected the same in-progress rooms and re-dispatched an
+identical command, which visibly did nothing (the vacuum was already doing
+exactly that). Fixed by excluding `state.activeCleanRun[mac].roomIds` from
+the candidate pool in `previewNextRooms()`.
 
-Current `cleanNextRooms()` re-sorts the *entire* rotation list by "last cleaned"
-timestamp every time it's called. A room's timestamp only updates on confirmed
-completion (`finishActiveCleanRun`/`markRoomsCleaned`), not at dispatch. So if
-you call `cleanNextRooms()` again while a batch is still mid-clean, the
-in-progress rooms still look like the most-overdue candidates and will very
-likely get re-selected — not advance to a new group. Worse, `dispatchRoomClean()`
-overwrites the single-slot `state.activeCleanRun[mac]`, so the first (still
-running) batch's bookkeeping gets clobbered rather than properly finalized.
-
-**Fix:** exclude `state.activeCleanRun[mac].roomIds` from the candidate pool
-in `cleanNextRooms()` so a repeat call picks the *next* least-recently-cleaned
-group instead of re-picking the current one.
-
-**Open question, needs live observation, not just a code fix:** how does the
-physical vacuum/Wyze firmware actually behave when a brand-new room-clean
-command arrives while it's already mid-job on a previous one? Does it abandon
-the current room and switch immediately, queue it, or something else? No
-evidence of command queuing in the reverse-engineered API, so "abandons and
-switches" is the working assumption, but unconfirmed.
+**Still open, needs live observation:** how does the physical vacuum/Wyze
+firmware behave when a brand-new room-clean command arrives while mid-job on
+a *different* set of rooms (not this same-rooms case, which is now avoided)?
+Does it abandon the current room and switch immediately? No evidence of
+command queuing in the reverse-engineered API, so "abandons and switches" is
+the working assumption, but unconfirmed.
 
 ## 2. Attribute showing rooms currently being cleaned
 

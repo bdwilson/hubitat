@@ -5,8 +5,8 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "",
   "dateReleased": "2026-08-19",
-  "releaseNotes": "1.7.3 — The workStatusCode attribute added in 1.7.2 hasn't reliably shown up in the device UI after driver updates for one user. Adds a log.info line in handleVacuumStatusResponse logging the raw vacuum_work_status code alongside the translated status label on every poll, as a more reliable way to get real numbers for checking the unverified status label mapping.",
-  "version": "1.7.3",
+  "releaseNotes": "1.8.0 — cleanNextRooms() now excludes whatever's already actively being cleaned from candidate selection, so a repeat call while a batch is still running advances to the next rotation group instead of re-picking (and re-dispatching) the same rooms, which previously looked like it did nothing. Also adds markRoomsCleaned(roomNames) to manually correct rotation history for a room that was genuinely cleaned but never got recorded, without dispatching any actual cleaning.",
+  "version": "1.8.0",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -14,7 +14,7 @@
       "namespace": "brianwilson-hubitat",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-Driver.groovy",
       "required": true,
-      "version": "1.5.2"
+      "version": "1.6.0"
     }
   ],
   "apps": [
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.7.3"
+      "version": "1.8.0"
     }
   ]
 }

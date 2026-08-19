@@ -1,7 +1,7 @@
 /**
  * Wyze Robot Vacuum Driver
  *
- * 1.5.2 - Brian Wilson / bubba@bubba.org
+ * 1.6.0 - Brian Wilson / bubba@bubba.org
  *
  * Child driver for the Wyze Vacuum Connect App. All network calls happen in the
  * parent app (which owns the Wyze session); this driver just relays commands to it
@@ -31,6 +31,7 @@ metadata {
         command "setSuctionLevel", [[name: "level*", type: "ENUM", description: "Suction level", constraints: ["Quiet", "Standard", "Strong"]]]
         command "cleanRooms", [[name: "roomNames*", type: "STRING", description: "Comma-separated room names to clean now, e.g. 'Kitchen, Living Room'"]]
         command "cleanNextRooms"
+        command "markRoomsCleaned", [[name: "roomNames*", type: "STRING", description: "Comma-separated room names to mark as cleaned right now WITHOUT actually cleaning -- corrects rotation history, e.g. 'Kitchen, Living Room'"]]
         command "resetBinTimer"
         command "learnRoomTimes"
         command "cancelLearning"
@@ -135,6 +136,11 @@ def cleanNextRooms() {
     ifDebug("cleanNextRooms() called")
     sendEvent(name: "status", value: "Cleaning")
     parent.cleanNextRooms(device.deviceNetworkId)
+}
+
+def markRoomsCleaned(String roomNames) {
+    ifDebug("markRoomsCleaned(${roomNames}) called")
+    parent.markRoomsCleanedByName(device.deviceNetworkId, roomNames)
 }
 
 def refresh() {

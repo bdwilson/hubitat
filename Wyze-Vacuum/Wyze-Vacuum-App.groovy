@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.7.3 - Brian Wilson / bubba@bubba.org
+ * 1.8.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -209,6 +209,19 @@ def mainPage() {
                         }
                     }
 
+                    section("<b>${vacLabel} — Mark Rooms as Cleaned</b>") {
+                        def rooms3 = state.discoveredRooms?.getAt(mac)
+                        if (rooms3) {
+                            paragraph "Manually corrects rotation history without actually cleaning anything — for a room you cleaned by hand, " +
+                                      "or a run whose completion never got recorded, so it stops getting picked first ahead of rooms that are actually more overdue."
+                            def markOptions = rooms3.collectEntries { [(it.id.toString()): it.name] }
+                            input "markCleanRooms_${mac}", "enum", title: "Rooms to mark as cleaned right now", options: markOptions, multiple: true, required: false, submitOnChange: true
+                            input "btnMarkCleaned_${mac}", "button", title: "Mark as Cleaned", width: 3
+                        } else {
+                            paragraph "Discover rooms first."
+                        }
+                    }
+
                     section("<b>${vacLabel} — Bin Reminder</b>") {
                         input "emptyBinHours_${mac}", "number",
                             title: "Notify to empty the bin after this many cumulative cleaning hours (0 = disabled)",
@@ -247,6 +260,17 @@ def appButtonHandler(btn) {
         startLearningMode(btn - "btnLearnRooms_")
     } else if (btn.startsWith("btnCancelLearning_")) {
         cancelLearningMode(btn - "btnCancelLearning_")
+    } else if (btn.startsWith("btnMarkCleaned_")) {
+        def mac = btn - "btnMarkCleaned_"
+        def ids = (settings["markCleanRooms_${mac}"] ?: []).collect { it as Integer }
+        if (ids) {
+            markRoomsCleaned(mac, ids)
+            def known = state.discoveredRooms?.getAt(mac) ?: []
+            def names = ids.collect { id -> known.find { it.id == id }?.name ?: "Room ${id}" }
+            def d = getChildDevice(mac)
+            d?.sendEvent(name: "lastCleanedRooms", value: names.join(", "))
+            if (d) updateRotationPreviewAttributes(d, mac)
+        }
     }
 }
 
@@ -909,6 +933,17 @@ private List previewNextRooms(String mac) {
     def roomIds = (settings["rotationRooms_${mac}"] ?: []).collect { it as Integer }
     if (!roomIds) return []
 
+    // Exclude whatever's already actively being cleaned -- its "last
+    // cleaned" timestamp won't update until that run actually finishes, so
+    // without this a repeat call (or this preview, mid-run) would just
+    // re-pick the same rooms already in progress instead of advancing to
+    // the next group. Confirmed live: calling cleanNextRooms() again while
+    // a batch was still running re-dispatched the identical rooms and
+    // visibly did nothing, since the vacuum was already doing exactly that.
+    def inProgress = (state.activeCleanRun?.getAt(mac)?.roomIds ?: []) as Set
+    roomIds = roomIds.findAll { !(it in inProgress) }
+    if (!roomIds) return []
+
     def known = state.discoveredRooms?.getAt(mac) ?: []
     def history = state.roomHistory?.getAt(mac) ?: [:]
     def candidates = roomIds.sort { a, b -> (history[a.toString()] ?: 0L) <=> (history[b.toString()] ?: 0L) }
@@ -955,6 +990,28 @@ private void markRoomsCleaned(String mac, List roomIds) {
     def h = state.roomHistory[mac] ?: [:]
     roomIds.each { id -> h[id.toString()] = now() }
     state.roomHistory[mac] = h
+}
+
+// Manually corrects rotation history without actually cleaning anything --
+// for when a room was genuinely cleaned (by hand, or by a run whose
+// completion never got recorded due to a bug) but the rotation doesn't
+// know it, so it keeps getting picked first ahead of rooms that are
+// actually more overdue.
+def markRoomsCleanedByName(String mac, String roomNamesCsv) {
+    def known = state.discoveredRooms?.getAt(mac) ?: []
+    if (!known) { log.warn "Wyze Vacuum: no discovered rooms for ${mac} — click Discover Rooms first"; return }
+
+    def wanted = roomNamesCsv.split(",").collect { it.trim().toLowerCase() }.findAll { it }
+    def matched = known.findAll { it.name?.toLowerCase() in wanted }
+    if (!matched) { log.warn "Wyze Vacuum: no rooms matched '${roomNamesCsv}' for ${mac}. Known rooms: ${known.collect { it.name }}"; return }
+
+    def ids = matched.collect { it.id as Integer }
+    markRoomsCleaned(mac, ids)
+
+    def d = getChildDevice(mac)
+    d?.sendEvent(name: "lastCleanedRooms", value: matched.collect { it.name }.join(", "))
+    if (d) updateRotationPreviewAttributes(d, mac)
+    ifDebug("markRoomsCleanedByName(${mac}): manually marked ${matched.collect { it.name }} as cleaned")
 }
 
 // Called once a room-scoped clean transitions out of "Cleaning". Wyze doesn't

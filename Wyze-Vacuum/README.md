@@ -76,7 +76,8 @@ Hubitat creates a child device per vacuum, named after its Wyze nickname.
 | `dock()` | Send the vacuum back to its charging dock |
 | `setSuctionLevel(level)` | Set suction to `Quiet`, `Standard`, or `Strong` |
 | `cleanRooms(roomNames)` | Clean specific rooms now, e.g. `cleanRooms("Kitchen, Living Room")` |
-| `cleanNextRooms()` | Clean whichever rotation rooms have gone longest without a clean (see below) |
+| `cleanNextRooms()` | Clean whichever rotation rooms have gone longest without a clean (see below) — if a room-clean batch is already running, picks the *next* group rather than re-picking the one in progress |
+| `markRoomsCleaned(roomNames)` | Mark room(s) as cleaned right now **without actually cleaning** — corrects rotation history, e.g. `markRoomsCleaned("Kitchen, Living Room")` |
 | `refresh()` | Force an immediate status poll |
 | `resetBinTimer()` | Reset the cumulative cleaning-hours counter used for the bin-empty reminder |
 | `learnRoomTimes()` | Start Learning Mode — cleans each rotation room by itself to directly measure its clean time (see below) |
@@ -126,9 +127,13 @@ Wyze's app lets the vacuum clean specific rooms from its saved map. This integra
    - **Fixed number of rooms per run** — e.g. clean 2 rooms every time it's triggered.
    - **Time budget per run** — e.g. clean as many rooms as fit in ~30 minutes. The app learns each room's actual clean time from real runs (starting from a 15-minute guess) and refines the estimate over time, so the time budget gets more accurate the longer you use it.
 3. Set a **cycle length** in days (default 7). A room becomes eligible again once it's gone that long without being cleaned — there's no hard weekly reset, it's a rolling "oldest first" queue, so it self-corrects if you trigger it more or less often than expected.
-4. Wire the child device's `cleanNextRooms()` command to whatever "everyone left" automation you use (presence, mode change, etc.) in Rule Machine or similar. Each time it fires, it cleans the least-recently-cleaned room(s) from your rotation list and marks them done — so over a week of normal comings and goings, it works its way through the whole rotation list.
+4. Wire the child device's `cleanNextRooms()` command to whatever "everyone left" automation you use (presence, mode change, etc.) in Rule Machine or similar. Each time it fires, it cleans the least-recently-cleaned room(s) from your rotation list and marks them done — so over a week of normal comings and goings, it works its way through the whole rotation list. If a batch is already running when `cleanNextRooms()` fires again, it skips whatever's currently in progress and picks the next group instead, rather than re-dispatching the same rooms (which otherwise looks like it "does nothing," since the vacuum is already doing exactly what you just asked).
 
 You can also call `cleanRooms("Kitchen, Living Room")` directly (e.g. from a button or a one-off automation) to clean specific named rooms regardless of rotation state — it still updates that room's "last cleaned" time, so it counts toward the rotation too.
+
+### Correcting rotation history manually
+
+If a room was cleaned but the rotation doesn't know it — cleaned by hand, or a run whose completion never got recorded for some reason — it'll keep getting picked first, ahead of rooms that are actually more overdue. Fix this directly with `markRoomsCleaned("Kitchen, Living Room")` (driver command, or under `<vacuum> — Mark Rooms as Cleaned` in the app) — it sets those rooms' "last cleaned" timestamp to now **without dispatching any actual cleaning**, so the rotation immediately reflects reality.
 
 ### What happens if a room-clean run is interrupted
 
