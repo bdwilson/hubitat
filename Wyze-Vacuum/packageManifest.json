@@ -5,8 +5,8 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "",
   "dateReleased": "2026-08-19",
-  "releaseNotes": "1.7.0 — Fixes cleaning-started/finished notifications (and room-completion crediting / bin-hour accumulation, which used the same check) silently never firing when a driver command (start/pause/dock/cleanNextRooms/etc.) triggered the transition. The driver optimistically writes its own status attribute for immediate UI feedback before the app polls, and the app's transition detection was comparing against that same mutable attribute -- so the \"previous\" value was usually already overwritten by the very command that caused the transition. The app now tracks its own independent last-known-status instead.",
-  "version": "1.7.0",
+  "releaseNotes": "1.7.1 — Adds a nextRoomsToClean attribute showing what cleanNextRooms() would pick right now, recomputed every poll from current rotation config and room history. Shares selection logic with the actual dispatch (previewNextRooms()) so the two can't drift out of sync.",
+  "version": "1.7.1",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -14,7 +14,7 @@
       "namespace": "brianwilson-hubitat",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-Driver.groovy",
       "required": true,
-      "version": "1.5.0"
+      "version": "1.5.1"
     }
   ],
   "apps": [
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.7.0"
+      "version": "1.7.1"
     }
   ]
 }

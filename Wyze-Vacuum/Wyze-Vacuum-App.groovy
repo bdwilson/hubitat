@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.7.0 - Brian Wilson / bubba@bubba.org
+ * 1.7.1 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -500,7 +500,7 @@ def handleVacuumPropsResponse(resp, data) {
     if (props.cleanTime != null)  d.sendEvent(name: "cleanTime", value: toInt(props.cleanTime))
     updateFaultAttribute(d, mac, props)
 
-    d.sendEvent(name: "roomsPendingThisCycle", value: pendingRoomCount(mac))
+    updateRotationPreviewAttributes(d, mac)
     d.sendEvent(name: "lastRefresh", value: new Date().format("MM/dd/yyyy HH:mm:ss", location.timeZone))
 }
 
@@ -540,7 +540,7 @@ def handleVacuumStatusResponse(resp, data) {
     }
     state.lastKnownStatus[mac] = newStatus
 
-    d.sendEvent(name: "roomsPendingThisCycle", value: pendingRoomCount(mac))
+    updateRotationPreviewAttributes(d, mac)
     d.sendEvent(name: "lastRefresh", value: new Date().format("MM/dd/yyyy HH:mm:ss", location.timeZone))
 }
 
@@ -876,8 +876,26 @@ def cleanSpecificRooms(String mac, String roomNamesCsv) {
 }
 
 def cleanNextRooms(String mac) {
-    def roomIds = (settings["rotationRooms_${mac}"] ?: []).collect { it as Integer }
+    def roomIds = settings["rotationRooms_${mac}"]
     if (!roomIds) { log.warn "Wyze Vacuum: no rotation rooms configured for ${mac}"; return }
+
+    def chosen = previewNextRooms(mac)
+    if (!chosen) { ifDebug("cleanNextRooms(${mac}): nothing to clean"); return }
+    dispatchRoomClean(mac, chosen)
+}
+
+// Computes what cleanNextRooms(mac) would pick right now, without dispatching
+// anything -- shared by the actual dispatch above and the nextRoomsToClean
+// attribute so the two can never drift out of sync with each other.
+private void updateRotationPreviewAttributes(def d, String mac) {
+    d.sendEvent(name: "roomsPendingThisCycle", value: pendingRoomCount(mac))
+    def next = previewNextRooms(mac)
+    d.sendEvent(name: "nextRoomsToClean", value: next ? next.collect { it.name }.join(", ") : "none")
+}
+
+private List previewNextRooms(String mac) {
+    def roomIds = (settings["rotationRooms_${mac}"] ?: []).collect { it as Integer }
+    if (!roomIds) return []
 
     def known = state.discoveredRooms?.getAt(mac) ?: []
     def history = state.roomHistory?.getAt(mac) ?: [:]
@@ -899,10 +917,7 @@ def cleanNextRooms(String mac) {
         chosenIds = candidates.take(n)
     }
 
-    if (!chosenIds) { ifDebug("cleanNextRooms(${mac}): nothing to clean"); return }
-
-    def chosen = chosenIds.collect { id -> known.find { it.id == id } ?: [id: id, name: "Room ${id}"] }
-    dispatchRoomClean(mac, chosen)
+    return chosenIds.collect { id -> known.find { it.id == id } ?: [id: id, name: "Room ${id}"] }
 }
 
 private void dispatchRoomClean(String mac, List rooms) {

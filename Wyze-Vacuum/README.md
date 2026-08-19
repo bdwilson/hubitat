@@ -56,6 +56,7 @@ Hubitat creates a child device per vacuum, named after its Wyze nickname.
 | `cleanSize` | number | Area cleaned in the current/last run |
 | `fault` | string | `none`, or a fault description if the vacuum is stuck/erroring |
 | `lastCleanedRooms` | string | Rooms confirmed cleaned by the most recent room-clean run |
+| `nextRoomsToClean` | string | What `cleanNextRooms()` would pick right now, given current rotation config and room history |
 | `roomsPendingThisCycle` | number | Rotation rooms not cleaned within the configured cycle window |
 | `hoursSinceEmptied` | number | Cumulative cleaning hours since the bin was last reset |
 | `learningStatus` | string | `Idle` / `Learning <room> (N more queued)` / `Stopped early` |
@@ -141,6 +142,7 @@ This is a heuristic, not a ground-truth signal from the vacuum (Wyze doesn't exp
 | Attribute | Description |
 |---|---|
 | `lastCleanedRooms` | Rooms confirmed cleaned by the most recent room-clean run |
+| `nextRoomsToClean` | What `cleanNextRooms()` would pick right now — recomputed every poll, so it stays current as room history and rotation config change |
 | `roomsPendingThisCycle` | How many of your selected rotation rooms are currently due (not cleaned within the cycle window) |
 
 ### Limitations
