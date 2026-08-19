@@ -5,8 +5,8 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "",
   "dateReleased": "2026-08-19",
-  "releaseNotes": "1.7.2 — Adds a workStatusCode attribute exposing the raw numeric status code behind the status label. The status label mapping was sourced from a single third-party project, unverified against live 200S telemetry -- if a label ever looks wrong (e.g. Returning to charge while charging:true), this gives real numeric evidence to correct it with instead of guessing.",
-  "version": "1.7.2",
+  "releaseNotes": "1.7.3 — The workStatusCode attribute added in 1.7.2 hasn't reliably shown up in the device UI after driver updates for one user. Adds a log.info line in handleVacuumStatusResponse logging the raw vacuum_work_status code alongside the translated status label on every poll, as a more reliable way to get real numbers for checking the unverified status label mapping.",
+  "version": "1.7.3",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.7.2"
+      "version": "1.7.3"
     }
   ]
 }

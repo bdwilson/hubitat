@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.7.2 - Brian Wilson / bubba@bubba.org
+ * 1.7.3 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -514,6 +514,12 @@ def handleVacuumStatusResponse(resp, data) {
     def workStatus = statusData?.heartBeat?.vacuum_work_status ?: statusData?.eventFlag?.vacuum_work_status
     def newStatus = workStatus != null ? vacuumStatusDescription(workStatus) : null
     if (newStatus == null) return
+
+    // Log the raw code every time regardless of the workStatusCode attribute
+    // (which has been unreliable showing up in the device UI after driver
+    // updates) -- this is the reliable way to get real numbers to check the
+    // unverified status label mapping against.
+    log.info "Wyze Vacuum ${mac} vacuum_work_status=${workStatus} -> status=\"${newStatus}\""
 
     // Deliberately NOT d.currentValue("status") -- the driver's own command
     // methods (start/pause/dock/cleanNextRooms/etc.) optimistically write
