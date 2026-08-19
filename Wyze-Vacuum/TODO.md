@@ -17,6 +17,21 @@ Does it abandon the current room and switch immediately? No evidence of
 command queuing in the reverse-engineered API, so "abandons and switches" is
 the working assumption, but unconfirmed.
 
+## ~~7. High-traffic rooms — clean some rooms more often than others~~ — DONE (1.11.0)
+
+Added a "High-traffic rooms" multi-select per vacuum with its own (shorter)
+cycle-length setting, distinct from the normal-traffic `rotationCycleDays_${mac}`.
+Room selection in `previewNextRooms()` now sorts by relative overdue-ness
+(elapsed time ÷ that room's own cycle length) instead of raw last-cleaned
+time, so a 3-day-cycle room naturally surfaces ~2-3x as often as a 7-day-cycle
+one across repeated `cleanNextRooms()` triggers — no hard-gated separate
+queue, and it degrades to the old plain oldest-first behavior when every
+room shares one cycle length. `pendingRoomCount`/`roomsPendingThisCycle`
+updated to use each room's own cycle length too. Verified via a standalone
+simulation (3-day vs 7-day room, triggered every 3 days over 21 days):
+5 picks vs 2 picks, matching the intended "multiple times/week vs. once/week"
+pacing as a soft heuristic, not an exact schedule.
+
 ## ~~6. Rough job-completeness metric from room time estimates~~ — DONE (1.10.0)
 
 Added `lastRunCompleteness`: sums each dispatched room's learned/estimated

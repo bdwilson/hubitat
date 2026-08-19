@@ -127,10 +127,19 @@ Wyze's app lets the vacuum clean specific rooms from its saved map. This integra
 2. Pick which of those rooms should participate in the rotation, and a rotation mode:
    - **Fixed number of rooms per run** — e.g. clean 2 rooms every time it's triggered.
    - **Time budget per run** — e.g. clean as many rooms as fit in ~30 minutes. The app learns each room's actual clean time from real runs (starting from a 15-minute guess) and refines the estimate over time, so the time budget gets more accurate the longer you use it.
-3. Set a **cycle length** in days (default 7). A room becomes eligible again once it's gone that long without being cleaned — there's no hard weekly reset, it's a rolling "oldest first" queue, so it self-corrects if you trigger it more or less often than expected.
+3. Set a **cycle length** in days (default 7) for normal-traffic rooms. A room becomes eligible again once it's gone that long without being cleaned — there's no hard weekly reset, it's a rolling "oldest first" queue, so it self-corrects if you trigger it more or less often than expected.
+3a. Optionally mark some rooms **High-traffic** and give them their own (shorter) cycle length, e.g. 3 days for roughly twice a week — see below.
 4. Wire the child device's `cleanNextRooms()` command to whatever "everyone left" automation you use (presence, mode change, etc.) in Rule Machine or similar. Each time it fires, it cleans the least-recently-cleaned room(s) from your rotation list and marks them done — so over a week of normal comings and goings, it works its way through the whole rotation list. If a batch is already running when `cleanNextRooms()` fires again, it skips whatever's currently in progress and picks the next group instead, rather than re-dispatching the same rooms (which otherwise looks like it "does nothing," since the vacuum is already doing exactly what you just asked).
 
 You can also call `cleanRooms("Kitchen, Living Room")` directly (e.g. from a button or a one-off automation) to clean specific named rooms regardless of rotation state — it still updates that room's "last cleaned" time, so it counts toward the rotation too.
+
+### High-traffic rooms — cleaning some rooms more often than others
+
+By default every rotation room shares the same cycle length, so `cleanNextRooms()` just works through the whole list evenly (oldest-cleaned first). If some rooms genuinely get dirtier faster — a kitchen or entryway vs. a guest room — mark them under `<vacuum> — Room Rotation` → **"High-traffic rooms"**, and give that group its own (shorter) cycle length, e.g. 3 days for roughly twice a week vs. the normal 7-day default for everything else.
+
+Under the hood, room picking isn't a hard-gated "queue A always drains before queue B" split — it sorts every candidate room by how overdue it is **relative to its own cycle length** (elapsed time ÷ that room's cycle length), highest first. A high-traffic room on a 3-day cycle reaches "fully due" three times as fast as a normal room on a 7-day cycle, so across repeated `cleanNextRooms()` triggers it naturally rises to the top and gets picked more often — without starving normal-traffic rooms outright, since their fraction keeps climbing the whole time and eventually overtakes a high-traffic room that just got reset. This is the same sort the plain oldest-first behavior was always using; giving every room the same cycle length reduces to exactly the old behavior.
+
+This is a soft pacing heuristic, not an exact schedule — actual frequency depends on how often `cleanNextRooms()` is triggered and how many rooms fit in a batch (rooms-per-run / time-budget setting), same as the rest of rotation.
 
 ### Correcting rotation history manually
 

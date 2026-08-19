@@ -5,8 +5,8 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "",
   "dateReleased": "2026-08-19",
-  "releaseNotes": "1.10.0 — Adds lastRunCompleteness: a rough % readout of how much of a room-clean batch's total expected time actually elapsed, computed from the sum of each targeted room's learned/estimated clean time vs. actual elapsed minutes. Distinct from per-room crediting -- gives a coarse 'how effective was this run' signal without needing a completion record for every room.",
-  "version": "1.10.0",
+  "releaseNotes": "1.11.0 — Adds high-traffic rooms: mark some rotation rooms to get their own (shorter) cycle length so they're cleaned more often than normal-traffic rooms. Room picking now sorts by how overdue each room is relative to its own cycle length (elapsed / cycle) instead of raw last-cleaned time, so higher-frequency rooms naturally surface more often across repeated cleanNextRooms() triggers without a hard-gated separate queue. Reduces to the previous oldest-first behavior when every room shares the same cycle length.",
+  "version": "1.11.0",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.10.0"
+      "version": "1.11.0"
     }
   ]
 }

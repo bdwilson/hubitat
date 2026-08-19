@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.10.0 - Brian Wilson / bubba@bubba.org
+ * 1.11.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -169,8 +169,20 @@ def mainPage() {
                                     input "rotationCount_${mac}", "number", title: "Rooms per run", defaultValue: 2, required: true
                                 }
                                 input "rotationCycleDays_${mac}", "number",
-                                    title: "Cycle length (days) — a room becomes eligible again after this many days, even if already cleaned this cycle",
+                                    title: "Cycle length (days) for normal-traffic rooms — a room becomes eligible again after this many days, even if already cleaned this cycle",
                                     defaultValue: 7, required: true
+
+                                def selectedIds = (settings["rotationRooms_${mac}"] ?: []).collect { it as Integer }
+                                def selectedRoomOptions = rooms.findAll { (it.id as Integer) in selectedIds }.collectEntries { [(it.id.toString()): it.name] }
+                                input "highTrafficRooms_${mac}", "enum",
+                                    title: "High-traffic rooms — get their own shorter cycle below and are prioritized over normal-traffic rooms once due",
+                                    options: selectedRoomOptions, multiple: true, required: false, submitOnChange: true
+
+                                if (settings["highTrafficRooms_${mac}"]) {
+                                    input "rotationCycleDaysHighTraffic_${mac}", "number",
+                                        title: "Cycle length (days) for high-traffic rooms — e.g. 3 for roughly twice a week",
+                                        defaultValue: 3, required: true
+                                }
 
                                 def pending = pendingRoomCount(mac)
                                 paragraph "${pending} of ${(settings["rotationRooms_${mac}"] ?: []).size()} rotation room(s) are due for cleaning right now."
@@ -993,6 +1005,16 @@ private void updateRotationPreviewAttributes(def d, String mac) {
     d.sendEvent(name: "nextRoomsToClean", value: next ? next.collect { it.name }.join(", ") : "none")
 }
 
+// Which cycle length applies to a given room -- the shorter high-traffic
+// cycle if it's been marked as such, otherwise the normal/low-traffic one.
+private Integer roomCycleDays(String mac, Integer roomId) {
+    def highSet = (settings["highTrafficRooms_${mac}"] ?: []).collect { it as Integer } as Set
+    if (roomId in highSet) {
+        return (settings["rotationCycleDaysHighTraffic_${mac}"] ?: 3) as Integer
+    }
+    return (settings["rotationCycleDays_${mac}"] ?: 7) as Integer
+}
+
 private List previewNextRooms(String mac) {
     def roomIds = (settings["rotationRooms_${mac}"] ?: []).collect { it as Integer }
     if (!roomIds) return []
@@ -1010,7 +1032,20 @@ private List previewNextRooms(String mac) {
 
     def known = state.discoveredRooms?.getAt(mac) ?: []
     def history = state.roomHistory?.getAt(mac) ?: [:]
-    def candidates = roomIds.sort { a, b -> (history[a.toString()] ?: 0L) <=> (history[b.toString()] ?: 0L) }
+    def nowMs = now()
+    // Sort by how overdue each room is *relative to its own cycle length*,
+    // not raw last-cleaned time -- a high-traffic room on a 3-day cycle
+    // reaches "fully due" (fraction 1.0) three times as fast as a
+    // normal-traffic room on a 7-day cycle, so it naturally rises to the
+    // top of the pick order more often without a hard-gated separate queue.
+    // Equivalent to the old plain oldest-first sort when every room shares
+    // the same cycle length.
+    def urgency = { Integer id ->
+        def last = (history[id.toString()] ?: 0L) as Long
+        def cycleMs = roomCycleDays(mac, id) * 24L * 60L * 60L * 1000L
+        cycleMs > 0 ? (nowMs - last) / (double) cycleMs : 0.0
+    }
+    def candidates = roomIds.sort { a, b -> urgency(b) <=> urgency(a) }
 
     def mode = settings["rotationMode_${mac}"] ?: "count"
     def chosenIds = []
@@ -1257,9 +1292,12 @@ private Integer pendingRoomCount(String mac) {
     def roomIds = settings["rotationRooms_${mac}"]
     if (!roomIds) return 0
     def history = state.roomHistory?.getAt(mac) ?: [:]
-    def cycleDays = (settings["rotationCycleDays_${mac}"] ?: 7) as Integer
-    def cutoff = now() - (cycleDays * 24L * 60L * 60L * 1000L)
-    return roomIds.count { id -> (history[id.toString()] ?: 0L) < cutoff }
+    def nowMs = now()
+    return roomIds.count { id ->
+        def rid = id as Integer
+        def cutoff = nowMs - (roomCycleDays(mac, rid) * 24L * 60L * 60L * 1000L)
+        (history[id.toString()] ?: 0L) < cutoff
+    }
 }
 
 // =================== Map / room discovery ===================
