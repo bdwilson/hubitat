@@ -17,31 +17,38 @@ Does it abandon the current room and switch immediately? No evidence of
 command queuing in the reverse-engineered API, so "abandons and switches" is
 the working assumption, but unconfirmed.
 
-## ~~9. Battery-forced-return mis-crediting fix~~ — DONE (1.13.0)
+## ~~9. Battery-forced-return "fix" — tried, disproved by live data, reverted~~
 
-Real bug, confirmed live: a run that returned to charge at 21% battery after
-39 min was being treated the same as a genuine finish -- credited as done,
-with 39 min locked in as that room's "true" clean time -- even though it may
-well have just been Wyze's own low-battery behavior cutting the room short.
-Fixed via `isBatteryForcedReturn()` (battery at/below the configured Low
-Battery Protection threshold, or 25% default) -- such a transition now
-leaves the run "active" with elapsed time carried forward in
-`pausedElapsedMin`, rather than crediting/clearing it. `checkStaleActiveCleanRun()`
-force-finishes it after 3+ hours parked with no resume, so a wrong
-assumption about Wyze auto-resuming can't leave a room stuck excluded from
-rotation forever.
+Shipped in 1.13.0: treated a return-to-charge at/below a battery threshold as
+"not a genuine finish" (Wyze's own low-battery behavior cutting the room
+short), leaving the run active with elapsed time carried forward instead of
+crediting it. **Live testing immediately falsified this**: a room legitimately
+finished (confirmed against the map) with the battery down at 21% -- low
+battery at dock time is apparently unremarkable, not evidence of an
+interruption. Reverted in 1.14.0 back to the original, simpler rule: any
+non-Paused/Error exit is trusted as a genuine finish. Noted here as a
+recorded dead end so it isn't re-attempted the same way later without new
+evidence.
 
-**Still open (this is the part deliberately NOT built yet):** once a room
-*genuinely* finishes and the vacuum is just sitting there, nothing
-automatically advances to the next rotation room today -- an external
-trigger (Rule Machine, a repeat schedule, etc.) still has to call
-`cleanNextRooms()` again for each subsequent room. User asked directly:
-"we're still 'on', shouldn't we be cleaning the next room?" -- this is real
-demand for item #3 below (or a scoped-down version of it), but the actual
-stopping condition (auto-continue until the whole due-list is drained then
-stop on its own vs. keep going indefinitely until manually turned off) is a
-real design fork with consequences if guessed wrong, so it's being confirmed
-with the user before building rather than assumed.
+## ~~10. Rotation sweep — auto-continue to the next due room~~ — DONE (1.14.0)
+
+User asked directly, after a room finished and the vacuum just sat there:
+"we're still 'on', shouldn't we be cleaning the next room?" Confirmed with
+the user which stopping condition they wanted (auto-continue through
+everything due, then stop on its own -- not indefinitely until manually
+turned off, and not left as a fully manual per-room trigger).
+
+Implementation: `cleanNextRooms()` sets `state.rotationSweepActive[mac] =
+true`. On every genuine finish (`handleCleaningSessionEnd`'s non-learning
+branch), `continueSweepIfNeeded()` checks `pendingRoomCount(mac)` -- if
+anything's still actually due, it schedules `continueSweepDispatch` (`runIn`,
+5s) to call `cleanNextRooms()` again; otherwise it clears the flag and stops.
+`continueSweepDispatch` re-checks the flag before dispatching, so if
+`dock()`/`pause()`/`start()` cleared it in the meantime (all three now do),
+the scheduled continuation quietly no-ops instead of reactivating a sweep the
+user just stopped. Verified via standalone simulations: a 3-room sweep
+draining to completion and stopping on its own, and a dock()-during-sweep
+cancellation correctly no-op'ing the pending continuation.
 
 ## ~~8. Default to 1 room per run + manual room-time overrides~~ — DONE (1.12.0)
 
