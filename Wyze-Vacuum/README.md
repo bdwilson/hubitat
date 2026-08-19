@@ -210,6 +210,8 @@ Per vacuum, under **`<vacuum> — Bin Reminder`**: set **"Notify to empty the bi
 
 If the same error instead shows the poll's *async callback method* (`handleVacuumPropsResponse`/`handleVacuumStatusResponse`) rather than `pollAllVacuums`, that's a second variant fixed in 1.5.1: the 401/403 retry path was still making a **synchronous** token-refresh call from inside the async callback, which trips the same guardrail, just relocated. Token refresh is now fully async too. If you were seeing this, also check whether your Wyze session had simply gone stale for an extended period (the `lastRefresh` attribute frozen at an old date is the tell) — if refresh keeps failing even after updating, click **Re-login** in the app to get a fresh session, since the stored refresh token itself may no longer be valid.
 
+**"Notify when cleaning starts"/"finishes" don't fire even though they're enabled** — this was a real bug (fixed in 1.7.0). The driver's own command methods (`start()`, `pause()`, `dock()`, `cleanNextRooms()`, etc.) optimistically write the `status` attribute themselves for immediate UI feedback, *before* the app's poll ever runs. The app's transition detection was comparing against that same attribute as "previous status" — so by the time a poll landed, the "previous" value had usually already been overwritten by the very command that triggered the transition, and the app never saw a real before/after change. This wasn't just a notification issue: the same check also gates room-completion crediting and bin-hour accumulation, so it could affect rotation-history accuracy too, not only whether you got a text. The app now tracks its own independent "last known status" rather than reading it back off the driver-mutable attribute.
+
 ---
 
 ## License

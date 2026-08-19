@@ -5,8 +5,8 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "",
   "dateReleased": "2026-08-19",
-  "releaseNotes": "1.6.1 — Adds a configurable, comma-separated list of fault_code values to treat as normal rather than real faults (default 2103,2105 — an unconfirmed community lead suggests these may just mean charging/fully charged). Every nonzero fault_code is now also logged with full context (mode, chargeState, status, battery) regardless of whether it's ignored, to build an evidence trail for confirming what each code actually means.",
-  "version": "1.6.1",
+  "releaseNotes": "1.7.0 — Fixes cleaning-started/finished notifications (and room-completion crediting / bin-hour accumulation, which used the same check) silently never firing when a driver command (start/pause/dock/cleanNextRooms/etc.) triggered the transition. The driver optimistically writes its own status attribute for immediate UI feedback before the app polls, and the app's transition detection was comparing against that same mutable attribute -- so the \"previous\" value was usually already overwritten by the very command that caused the transition. The app now tracks its own independent last-known-status instead.",
+  "version": "1.7.0",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.6.1"
+      "version": "1.7.0"
     }
   ]
 }

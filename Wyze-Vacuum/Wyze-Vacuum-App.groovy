@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.6.1 - Brian Wilson / bubba@bubba.org
+ * 1.7.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -515,7 +515,16 @@ def handleVacuumStatusResponse(resp, data) {
     def newStatus = workStatus != null ? vacuumStatusDescription(workStatus) : null
     if (newStatus == null) return
 
-    def prevStatus = d.currentValue("status")
+    // Deliberately NOT d.currentValue("status") -- the driver's own command
+    // methods (start/pause/dock/cleanNextRooms/etc.) optimistically write
+    // that attribute themselves for immediate UI feedback, before this poll
+    // ever runs. Reading it here would mean "previous status" is often
+    // already overwritten by the very command that caused this transition,
+    // so the transition would never be detected. Track our own copy instead,
+    // updated only from confirmed poll data.
+    state.lastKnownStatus = state.lastKnownStatus ?: [:]
+    def prevStatus = state.lastKnownStatus[mac]
+
     d.sendEvent(name: "status", value: newStatus)
     // Keep the Switch capability's "switch" attribute honest against real
     // vacuum state, not just the last on()/off() the user tapped -- it flips
@@ -529,6 +538,7 @@ def handleVacuumStatusResponse(resp, data) {
     } else if (prevStatus == "Cleaning" && newStatus != "Cleaning") {
         handleCleaningSessionEnd(mac, d.currentValue("cleanTime"), d, newStatus)
     }
+    state.lastKnownStatus[mac] = newStatus
 
     d.sendEvent(name: "roomsPendingThisCycle", value: pendingRoomCount(mac))
     d.sendEvent(name: "lastRefresh", value: new Date().format("MM/dd/yyyy HH:mm:ss", location.timeZone))
