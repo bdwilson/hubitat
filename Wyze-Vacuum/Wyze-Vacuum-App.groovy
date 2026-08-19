@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.8.0 - Brian Wilson / bubba@bubba.org
+ * 1.9.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -119,10 +119,15 @@ def mainPage() {
 
             if (settings.selectedVacuums) {
                 section("<b>Polling</b>") {
-                    input "pollInterval", "enum",
-                        title: "Poll Interval",
-                        options: ["1": "Every 1 min", "5": "Every 5 min", "10": "Every 10 min", "15": "Every 15 min", "30": "Every 30 min"],
-                        defaultValue: "5", required: true
+                    paragraph "Uses a faster interval while any selected vacuum is actively cleaning, and a slower one the rest of the time, so status stays responsive during a run without polling needlessly while idle/charging."
+                    input "pollIntervalCleaning", "enum",
+                        title: "Poll interval while cleaning",
+                        options: ["1": "Every 1 min", "2": "Every 2 min", "5": "Every 5 min"],
+                        defaultValue: "1", required: true
+                    input "pollIntervalIdle", "enum",
+                        title: "Poll interval while idle/charging",
+                        options: ["5": "Every 5 min", "10": "Every 10 min", "15": "Every 15 min", "30": "Every 30 min"],
+                        defaultValue: "15", required: true
                 }
 
                 section("<b>Notifications</b>") {
@@ -222,6 +227,14 @@ def mainPage() {
                         }
                     }
 
+                    section("<b>${vacLabel} — Low Battery Protection</b>") {
+                        paragraph "Wyze's own firmware already returns to charge and resumes on its own at some internal threshold. This is a supplementary, " +
+                                  "more conservative trigger you control — sends it back to dock as soon as battery drops below this while actively cleaning."
+                        input "lowBatteryDockPercent_${mac}", "number",
+                            title: "Dock if battery drops below this % while cleaning (0 = disabled, rely on the vacuum's own behavior)",
+                            defaultValue: 0, required: false
+                    }
+
                     section("<b>${vacLabel} — Bin Reminder</b>") {
                         input "emptyBinHours_${mac}", "number",
                             title: "Notify to empty the bin after this many cumulative cleaning hours (0 = disabled)",
@@ -294,19 +307,37 @@ def updated() {
             if (!(d.deviceNetworkId in settings.selectedVacuums)) deleteChildDevice(d.deviceNetworkId)
         }
         runIn(5, pollAllVacuums)
-        schedule(pollCron(settings.pollInterval ?: "5"), pollAllVacuums)
+        state.currentPollMode = null // force rescheduleDynamicPoll to (re)schedule below
+        rescheduleDynamicPoll()
     }
 }
 
 private String pollCron(String minutes) {
     switch (minutes) {
         case "1":  return "0 * * * * ?"
+        case "2":  return "0 0/2 * * * ?"
         case "5":  return "0 0/5 * * * ?"
         case "10": return "0 0/10 * * * ?"
         case "15": return "0 0/15 * * * ?"
         case "30": return "0 0/30 * * * ?"
         default:   return "0 0/5 * * * ?"
     }
+}
+
+// Switches the scheduled poll's cadence based on whether any selected
+// vacuum is currently cleaning -- faster (pollIntervalCleaning) while a
+// run is active, slower (pollIntervalIdle) the rest of the time. Only
+// actually reschedules when the mode changes, not on every poll.
+private void rescheduleDynamicPoll() {
+    def anyCleaning = settings.selectedVacuums?.any { mac -> state.lastKnownStatus?.getAt(mac) == "Cleaning" } ?: false
+    def desiredMode = anyCleaning ? "cleaning" : "idle"
+    if (state.currentPollMode == desiredMode) return
+
+    def minutes = anyCleaning ? (settings.pollIntervalCleaning ?: "1") : (settings.pollIntervalIdle ?: "15")
+    unschedule()
+    schedule(pollCron(minutes), pollAllVacuums)
+    state.currentPollMode = desiredMode
+    ifDebug("rescheduleDynamicPoll: switched to ${desiredMode} polling (every ${minutes} min)")
 }
 
 private void ensureChildDevice(String mac) {
@@ -516,7 +547,11 @@ def handleVacuumPropsResponse(resp, data) {
     def props = parseAsyncJson(resp)?.data?.props
     if (props == null) { ifDebug("pollVacuum(${mac}): no props returned"); return }
 
-    if (props.battary != null)    d.sendEvent(name: "battery", value: toInt(props.battary), unit: "%")
+    if (props.battary != null) {
+        def batteryPct = toInt(props.battary)
+        d.sendEvent(name: "battery", value: batteryPct, unit: "%")
+        checkLowBatteryAutoDock(mac, batteryPct)
+    }
     if (props.mode != null)       d.sendEvent(name: "mode", value: vacuumModeDescription(props.mode))
     if (props.cleanlevel != null) d.sendEvent(name: "suctionLevel", value: suctionLevelName(props.cleanlevel))
     if (props.chargeState != null) d.sendEvent(name: "charging", value: (toInt(props.chargeState) == 1) ? "true" : "false")
@@ -575,6 +610,7 @@ def handleVacuumStatusResponse(resp, data) {
         handleCleaningSessionEnd(mac, d.currentValue("cleanTime"), d, newStatus)
     }
     state.lastKnownStatus[mac] = newStatus
+    rescheduleDynamicPoll()
 
     updateRotationPreviewAttributes(d, mac)
     d.sendEvent(name: "lastRefresh", value: new Date().format("MM/dd/yyyy HH:mm:ss", location.timeZone))
@@ -737,6 +773,34 @@ def handleTokenRefreshResponse(resp, data) {
         def retryData = new LinkedHashMap(data)
         retryData["_retried"] = true
         venusGetAsync(path, data?._venusQuery, callbackHandler, retryData)
+    }
+}
+
+// Wyze's own firmware already has some low-battery return-to-charge-then-
+// resume behavior built in (observed live: mode 11 = "docked, cleaning will
+// resume after charging", battery climbing while docked). This is a
+// supplementary, user-controlled trigger point -- lets you dock earlier
+// more conservatively than whatever threshold the vacuum uses internally.
+// Calling dock() here is safe even if the vacuum would have self-docked
+// shortly after anyway.
+private void checkLowBatteryAutoDock(String mac, Integer batteryPct) {
+    if (batteryPct == null) return
+    def threshold = (settings["lowBatteryDockPercent_${mac}"] ?: 0) as Integer
+    if (threshold <= 0) return // disabled
+
+    def isCleaning = state.lastKnownStatus?.getAt(mac) == "Cleaning"
+    state.lowBatteryDockTriggered = state.lowBatteryDockTriggered ?: [:]
+
+    if (isCleaning && batteryPct < threshold) {
+        if (!state.lowBatteryDockTriggered[mac]) {
+            log.warn "Wyze Vacuum ${mac}: battery ${batteryPct}% below ${threshold}% threshold while cleaning — sending back to dock"
+            state.lowBatteryDockTriggered[mac] = true
+            dockVacuum(mac)
+        }
+    } else {
+        // Reset once no longer cleaning or battery has recovered, so the
+        // next time it drops below threshold this can trigger again.
+        state.lowBatteryDockTriggered[mac] = false
     }
 }
 

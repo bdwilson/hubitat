@@ -35,7 +35,7 @@ Wyze has no public, supported API for the robot vacuum. This integration speaks 
 2. Enter your Wyze account **email** and **password**, then click **Log In**
 3. If your account has 2FA enabled, enter the verification code (from your authenticator app or SMS) and click **Submit Code**
 4. Click **Discover Vacuums**, select the vacuum(s) to add
-5. Set a **poll interval** (5 minutes recommended)
+5. Set poll intervals — one for while any vacuum is actively cleaning (defaults to every 1 min), one for idle/charging (defaults to every 15 min). The app automatically switches between them as vacuums start/stop cleaning.
 6. Click **Done**
 
 Hubitat creates a child device per vacuum, named after its Wyze nickname.
@@ -199,6 +199,10 @@ Optional, change-driven — polling by itself never triggers a notification. Con
 ### Bin-empty reminder
 
 Per vacuum, under **`<vacuum> — Bin Reminder`**: set **"Notify to empty the bin after this many cumulative cleaning hours"** (0 disables it). This tracks total active cleaning time — summed across every cleaning session, room-scoped or whole-house — since the counter was last reset. When it crosses the threshold, you get one notification and the counter resets automatically. You can also reset it manually anytime with the **"I emptied it"** button on the app page, or the driver's `resetBinTimer()` command (handy to wire into whatever automation you use when you actually empty it).
+
+### Low battery protection
+
+Wyze's own firmware already has some low-battery return-to-charge-and-resume behavior built in (observed live: a `mode` value that decodes to "Cleaning will resume after charging," with battery visibly climbing while docked mid-job). Per vacuum, under **`<vacuum> — Low Battery Protection`**, you can set an additional, more conservative threshold you control: **"Dock if battery drops below this % while cleaning"** (0 disables it, relying entirely on the vacuum's own behavior). This just calls `dock()` proactively — safe even if the vacuum would have self-docked shortly after anyway, but gives you an explicit, earlier trigger point if you don't trust (or don't know) wherever Wyze's own internal threshold is set.
 
 ---
 

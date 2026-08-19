@@ -5,8 +5,8 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "",
   "dateReleased": "2026-08-19",
-  "releaseNotes": "1.8.0 — cleanNextRooms() now excludes whatever's already actively being cleaned from candidate selection, so a repeat call while a batch is still running advances to the next rotation group instead of re-picking (and re-dispatching) the same rooms, which previously looked like it did nothing. Also adds markRoomsCleaned(roomNames) to manually correct rotation history for a room that was genuinely cleaned but never got recorded, without dispatching any actual cleaning.",
-  "version": "1.8.0",
+  "releaseNotes": "1.9.0 — Adds two independently-requested features: (1) per-vacuum low-battery auto-dock threshold, supplementing Wyze's own built-in low-battery return-and-resume behavior with a user-controlled, more conservative trigger point. (2) Dynamic dual poll interval -- fast (default 1 min) while any selected vacuum is actively cleaning, slow (default 15 min) the rest of the time, switching automatically on Cleaning <-> non-Cleaning transitions instead of a single fixed interval.",
+  "version": "1.9.0",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.8.0"
+      "version": "1.9.0"
     }
   ]
 }
