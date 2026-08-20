@@ -145,7 +145,7 @@ This is a soft pacing heuristic, not an exact schedule — actual frequency depe
 
 ### Correcting rotation history manually
 
-If a room was cleaned but the rotation doesn't know it — cleaned by hand, or a run whose completion never got recorded for some reason — it'll keep getting picked first, ahead of rooms that are actually more overdue. Fix this directly with `markRoomsCleaned("Kitchen, Living Room")` (driver command, or under `<vacuum> — Mark Rooms as Cleaned` in the app) — it sets those rooms' "last cleaned" timestamp to now **without dispatching any actual cleaning**, so the rotation immediately reflects reality.
+If a room was cleaned but the rotation doesn't know it — cleaned by hand, or a run whose completion never got recorded for some reason — it'll keep getting picked first, ahead of rooms that are actually more overdue. Fix this directly with `markRoomsCleaned("Kitchen, Living Room")` (driver command, or under `<vacuum> — Mark Rooms as Cleaned` in the app) — it sets those rooms' "last cleaned" timestamp to now **without dispatching any actual cleaning**, so the rotation immediately reflects reality. The app page's room picker clears itself after you click **Mark as Cleaned**, so it doesn't sit there looking selected — nothing re-applies just because it's still showing checked boxes; only an actual button click does anything.
 
 ### What happens if a room-clean run is interrupted
 
@@ -231,7 +231,7 @@ Optional, change-driven — polling by itself never triggers a notification. Con
 
 ### Bin-empty reminder
 
-Per vacuum, under **`<vacuum> — Bin Reminder`**: set **"Notify to empty the bin after this many cumulative cleaning hours"** (0 disables it). This tracks total active cleaning time — summed across every cleaning session, room-scoped or whole-house — since the counter was last reset. When it crosses the threshold, you get one notification and the counter resets automatically. You can also reset it manually anytime with the **"I emptied it"** button on the app page, or the driver's `resetBinTimer()` command (handy to wire into whatever automation you use when you actually empty it).
+Per vacuum, under **`<vacuum> — Bin Reminder`**: set **"Notify to empty the bin after this many cumulative cleaning hours"** (0 disables it). This tracks total active cleaning time — summed across every cleaning session, room-scoped or whole-house — since the counter was last reset. When it crosses the threshold, you get one notification and the counter resets automatically. You can also reset it manually anytime with the **"I emptied it"** button on the app page, or the driver's `resetBinTimer()` command (handy to wire into whatever automation you use when you actually empty it). If the running total looks wrong for any reason (e.g. it missed time accumulated before upgrading to 1.15.0's polling fix — see Troubleshooting), correct it directly with the **"Set cumulative hours to"** field + **Set Hours** button, rather than only being able to reset it to zero.
 
 ### Low battery protection
 
@@ -267,6 +267,8 @@ If the same error instead shows the poll's *async callback method* (`handleVacuu
 2. Even once fast polling was engaged, a single transient/noisy status read (Wyze's API occasionally reporting something other than "Cleaning" for one poll, mid-job) could flip polling straight back to the slow interval, potentially missing the actual finish for up to 15 minutes.
 
 Both are now fixed by also trusting the app's own active-run tracking (`state.activeCleanRun`), not just the latest single poll's status reading, when deciding whether to poll fast: the moment a room-clean is dispatched, polling switches to the fast interval immediately (not waiting on a poll to confirm it first), and it stays fast for as long as that run is active, immune to a single noisy poll reading something else. If you're on an older version, re-import to pick up the fix.
+
+This bug wasn't limited to notifications — a missed transition also meant `handleCleaningSessionEnd` never ran for that session, so **the bin-reminder hour counter (`hoursSinceEmptied`) silently undercounted too**, along with room-completion crediting. If your cumulative-hours number looks lower than reality, that's likely why; there's no way to recover the specific hours that went uncounted, but you can correct the running total directly (see Bin-empty reminder above) rather than starting back at zero.
 
 ---
 

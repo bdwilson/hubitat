@@ -5,8 +5,8 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "",
   "dateReleased": "2026-08-19",
-  "releaseNotes": "1.15.0 — Fixes notifications silently not firing (and the dynamic poll interval flapping back to idle mid-clean): polling now trusts the app's own active-run tracking, not just the latest single poll's status reading, so a short single-room clean can no longer land entirely between two idle-interval polls unnoticed, and one noisy poll reading can no longer knock fast polling back to slow. Also enriches notification content: 'cleaning started' now names the room(s) being cleaned, 'cleaning finished' now breaks down which rooms were confirmed cleaned vs. not completed. Adds a log.info line recording each single-room dispatch's measured clean time.",
-  "version": "1.15.0",
+  "releaseNotes": "1.16.0 — Two small correctness/UX fixes: (1) the 'Mark Rooms as Cleaned' room picker now clears itself after clicking Mark as Cleaned, instead of sitting there looking selected indefinitely; (2) the bin-reminder hour counter can now be corrected directly (a 'Set cumulative hours to' field + button), not just reset to zero -- useful since the polling bug fixed in 1.15.0 could have silently undercounted hours for any session whose transition was missed.",
+  "version": "1.16.0",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.15.0"
+      "version": "1.16.0"
     }
   ]
 }

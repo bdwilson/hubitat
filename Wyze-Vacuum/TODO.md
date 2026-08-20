@@ -17,6 +17,24 @@ Does it abandon the current room and switch immediately? No evidence of
 command queuing in the reverse-engineered API, so "abandons and switches" is
 the working assumption, but unconfirmed.
 
+## ~~12. Mark-cleaned picker never clears + bin-hours correction~~ — DONE (1.16.0)
+
+User asked how the "Mark rooms as cleaned" picker gets emptied out -- answer
+was "it doesn't," a real gap: `markCleanRooms_${mac}` was never cleared
+after `btnMarkCleaned_` applied it, so it sat looking selected indefinitely.
+Fixed with `app.removeSetting(...)` after applying.
+
+Also reported `hoursSinceEmptied` reading 0.0 despite real cleaning having
+happened -- directly explained by the 1.15.0 poll-mode-flapping bug fixed
+just before this: `accumulateBinHours()` only runs from
+`handleCleaningSessionEnd`, which only runs when a Cleaning->non-Cleaning
+transition is actually detected, so every session whose transition got
+missed also silently skipped its bin-hour contribution. Going forward this
+self-resolves with the 1.15.0 fix, but the already-lost hours can't be
+recovered, so added a "Set cumulative hours to" field + button (Bin
+Reminder section) to correct the running total directly instead of only
+being able to reset it to zero.
+
 ## ~~11. Missing start/finish notifications + poll-mode flapping~~ — DONE (1.15.0)
 
 Real bug, confirmed live twice: (1) user reported "still not getting

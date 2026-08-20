@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.15.0 - Brian Wilson / bubba@bubba.org
+ * 1.16.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -277,6 +277,8 @@ def mainPage() {
                         def hrs = (state.cleaningHoursSinceEmpty?.getAt(mac) ?: 0.0) as Double
                         paragraph "Cumulative cleaning time since last emptied: ${String.format('%.1f', hrs)} hours"
                         input "btnResetBin_${mac}", "button", title: "I emptied it — reset", width: 3
+                        input "manualBinHours_${mac}", "decimal", title: "Set cumulative hours to (correct a number you know is off)", required: false, width: 4
+                        input "btnSetBinHours_${mac}", "button", title: "Set Hours", width: 3
                     }
                 }
 
@@ -319,8 +321,23 @@ def appButtonHandler(btn) {
             d?.sendEvent(name: "lastCleanedRooms", value: names.join(", "))
             if (d) updateRotationPreviewAttributes(d, mac)
         }
+        // Otherwise the picker just sits there looking "selected" forever,
+        // and a later click of the same button (e.g. after picking a
+        // *different* set of rooms elsewhere on the page) would silently
+        // re-mark whatever was left checked here.
+        app.removeSetting("markCleanRooms_${mac}")
     } else if (btn.startsWith("btnSetRoomTimes_")) {
         setRoomTimesManually(btn - "btnSetRoomTimes_")
+    } else if (btn.startsWith("btnSetBinHours_")) {
+        def mac = btn - "btnSetBinHours_"
+        def hrs = settings["manualBinHours_${mac}"]
+        if (hrs != null) {
+            state.cleaningHoursSinceEmpty = state.cleaningHoursSinceEmpty ?: [:]
+            state.cleaningHoursSinceEmpty[mac] = (hrs as Double)
+            getChildDevice(mac)?.sendEvent(name: "hoursSinceEmptied", value: Math.round((hrs as Double) * 10) / 10.0)
+            ifDebug("btnSetBinHours(${mac}): manually set to ${hrs}h")
+        }
+        app.removeSetting("manualBinHours_${mac}")
     }
 }
 
