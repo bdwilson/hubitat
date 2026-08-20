@@ -17,7 +17,7 @@ Does it abandon the current room and switch immediately? No evidence of
 command queuing in the reverse-engineered API, so "abandons and switches" is
 the working assumption, but unconfirmed.
 
-## 14. status frozen on "Cleaning" for hours -- IN PROGRESS, not yet root-caused (1.17.1 is diagnostic only)
+## ~~14. status frozen on "Cleaning" for hours~~ — ROOT-CAUSED AND FIXED (1.18.0)
 
 After 1.17.0 shipped (charging overrides a conflicting "Cleaning" status),
 live logs still showed `status=Cleaning` unchanged for 2.5+ hours straight
@@ -40,13 +40,33 @@ notifications ever, sweep never continuing -- while props polling looks
 completely normal, making it look like "everything's polling but nothing
 updates."
 
-1.17.1 replaces that silent early return with `log.warn` including the raw
-response shape (`heartBeat`/`eventFlag`/full raw data), specifically to
-confirm or rule this out with real evidence on the next poll cycle, rather
-than guessing further blind. Once real data comes back, fix the actual
-parsing/shape issue (if that's what it is) as a follow-up.
+1.17.1's diagnostic (`log.warn` with the raw response shape) confirmed it
+immediately on the next poll: `heartBeat` really has no `vacuum_work_status`
+field at all, only `mode`/`charge_state`/`battery`/etc -- the exact same
+shape as the props poll. `vacuum_work_status` isn't stale or occasionally
+missing, it's simply never sent by this endpoint for this vacuum. The
+entire `status` pipeline had been silently no-op'ing since day one whenever
+this code path ran (which, per the log evidence, was apparently *always*).
 
-## ~~13. status vs. charging disagreement blocking sweep continuation~~ — DONE (1.17.0)
+Fixed in 1.18.0 by deriving `status` from `mode` instead -- a field that
+genuinely is present in both the props and status polls, using the same
+code groups as the existing `mode` attribute's own mapping (`vacuumModeDescription`,
+already cross-validated once live: mode 11 during an actual low-battery
+recharge cycle), collapsed to the coarse states the rest of the app needs.
+`mode`'s "idle" group doesn't distinguish parked-on-the-dock from genuinely
+off it, so `charging` (a direct boolean) breaks that tie -- this subsumes
+and replaces the narrower charging-override added in 1.17.0 for item #13
+below, which was patching a symptom of this same root cause rather than
+the cause itself. `vacuumStatusDescription()` (the old, now-provably-wrong
+mapping) and the `vacuum_work_status` field references are removed
+entirely rather than left as dead/misleading code.
+
+Verified via a standalone simulation using the actual live data point
+(`mode=0, charging=true -> Docked`, matching the user's confirmed real
+state: fully charged, docked, idle in the Wyze app) plus several other
+mode codes.
+
+## ~~13. status vs. charging disagreement blocking sweep continuation~~ — DONE (1.17.0), superseded by #14
 
 Real bug, confirmed live via device page screenshot: `status: Cleaning` while
 `mode: Idle` and `charging: true` -- the vacuum had actually finished and

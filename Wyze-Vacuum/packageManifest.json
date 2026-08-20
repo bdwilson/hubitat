@@ -5,8 +5,8 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "",
   "dateReleased": "2026-08-20",
-  "releaseNotes": "1.17.1 — Diagnostic fix: the status poll handler used to silently return with zero logging if a response ever came back without vacuum_work_status, which -- if that's happening -- would explain status being frozen for hours (no transition ever detected, no notifications, sweep never continuing) while the separate props poll keeps working normally and looks fine. Now logs a warning with the raw response shape instead of failing silently, so the actual cause is visible instead of guessed at.",
-  "version": "1.17.1",
+  "releaseNotes": "1.18.0 — Root-cause fix for status being frozen for hours at a time: vacuum_work_status, the field status was derived from, does not actually exist in this endpoint's response for this vacuum (confirmed live via a raw dump added in 1.17.1). status is now derived from mode instead -- a field that genuinely is present in both polls, using the same code groups as the existing mode attribute's own (previously cross-validated) mapping, with charging breaking the tie between docked-and-idle vs. genuinely-off-dock. This is the real fix behind everything the 1.15.0-1.17.1 patches were working around: notifications not firing, sweeps not continuing, status disagreeing with charging/mode.",
+  "version": "1.18.0",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.17.1"
+      "version": "1.18.0"
     }
   ]
 }

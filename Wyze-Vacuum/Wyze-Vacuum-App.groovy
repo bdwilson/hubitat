@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.17.1 - Brian Wilson / bubba@bubba.org
+ * 1.18.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -657,38 +657,24 @@ def handleVacuumStatusResponse(resp, data) {
     if (handleVenusAsyncError(resp, data, "handleVacuumStatusResponse")) return
 
     def statusData = parseAsyncJson(resp)?.data
-    def workStatus = statusData?.heartBeat?.vacuum_work_status ?: statusData?.eventFlag?.vacuum_work_status
-    def newStatus = workStatus != null ? vacuumStatusDescription(workStatus) : null
-    if (newStatus == null) {
-        // This used to return here with zero logging -- if Wyze's status
-        // endpoint ever stops including vacuum_work_status (e.g. once idle
-        // for a while, a changed response shape, etc.), this whole function
-        // would silently no-op forever: status frozen at its last value,
-        // no transition ever detected, no notifications, no sweep
-        // continuation -- while the separate props poll keeps working fine,
-        // making it look like "everything's polling but nothing updates."
-        // Surfacing this loudly instead of guessing at the cause blind.
-        log.warn "Wyze Vacuum ${mac}: status poll has no vacuum_work_status -- heartBeat=${statusData?.heartBeat} eventFlag=${statusData?.eventFlag} raw=${statusData}"
+    // vacuum_work_status was never actually present in this endpoint's
+    // response -- confirmed live via a raw dump (1.17.1's diagnostic
+    // warning): heartBeat only has mode/charge_state/battery/etc, the exact
+    // same shape as the props poll. That's why status looked "frozen": every
+    // single poll was silently no-op'ing on the old `workStatus == null`
+    // check before ever reaching the rest of this function. mode is what's
+    // actually there, and vacuumModeDescription() (below) already has a
+    // real mapping for it, previously cross-validated live (mode 11 during
+    // an actual low-battery recharge). Status is now derived from mode +
+    // charging directly instead of a field Wyze never sends.
+    def modeCode = statusData?.heartBeat?.mode ?: statusData?.eventFlag?.mode
+    if (modeCode == null) {
+        log.warn "Wyze Vacuum ${mac}: status poll has no mode either -- heartBeat=${statusData?.heartBeat} eventFlag=${statusData?.eventFlag} raw=${statusData}"
         return
     }
+    def newStatus = deriveStatusFromMode(toInt(modeCode), d.currentValue("charging") == "true")
 
-    // Log the raw code every time regardless of the workStatusCode attribute
-    // (which has been unreliable showing up in the device UI after driver
-    // updates) -- this is the reliable way to get real numbers to check the
-    // unverified status label mapping against.
-    log.info "Wyze Vacuum ${mac} vacuum_work_status=${workStatus} -> status=\"${newStatus}\""
-
-    // charging comes from a *separate* async poll (props, not status), and
-    // this label mapping is sourced from an unverified third-party source --
-    // both have now been observed live disagreeing with charging (status
-    // "Cleaning"/"Returning to charge" while charging:true and mode:Idle).
-    // A vacuum can't physically be charging and actively cleaning at the
-    // same time, so a directly-measured boolean like charging wins over a
-    // translated status code every time they conflict.
-    if (newStatus == "Cleaning" && d.currentValue("charging") == "true") {
-        ifDebug("handleVacuumStatusResponse(${mac}): vacuum_work_status says Cleaning but charging=true -- overriding to Docked (charging is ground truth, the status mapping is not)")
-        newStatus = "Docked"
-    }
+    log.info "Wyze Vacuum ${mac} mode=${modeCode} charging=${d.currentValue('charging')} -> status=\"${newStatus}\""
 
     // Deliberately NOT d.currentValue("status") -- the driver's own command
     // methods (start/pause/dock/cleanNextRooms/etc.) optimistically write
@@ -701,12 +687,8 @@ def handleVacuumStatusResponse(resp, data) {
     def prevStatus = state.lastKnownStatus[mac]
 
     d.sendEvent(name: "status", value: newStatus)
-    // The status label mapping (1:Standby, 2:Cleaning, 3:Returning to
-    // charge, ...) comes from a single third-party source (wyze-sdk),
-    // unverified against this model's live telemetry. Expose the raw code
-    // too so a mismatch (e.g. "Returning to charge" while charging:true)
-    // can be reported with real numbers instead of guessed at.
-    d.sendEvent(name: "workStatusCode", value: toInt(workStatus))
+    // Now the real raw mode code status was derived from (see deriveStatusFromMode).
+    d.sendEvent(name: "workStatusCode", value: toInt(modeCode))
     // Keep the Switch capability's "switch" attribute honest against real
     // vacuum state, not just the last on()/off() the user tapped -- it flips
     // to "off" on its own once a clean actually finishes, gets docked, etc.
@@ -1052,11 +1034,6 @@ private void sendVacuumNotification(String msg) {
     settings.notifyDevices?.each { it.deviceNotification(msg) }
 }
 
-private String vacuumStatusDescription(def code) {
-    def map = [1: "Standby", 2: "Cleaning", 3: "Returning to charge", 4: "Docked", 5: "Mapping", 6: "Paused", 7: "Error"]
-    return map[toInt(code)] ?: "Unknown (${code})"
-}
-
 private String suctionLevelName(def code) {
     def map = [1: "Quiet", 2: "Standard", 3: "Strong"]
     return map[toInt(code)] ?: "Unknown (${code})"
@@ -1071,6 +1048,21 @@ private String vacuumModeDescription(def code) {
     if (c in [11, 33, 1104, 1204, 1304, 1404])  return "Docked, cleaning will resume"
     if (c in [0, 14, 29, 35, 40])                return "Idle"
     return "Mode ${c}"
+}
+
+// The main "status" attribute (and everything gated on Cleaning/not-Cleaning
+// -- notifications, room crediting, sweep continuation, poll interval) is
+// derived from mode, using the same code groups as vacuumModeDescription
+// above, collapsed down since that logic only needs to distinguish a
+// handful of coarse states rather than every nuance. mode's own "Idle"
+// bucket doesn't distinguish parked-on-dock from genuinely off-dock, so
+// charging (a direct boolean, not a translated code) breaks that tie.
+private String deriveStatusFromMode(Integer modeCode, boolean charging) {
+    if (modeCode in [1, 30, 1101, 1201, 1301, 1401])  return "Cleaning"
+    if (modeCode in [4, 31, 1102, 1202, 1302, 1402])  return "Paused"
+    if (modeCode in [10, 32, 1103, 1203, 1303, 1403, 11, 33, 1104, 1204, 1304, 1404]) return "Returning to charge"
+    if (modeCode == 5)                                 return "Returning to charge"
+    return charging ? "Docked" : "Standby"
 }
 
 // =================== Commands from Driver ===================
