@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.18.0 - Brian Wilson / bubba@bubba.org
+ * 1.18.1 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -667,7 +667,14 @@ def handleVacuumStatusResponse(resp, data) {
     // real mapping for it, previously cross-validated live (mode 11 during
     // an actual low-battery recharge). Status is now derived from mode +
     // charging directly instead of a field Wyze never sends.
-    def modeCode = statusData?.heartBeat?.mode ?: statusData?.eventFlag?.mode
+    // Deliberately NOT `?:` here -- mode:0 ("Idle") is a real, common value,
+    // and Groovy Truth treats 0 as falsy, so `heartBeat?.mode ?: eventFlag?.mode`
+    // would silently discard a genuine mode:0 and fall through to eventFlag
+    // (which doesn't even have a mode key), landing on the "no mode" warning
+    // below for perfectly valid data. Confirmed live: this happened on every
+    // single poll while idle. Explicit null checks only.
+    def modeCode = statusData?.heartBeat?.mode
+    if (modeCode == null) modeCode = statusData?.eventFlag?.mode
     if (modeCode == null) {
         log.warn "Wyze Vacuum ${mac}: status poll has no mode either -- heartBeat=${statusData?.heartBeat} eventFlag=${statusData?.eventFlag} raw=${statusData}"
         return

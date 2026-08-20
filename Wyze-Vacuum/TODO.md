@@ -17,6 +17,25 @@ Does it abandon the current room and switch immediately? No evidence of
 command queuing in the reverse-engineered API, so "abandons and switches" is
 the working assumption, but unconfirmed.
 
+## ~~15. Groovy Truth bug in 1.18.0's own mode extraction~~ — DONE (1.18.1)
+
+1.18.0 shipped, user re-imported (confirmed 1.18.0 in the code editor),
+refreshed -- `status` was *still* stuck on "Cleaning". Fresh logs revealed
+why: the brand new 1.17.1 "no mode" warning was firing on every single
+poll, even though the pasted `heartBeat` dump clearly had `mode:0` right
+there in it. Root cause: `statusData?.heartBeat?.mode ?: statusData?.eventFlag?.mode`
+-- Groovy Truth treats `0` as falsy, so a genuine `mode:0` ("Idle") got
+discarded by `?:` and fell through to `eventFlag.mode`, which doesn't even
+exist as a key in that response, landing on `null` and triggering the "no
+mode" warning for perfectly valid data. This is the exact same bug class as
+the earlier `?.foo?[bar]` parser trap and the false-positive `code != "1"`
+string/int comparison bug from earlier in this project -- a Groovy
+truthiness/type gotcha, not a logic error. Fixed with explicit `if (x ==
+null)` checks instead of `?:`. Verified with a standalone simulation using
+the actual live payload shape (`mode:0` correctly extracts as `0`, not
+`null`). Swept the rest of the file for the same `a?.x ?: b?.x` pattern --
+no other instances found.
+
 ## ~~14. status frozen on "Cleaning" for hours~~ — ROOT-CAUSED AND FIXED (1.18.0)
 
 After 1.17.0 shipped (charging overrides a conflicting "Cleaning" status),
