@@ -5,8 +5,8 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "",
   "dateReleased": "2026-08-19",
-  "releaseNotes": "1.14.0 — Adds rotation sweeps: cleanNextRooms() now automatically continues to the next due room once the current one genuinely finishes, working through everything currently due in one trigger instead of requiring a separate call per room, then stops on its own once nothing's left due. dock()/pause()/start() cancel an in-progress sweep. Also reverts the 1.13.0 battery-forced-return detection -- live testing showed a room can legitimately finish with the battery critically low (confirmed against the map at 21%), so that heuristic was a false positive and has been removed; any non-Paused/Error exit is trusted as a genuine finish again.",
-  "version": "1.14.0",
+  "releaseNotes": "1.15.0 — Fixes notifications silently not firing (and the dynamic poll interval flapping back to idle mid-clean): polling now trusts the app's own active-run tracking, not just the latest single poll's status reading, so a short single-room clean can no longer land entirely between two idle-interval polls unnoticed, and one noisy poll reading can no longer knock fast polling back to slow. Also enriches notification content: 'cleaning started' now names the room(s) being cleaned, 'cleaning finished' now breaks down which rooms were confirmed cleaned vs. not completed. Adds a log.info line recording each single-room dispatch's measured clean time.",
+  "version": "1.15.0",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.14.0"
+      "version": "1.15.0"
     }
   ]
 }

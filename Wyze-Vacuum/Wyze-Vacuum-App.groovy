@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.14.0 - Brian Wilson / bubba@bubba.org
+ * 1.15.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -134,7 +134,7 @@ def mainPage() {
                     paragraph "Notifications are change-driven — polling by itself never triggers one."
                     input "notifyDevices", "capability.notification", title: "Send notifications to", multiple: true, required: false, submitOnChange: true
                     if (settings.notifyDevices) {
-                        input "notifyCleaningStarted",  "bool", title: "Notify when cleaning starts",              defaultValue: false, required: false
+                        input "notifyCleaningStarted",  "bool", title: "Notify when cleaning starts",              defaultValue: true,  required: false
                         input "notifyCleaningFinished", "bool", title: "Notify when cleaning finishes",            defaultValue: true,  required: false
                         input "notifyStuck",            "bool", title: "Notify when the vacuum reports a fault",  defaultValue: true,  required: false
                     }
@@ -390,7 +390,16 @@ private String pollCron(String minutes) {
 // run is active, slower (pollIntervalIdle) the rest of the time. Only
 // actually reschedules when the mode changes, not on every poll.
 private void rescheduleDynamicPoll() {
-    def anyCleaning = settings.selectedVacuums?.any { mac -> state.lastKnownStatus?.getAt(mac) == "Cleaning" } ?: false
+    // Also treat "we just dispatched a room-clean and are waiting on the
+    // first poll to confirm it" as cleaning, not just a confirmed
+    // lastKnownStatus=="Cleaning" -- otherwise, with the idle interval at its
+    // default 15 min and single-room dispatches often finishing well inside
+    // that window, a whole start-to-finish cleaning cycle could land
+    // entirely between two idle-interval polls and never get caught at all,
+    // silently skipping both the start/finish notifications and credit.
+    def anyCleaning = settings.selectedVacuums?.any { mac ->
+        state.lastKnownStatus?.getAt(mac) == "Cleaning" || state.activeCleanRun?.containsKey(mac)
+    } ?: false
     def desiredMode = anyCleaning ? "cleaning" : "idle"
     if (state.currentPollMode == desiredMode) return
 
@@ -666,7 +675,11 @@ def handleVacuumStatusResponse(resp, data) {
     if (prevStatus != "Cleaning" && newStatus == "Cleaning") {
         state.cleaningSessionStart = state.cleaningSessionStart ?: [:]
         state.cleaningSessionStart[mac] = now()
-        if (settings.notifyCleaningStarted) sendVacuumNotification("${d.displayName} started cleaning.")
+        if (settings.notifyCleaningStarted) {
+            def activeRoomIds = state.activeCleanRun?.getAt(mac)?.roomIds
+            def roomDesc = activeRoomIds ? roomNamesFor(mac, activeRoomIds).join(", ") : "whole house"
+            sendVacuumNotification("${d.displayName} started cleaning: ${roomDesc}.")
+        }
     } else if (prevStatus == "Cleaning" && newStatus != "Cleaning") {
         handleCleaningSessionEnd(mac, d.currentValue("cleanTime"), d, newStatus)
     }
@@ -897,6 +910,11 @@ private List ignoredFaultCodesList() {
     return raw.split(",").collect { toInt(it.trim()) }.findAll { it != null }
 }
 
+private List<String> roomNamesFor(String mac, List ids) {
+    def known = state.discoveredRooms?.getAt(mac) ?: []
+    return (ids ?: []).collect { id -> known.find { it.id == id }?.name ?: "Room ${id}" }
+}
+
 // Fires once per Cleaning -> non-Cleaning transition, regardless of whether the
 // clean finished naturally, was paused, or was interrupted by a dock/stop.
 //
@@ -915,17 +933,29 @@ private void handleCleaningSessionEnd(String mac, def reportedCleanTimeMinutes, 
         : (sessionStart ? (Math.max(0, Math.round((now() - sessionStart) / 60000.0)) as Integer) : 0)
 
     def run = state.activeCleanRun?.getAt(mac)
+    Map finishResult = null
     if (run?.learning) {
         handleLearningRoomEnd(mac, run, elapsedMin, newStatus)
     } else if (run) {
-        finishActiveCleanRun(mac, elapsedMin, newStatus)
+        finishResult = finishActiveCleanRun(mac, elapsedMin, newStatus)
         continueSweepIfNeeded(mac)
     }
 
     accumulateBinHours(mac, elapsedMin)
 
     if (settings.notifyCleaningFinished && elapsedMin > 0) {
-        sendVacuumNotification("${d?.displayName ?: mac} finished cleaning after ${elapsedMin} min.")
+        def completedNames = finishResult?.completedNames
+        def incompleteNames = finishResult?.incompleteNames
+        String msg
+        if (completedNames || incompleteNames) {
+            def parts = []
+            if (completedNames) parts << "cleaned: ${completedNames.join(', ')}"
+            if (incompleteNames) parts << "not completed (will retry): ${incompleteNames.join(', ')}"
+            msg = "${d?.displayName ?: mac} finished cleaning after ${elapsedMin} min -- ${parts.join('; ')}."
+        } else {
+            msg = "${d?.displayName ?: mac} finished cleaning after ${elapsedMin} min."
+        }
+        sendVacuumNotification(msg)
     }
 
     state.cleaningSessionStart?.remove(mac)
@@ -1165,6 +1195,7 @@ private void dispatchRoomClean(String mac, List rooms) {
 
     state.activeCleanRun = state.activeCleanRun ?: [:]
     state.activeCleanRun[mac] = [roomIds: ids, startedAt: now()]
+    rescheduleDynamicPoll() // switch to fast polling immediately, don't wait on a poll to confirm "Cleaning" first
 
     venusControl(mac, 0, 1, ids) // GLOBAL_SWEEPING / START, scoped to rooms
 
@@ -1214,9 +1245,9 @@ def markRoomsCleanedByName(String mac, String roomNamesCsv) {
 // over-credits, and whatever didn't get done stays eligible next time. The
 // time-estimate average is only refined when the whole batch completed
 // cleanly, so a partial run doesn't skew future time-budget estimates.
-private void finishActiveCleanRun(String mac, Integer elapsedMin, String newStatus) {
+private Map finishActiveCleanRun(String mac, Integer elapsedMin, String newStatus) {
     def run = state.activeCleanRun?.getAt(mac)
-    if (!run) return
+    if (!run) return [:]
     def rooms = run.roomIds ?: []
 
     state.roomAvgMinutes = state.roomAvgMinutes ?: [:]
@@ -1244,6 +1275,10 @@ private void finishActiveCleanRun(String mac, Integer elapsedMin, String newStat
         boolean genuinelyFinished = !(newStatus == "Paused" || newStatus == "Error") && elapsedMin != null && elapsedMin > 0
         completed = genuinelyFinished ? rooms : []
         incomplete = genuinelyFinished ? [] : rooms
+        if (genuinelyFinished) {
+            def roomName = (state.discoveredRooms?.getAt(mac) ?: []).find { it.id == rooms[0] }?.name ?: "Room ${rooms[0]}"
+            log.info "Wyze Vacuum ${mac}: '${roomName}' took ${elapsedMin} min to clean"
+        }
     } else {
         double remaining = elapsedMin ?: 0
         completed = []
@@ -1276,14 +1311,16 @@ private void finishActiveCleanRun(String mac, Integer elapsedMin, String newStat
         state.roomAvgMinutes[mac] = avgMap
     }
 
-    if (completed) {
-        def known = state.discoveredRooms?.getAt(mac) ?: []
-        def completedNames = completed.collect { id -> known.find { it.id == id }?.name ?: "Room ${id}" }
+    def known = state.discoveredRooms?.getAt(mac) ?: []
+    def completedNames = completed.collect { id -> known.find { it.id == id }?.name ?: "Room ${id}" }
+    def incompleteNames = incomplete.collect { id -> known.find { it.id == id }?.name ?: "Room ${id}" }
+    if (completedNames) {
         getChildDevice(mac)?.sendEvent(name: "lastCleanedRooms", value: completedNames.join(", "))
     }
 
     state.activeCleanRun.remove(mac)
     ifDebug("finishActiveCleanRun(${mac}): elapsedMin=${elapsedMin} completed=${completed} incomplete=${incomplete}")
+    return [completedNames: completedNames, incompleteNames: incompleteNames]
 }
 
 // =================== Room-timing learning mode ===================
@@ -1328,6 +1365,7 @@ private void dispatchLearningRoom(String mac, Map room) {
     def id = room.id as Integer
     state.activeCleanRun = state.activeCleanRun ?: [:]
     state.activeCleanRun[mac] = [roomIds: [id], startedAt: now(), learning: true]
+    rescheduleDynamicPoll() // switch to fast polling immediately, don't wait on a poll to confirm "Cleaning" first
     venusControl(mac, 0, 1, [id]) // GLOBAL_SWEEPING / START, scoped to this one room
 
     def remaining = state.learningMode?.getAt(mac)?.queue?.size() ?: 0

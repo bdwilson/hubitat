@@ -17,6 +17,42 @@ Does it abandon the current room and switch immediately? No evidence of
 command queuing in the reverse-engineered API, so "abandons and switches" is
 the working assumption, but unconfirmed.
 
+## ~~11. Missing start/finish notifications + poll-mode flapping~~ — DONE (1.15.0)
+
+Real bug, confirmed live twice: (1) user reported "still not getting
+notifications when cleaning starts... I do get error alerts, but that's it"
+-- both notifyCleaningStarted and notifyCleaningFinished were silently not
+firing; (2) live log showed `rescheduleDynamicPoll: switched to idle polling`
+while the vacuum was visibly still Cleaning (status/mode both confirmed
+"Cleaning" on the device page at the time).
+
+Root cause: `rescheduleDynamicPoll()`'s "is anything cleaning" check relied
+solely on `state.lastKnownStatus`, which is only set from a *confirmed* poll
+response. Two consequences: (a) with rooms-per-run now defaulting to 1 and
+the idle interval defaulting to 15 min, a short single-room clean could
+start and finish entirely between two idle-interval polls, so
+`lastKnownStatus` never saw "Cleaning" at all -- no transition ever
+detected, no notifications, no room credit; (b) even once fast polling
+engaged, a single noisy/transient status read could flip it straight back
+to idle for up to 15 min.
+
+Fixed by also trusting `state.activeCleanRun` (set synchronously at dispatch
+time, cleared only on a genuine finish) as evidence of "cleaning," not just
+the latest single poll reading -- and calling `rescheduleDynamicPoll()`
+directly from `dispatchRoomClean`/`dispatchLearningRoom` so fast polling
+engages immediately at dispatch, without waiting on a poll to confirm it
+first.
+
+Also enriched notification content per the same request: "started cleaning"
+now names the room(s) (or "whole house" for a plain `start()`); "finished
+cleaning" now breaks down completed vs. not-completed rooms, using
+`finishActiveCleanRun`'s (now Map-returning) result instead of a generic
+elapsed-minutes-only message. `notifyCleaningStarted` default flipped to
+true (was false, inconsistent with the other two notification toggles which
+already defaulted on). Also added a `log.info` line recording each
+single-room dispatch's measured clean time, independent of debug logging,
+per a related user request.
+
 ## ~~9. Battery-forced-return "fix" — tried, disproved by live data, reverted~~
 
 Shipped in 1.13.0: treated a return-to-charge at/below a battery threshold as

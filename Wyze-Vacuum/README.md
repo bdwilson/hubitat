@@ -204,6 +204,8 @@ Learning Mode also updates each room's "last cleaned" timestamp like any other r
 
 In practice, you may not need Learning Mode at all: leaving **Rooms per run** at its default of 1 (see Room Rotation above) gets you the same real per-room measurements gradually through normal `cleanNextRooms()` triggers, since a single-room dispatch is always ground truth. Learning Mode is really just that same mechanism run as one dedicated front-loaded sweep instead of spread out over your normal week.
 
+Whenever a single-room dispatch (Rooms per run = 1, `cleanRooms()` with one room, or a room-button slot) genuinely finishes, Hubitat's logs get an `log.info` line — `Wyze Vacuum <mac>: '<room name>' took <N> min to clean` — regardless of debug logging being on, so you have a plain record of real per-room times without needing to open the app page.
+
 ### Manually setting room times
 
 Under `<vacuum> — Room Timing`, below "Known room times," each discovered room has its own editable minutes field, plus a **Save Room Times** button. This is a direct override — useful after reinstalling this app (which resets all learned timing data, since it's stored in app state, not persisted anywhere else) so you don't have to re-earn every room's timing from scratch, or just to correct a number you know is wrong. Leave a field blank to leave that room's current estimate untouched; only fields you actually fill in get applied when you click Save. The fields show whatever was known as of when the page last loaded, not live — reopen the page to see current learned numbers before editing.
@@ -222,8 +224,8 @@ Optional, change-driven — polling by itself never triggers a notification. Con
 | Setting | Description |
 |---|---|
 | Send notifications to | Any `capability.notification` device(s) — e.g. a virtual notification device wired to your phone/Alexa/etc. |
-| Notify when cleaning starts | Fires the first time a poll observes `status` becoming `Cleaning` |
-| Notify when cleaning finishes | Fires when `status` leaves `Cleaning`, including the run's elapsed minutes |
+| Notify when cleaning starts | Fires the first time a poll observes `status` becoming `Cleaning`. For a room-scoped run, names the room(s) being cleaned; for a whole-house `start()`, says "whole house" |
+| Notify when cleaning finishes | Fires when `status` leaves `Cleaning`, including the run's elapsed minutes. For a room-scoped run, breaks it down by room: which ones are confirmed cleaned vs. which weren't completed (and will be retried, per the under-crediting rules above) |
 | Notify when the vacuum reports a fault | Fires once per new fault (won't repeat every poll while the same fault persists) |
 | Fault codes to treat as normal (comma-separated) | Codes here never set `fault` or notify — some `fault_code` values appear to just mean things like "charging"/"fully charged," not a real problem. Defaults to `2103,2105` based on an **unconfirmed** community lead — adjust freely as you confirm/refute codes yourself. Every nonzero fault code is still logged (`log.info`, tagged `(ignored)` when suppressed) regardless of this list, so there's a record to check codes against later. |
 
@@ -258,6 +260,13 @@ Wyze's own firmware already has some low-battery return-to-charge-and-resume beh
 If the same error instead shows the poll's *async callback method* (`handleVacuumPropsResponse`/`handleVacuumStatusResponse`) rather than `pollAllVacuums`, that's a second variant fixed in 1.5.1: the 401/403 retry path was still making a **synchronous** token-refresh call from inside the async callback, which trips the same guardrail, just relocated. Token refresh is now fully async too. If you were seeing this, also check whether your Wyze session had simply gone stale for an extended period (the `lastRefresh` attribute frozen at an old date is the tell) — if refresh keeps failing even after updating, click **Re-login** in the app to get a fresh session, since the stored refresh token itself may no longer be valid.
 
 **"Notify when cleaning starts"/"finishes" don't fire even though they're enabled** — this was a real bug (fixed in 1.7.0). The driver's own command methods (`start()`, `pause()`, `dock()`, `cleanNextRooms()`, etc.) optimistically write the `status` attribute themselves for immediate UI feedback, *before* the app's poll ever runs. The app's transition detection was comparing against that same attribute as "previous status" — so by the time a poll landed, the "previous" value had usually already been overwritten by the very command that triggered the transition, and the app never saw a real before/after change. This wasn't just a notification issue: the same check also gates room-completion crediting and bin-hour accumulation, so it could affect rotation-history accuracy too, not only whether you got a text. The app now tracks its own independent "last known status" rather than reading it back off the driver-mutable attribute.
+
+**Notifications still don't fire, or `rescheduleDynamicPoll` logs "switched to idle polling" while the vacuum is visibly still cleaning** — this was a real bug (fixed in 1.15.0), a second cause distinct from the one above. Two related problems:
+
+1. The dynamic poll interval only sped up to the fast (cleaning) interval *after* a poll confirmed `status == Cleaning`. With the idle interval at its default 15 minutes and single-room dispatches (the new default) often finishing well inside that window, a whole start-to-finish cleaning cycle could land entirely between two idle-interval polls and never get caught at all — silently skipping both notifications and room-completion credit for that run.
+2. Even once fast polling was engaged, a single transient/noisy status read (Wyze's API occasionally reporting something other than "Cleaning" for one poll, mid-job) could flip polling straight back to the slow interval, potentially missing the actual finish for up to 15 minutes.
+
+Both are now fixed by also trusting the app's own active-run tracking (`state.activeCleanRun`), not just the latest single poll's status reading, when deciding whether to poll fast: the moment a room-clean is dispatched, polling switches to the fast interval immediately (not waiting on a poll to confirm it first), and it stays fast for as long as that run is active, immune to a single noisy poll reading something else. If you're on an older version, re-import to pick up the fix.
 
 ---
 
