@@ -5,8 +5,8 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "",
   "dateReleased": "2026-08-20",
-  "releaseNotes": "1.17.0 — Fixes status/charging disagreement at the end of a run: status (from a separately-polled, unverified-mapping code) has been observed live saying 'Cleaning' while charging:true and mode:Idle plainly show the vacuum is docked. Since a vacuum can't be charging and cleaning simultaneously, charging:true now always overrides a conflicting Cleaning status before it's used for anything -- the displayed status attribute, notifications, room-completion crediting, sweep continuation, and poll-interval switching. This was silently blocking sweep continuation (switch stayed 'on' but nothing advanced to the next room) whenever it occurred.",
-  "version": "1.17.0",
+  "releaseNotes": "1.17.1 — Diagnostic fix: the status poll handler used to silently return with zero logging if a response ever came back without vacuum_work_status, which -- if that's happening -- would explain status being frozen for hours (no transition ever detected, no notifications, sweep never continuing) while the separate props poll keeps working normally and looks fine. Now logs a warning with the raw response shape instead of failing silently, so the actual cause is visible instead of guessed at.",
+  "version": "1.17.1",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.17.0"
+      "version": "1.17.1"
     }
   ]
 }

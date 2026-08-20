@@ -17,6 +17,35 @@ Does it abandon the current room and switch immediately? No evidence of
 command queuing in the reverse-engineered API, so "abandons and switches" is
 the working assumption, but unconfirmed.
 
+## 14. status frozen on "Cleaning" for hours -- IN PROGRESS, not yet root-caused (1.17.1 is diagnostic only)
+
+After 1.17.0 shipped (charging overrides a conflicting "Cleaning" status),
+live logs still showed `status=Cleaning` unchanged for 2.5+ hours straight
+(11:20am - 1:13pm, confirmed 1.17.0 was actually loaded), even though the
+Wyze app itself showed the vacuum fully charged/docked/idle the whole time.
+Notably, the existing unconditional `log.info ".. vacuum_work_status=... ->
+status=..."` line -- which should print every single poll if
+`handleVacuumStatusResponse` runs to completion -- never once appeared in
+~130 lines of pasted logs spanning that whole window, while the *separate*
+props poll (fault_code logging, battery draining 100%->86%) fired
+correctly every single minute without fail.
+
+Leading theory: the status poll's response is coming back without
+`vacuum_work_status` under some condition (e.g. once idle for a while, or a
+changed response shape), hitting the silent `if (newStatus == null) return`
+at the very top of `handleVacuumStatusResponse` -- before the log.info
+line, before the charging-override fix, before transition detection, all
+of it. That would explain every symptom at once: status frozen, no
+notifications ever, sweep never continuing -- while props polling looks
+completely normal, making it look like "everything's polling but nothing
+updates."
+
+1.17.1 replaces that silent early return with `log.warn` including the raw
+response shape (`heartBeat`/`eventFlag`/full raw data), specifically to
+confirm or rule this out with real evidence on the next poll cycle, rather
+than guessing further blind. Once real data comes back, fix the actual
+parsing/shape issue (if that's what it is) as a follow-up.
+
 ## ~~13. status vs. charging disagreement blocking sweep continuation~~ — DONE (1.17.0)
 
 Real bug, confirmed live via device page screenshot: `status: Cleaning` while

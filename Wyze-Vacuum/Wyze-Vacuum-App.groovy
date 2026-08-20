@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.17.0 - Brian Wilson / bubba@bubba.org
+ * 1.17.1 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -659,7 +659,18 @@ def handleVacuumStatusResponse(resp, data) {
     def statusData = parseAsyncJson(resp)?.data
     def workStatus = statusData?.heartBeat?.vacuum_work_status ?: statusData?.eventFlag?.vacuum_work_status
     def newStatus = workStatus != null ? vacuumStatusDescription(workStatus) : null
-    if (newStatus == null) return
+    if (newStatus == null) {
+        // This used to return here with zero logging -- if Wyze's status
+        // endpoint ever stops including vacuum_work_status (e.g. once idle
+        // for a while, a changed response shape, etc.), this whole function
+        // would silently no-op forever: status frozen at its last value,
+        // no transition ever detected, no notifications, no sweep
+        // continuation -- while the separate props poll keeps working fine,
+        // making it look like "everything's polling but nothing updates."
+        // Surfacing this loudly instead of guessing at the cause blind.
+        log.warn "Wyze Vacuum ${mac}: status poll has no vacuum_work_status -- heartBeat=${statusData?.heartBeat} eventFlag=${statusData?.eventFlag} raw=${statusData}"
+        return
+    }
 
     // Log the raw code every time regardless of the workStatusCode attribute
     // (which has been unreliable showing up in the device UI after driver
