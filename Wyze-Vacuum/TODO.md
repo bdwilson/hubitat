@@ -17,6 +17,45 @@ Does it abandon the current room and switch immediately? No evidence of
 command queuing in the reverse-engineered API, so "abandons and switches" is
 the working assumption, but unconfirmed.
 
+## ~~13. status vs. charging disagreement blocking sweep continuation~~ — DONE (1.17.0)
+
+Real bug, confirmed live via device page screenshot: `status: Cleaning` while
+`mode: Idle` and `charging: true` -- the vacuum had actually finished and
+was sitting on the dock, per the user's direct observation ("the cleaning
+finished, it's now at home charging"). User: "Is it cleaning or is it
+charging?" and directly connected this to the sweep never advancing
+("switch is still 'on' and there are more rooms to clean").
+
+Confirmed root cause: `status` and `charging` come from two *separate*
+async polls that can land moments apart, and `status`'s underlying mapping
+is unverified third-party data to begin with -- this is the same class of
+mismatch flagged earlier in the session ("Returning to charge" while
+charging:true), now observed a second time with "Cleaning" instead. Since a
+vacuum can't physically charge and clean simultaneously, `charging` (a
+direct boolean reading) is trusted over `status` (a translated, unverified
+code) whenever they conflict: `handleVacuumStatusResponse` now overrides a
+"Cleaning" reading to "Docked" if the most recently known `charging` value
+is `true`, *before* that status is used for anything -- the displayed
+attribute, `state.lastKnownStatus`, notifications, room crediting, sweep
+continuation, and poll-interval switching. This directly unblocks the sweep
+continuation added in 1.14.0, which was silently stuck waiting on a
+transition that this exact mismatch was preventing from ever being detected.
+
+Known trade-off, accepted rather than engineered around: `charging` is
+itself up to ~1 poll cycle stale (same async-lag reason), so there's a
+narrow theoretical window right as a resumed clean starts where a
+just-turned-stale `charging:true` could wrongly override a correct new
+"Cleaning" reading. Self-corrects within one more fast-poll cycle; not
+worth more machinery for a rare, self-healing edge case.
+
+Also reported alongside this: a new fault code, 2102, not yet on the
+ignored-codes list (2103/2105 are). Not silently suppressed -- no evidence
+yet on what it means, and it arrived right as the vacuum returned to
+charge, so it may belong in the same benign-charging-status family as
+2101/2103/2105, or may not. Logged with full context as usual
+(`fault_code=2102 ... mode=... chargeState=... status=... battery=...`) for
+the user to build evidence from before adding it to the ignore list.
+
 ## ~~12. Mark-cleaned picker never clears + bin-hours correction~~ — DONE (1.16.0)
 
 User asked how the "Mark rooms as cleaned" picker gets emptied out -- answer

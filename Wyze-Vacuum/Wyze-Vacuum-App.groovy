@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.16.0 - Brian Wilson / bubba@bubba.org
+ * 1.17.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -666,6 +666,18 @@ def handleVacuumStatusResponse(resp, data) {
     // updates) -- this is the reliable way to get real numbers to check the
     // unverified status label mapping against.
     log.info "Wyze Vacuum ${mac} vacuum_work_status=${workStatus} -> status=\"${newStatus}\""
+
+    // charging comes from a *separate* async poll (props, not status), and
+    // this label mapping is sourced from an unverified third-party source --
+    // both have now been observed live disagreeing with charging (status
+    // "Cleaning"/"Returning to charge" while charging:true and mode:Idle).
+    // A vacuum can't physically be charging and actively cleaning at the
+    // same time, so a directly-measured boolean like charging wins over a
+    // translated status code every time they conflict.
+    if (newStatus == "Cleaning" && d.currentValue("charging") == "true") {
+        ifDebug("handleVacuumStatusResponse(${mac}): vacuum_work_status says Cleaning but charging=true -- overriding to Docked (charging is ground truth, the status mapping is not)")
+        newStatus = "Docked"
+    }
 
     // Deliberately NOT d.currentValue("status") -- the driver's own command
     // methods (start/pause/dock/cleanNextRooms/etc.) optimistically write
