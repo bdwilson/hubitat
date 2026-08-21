@@ -5,8 +5,8 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "",
   "dateReleased": "2026-08-21",
-  "releaseNotes": "1.18.4 — Fixes rotation sweeps silently stopping partway through with no explanation (switch: off, rooms still pending, nothing advancing). Cause: rescheduleDynamicPoll() called bare unschedule() when slowing polling back down after a room finished, which cancels every pending one-shot job for the app -- including the sweep's own runIn() call to dispatch the next room, scheduled moments earlier in the same function call. Fixed by unscheduling only the poll job by name instead of everything.",
-  "version": "1.18.4",
+  "releaseNotes": "1.19.0 — Fixes rotation sweeps failing to advance to the next room even after 1.18.4: confirmed live that dispatching a new room-clean command while the vacuum is still physically returning to its dock (status: Returning to charge) gets silently ignored -- it just finishes docking on its own and the new room never starts, with no error anywhere. Sweep continuation now waits for the vacuum to actually settle (Docked/Standby) before dispatching the next room, instead of firing a fixed few seconds after the previous one 'finished'. Also adds a safety net that clears a dispatch that never actually started within 10 minutes, so a dropped command can't silently exclude that room from rotation forever.",
+  "version": "1.19.0",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.18.4"
+      "version": "1.19.0"
     }
   ]
 }

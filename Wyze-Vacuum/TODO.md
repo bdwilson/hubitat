@@ -17,6 +17,58 @@ Does it abandon the current room and switch immediately? No evidence of
 command queuing in the reverse-engineered API, so "abandons and switches" is
 the working assumption, but unconfirmed.
 
+## ~~19. Command dispatched while "Returning to charge" gets silently dropped~~ — DONE (1.19.0)
+
+Resolves the open question from item #1 above ("how does the physical
+vacuum/Wyze firmware behave when a brand-new room-clean command arrives
+while mid-job on a different set of rooms... 'abandons and switches' is
+the working assumption, but unconfirmed"). Now confirmed, with full log
+evidence: it does NOT abandon-and-switch. Full sequence from real logs:
+
+```
+10:51:00  mode=1  -> status="Cleaning"           (Hallway actively cleaning)
+10:52:00  mode=10 -> status="Returning to charge" (Hallway "finished" -- vacuum starts driving back)
+10:52:00  finishActiveCleanRun: Hallway credited, 23 min
+10:52:00  continueSweepIfNeeded: more due rooms remain, continuing sweep
+10:52:05  dispatchRoomClean: [Master Bedroom]      (dispatched 5s later, per the then-current fixed delay)
+10:52:05  mode=10 -> status="Returning to charge"  (still mid-transit -- unaffected by the new command)
+10:53:00  mode=10 -> status="Returning to charge"  (still mid-transit, 1 min after dispatch)
+10:54:00  mode=10 -> status="Returning to charge"  (still mid-transit, 2 min after dispatch)
+10:55:00  mode=0, charge_state=1 -> status="Docked" (finally docked/charging -- Master Bedroom never started)
+```
+
+The vacuum reports leaving `Cleaning` the moment it *starts* driving back to
+the dock, not once it arrives -- which can take a couple of minutes. A
+command sent during that transit window is silently dropped: no error, no
+rejection, the vacuum just continues its own return-to-dock and starts
+charging as if nothing was sent. `state.activeCleanRun[mac]` for Master
+Bedroom was left permanently "active" as a result (no Cleaning->non-Cleaning
+transition ever fires for a dispatch that never started), silently excluding
+Master Bedroom from all future room selection.
+
+Fixed two ways:
+1. `continueSweepIfNeeded(mac, newStatus)` now checks `newStatus` before
+   dispatching: if `"Returning to charge"`, it defers instead of firing the
+   fixed 5s `runIn`, setting `state.rotationSweepPending[mac] = true`.
+   `handleVacuumStatusResponse` resumes the deferred dispatch on a later
+   poll once `newStatus` becomes `"Docked"`/`"Standby"`. `rescheduleDynamicPoll()`
+   keeps fast polling engaged the whole time via `rotationSweepPending`, so
+   this typically resolves within about a minute of actually docking, not
+   up to 15. Also defers/cancels appropriately on `Paused`/`Error` instead
+   of blindly pushing forward.
+2. `checkStaleActiveCleanRun()` safety net: a run that's been active 10+
+   minutes and never confirmed `Cleaning` even once (tracked via a new
+   `everConfirmedCleaning` flag on the run, set the first time `Cleaning`
+   is observed) gets cleared automatically -- covers this exact failure
+   mode plus any other reason a dispatch might silently fail to take, so a
+   room can't stay excluded from rotation forever. A legitimately
+   long-running clean (which *did* confirm Cleaning at some point) is left
+   alone.
+
+Verified via standalone simulations: the defer-then-resume sequence
+reproducing the exact real timeline above, and the stale-run timeout math
+against Master Bedroom's actual stuck duration.
+
 ## ~~18. Rotation sweep silently self-cancelling via bare unschedule()~~ — DONE (1.18.4)
 
 User: "nobody is home... something must have turned it off" -- Kitchen had

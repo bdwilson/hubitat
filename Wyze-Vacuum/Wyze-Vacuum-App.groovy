@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.18.4 - Brian Wilson / bubba@bubba.org
+ * 1.19.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -420,7 +420,7 @@ private void rescheduleDynamicPoll() {
     // entirely between two idle-interval polls and never get caught at all,
     // silently skipping both the start/finish notifications and credit.
     def anyCleaning = settings.selectedVacuums?.any { mac ->
-        state.lastKnownStatus?.getAt(mac) == "Cleaning" || state.activeCleanRun?.containsKey(mac)
+        state.lastKnownStatus?.getAt(mac) == "Cleaning" || state.activeCleanRun?.containsKey(mac) || state.rotationSweepPending?.getAt(mac)
     } ?: false
     def desiredMode = anyCleaning ? "cleaning" : "idle"
     if (state.currentPollMode == desiredMode) return
@@ -736,11 +736,46 @@ def handleVacuumStatusResponse(resp, data) {
     } else if (prevStatus == "Cleaning" && newStatus != "Cleaning") {
         handleCleaningSessionEnd(mac, d.currentValue("cleanTime"), d, newStatus)
     }
+    if (newStatus == "Cleaning" && state.activeCleanRun?.getAt(mac) != null) {
+        state.activeCleanRun[mac].everConfirmedCleaning = true
+    }
+
+    // Resumes a sweep continuation that continueSweepIfNeeded() deferred
+    // because the vacuum was still returning to its dock -- now that it's
+    // actually settled (Docked/Standby), it's safe to dispatch the next room.
+    if (state.rotationSweepPending?.getAt(mac) && newStatus in ["Docked", "Standby"]) {
+        state.rotationSweepPending[mac] = false
+        ifDebug("handleVacuumStatusResponse(${mac}): now settled (status=${newStatus}) -- resuming deferred sweep continuation")
+        runIn(5, "continueSweepDispatch", [data: [mac: mac]])
+    }
+
     state.lastKnownStatus[mac] = newStatus
     rescheduleDynamicPoll()
+    checkStaleActiveCleanRun(mac)
 
     updateRotationPreviewAttributes(d, mac)
     d.sendEvent(name: "lastRefresh", value: new Date().format("MM/dd/yyyy HH:mm:ss", location.timeZone))
+}
+
+// Safety net for a dispatch that never actually took effect -- confirmed
+// live: a room-clean command sent while the vacuum was still returning to
+// its dock got silently dropped (never entered Cleaning at all, just
+// finished docking on its own). Without this, that room would stay
+// excluded from rotation forever (see previewNextRooms's in-progress
+// exclusion), since the normal Cleaning -> non-Cleaning transition that
+// clears an active run never happens for a dispatch that never started.
+// Only applies to a run that never confirmed Cleaning even once -- a
+// legitimately long-running clean is left alone and resolves normally.
+private void checkStaleActiveCleanRun(String mac) {
+    def run = state.activeCleanRun?.getAt(mac)
+    if (!run || run.learning || run.everConfirmedCleaning) return
+    def startedAt = run.startedAt as Long
+    if (!startedAt) return
+    double minutesSinceDispatch = (now() - startedAt) / 60000.0
+    if (minutesSinceDispatch >= 10.0) {
+        log.warn "Wyze Vacuum ${mac}: room-clean dispatched ${Math.round(minutesSinceDispatch)} min ago never actually started cleaning (likely dropped by the vacuum, e.g. sent while it was still returning to its dock) -- clearing it so its room(s) aren't excluded from rotation indefinitely."
+        state.activeCleanRun.remove(mac)
+    }
 }
 
 private void venusGetAsync(String path, Map query, String callbackHandler, Map data) {
@@ -991,7 +1026,7 @@ private void handleCleaningSessionEnd(String mac, def reportedCleanTimeMinutes, 
         handleLearningRoomEnd(mac, run, elapsedMin, newStatus)
     } else if (run) {
         finishResult = finishActiveCleanRun(mac, elapsedMin, newStatus)
-        continueSweepIfNeeded(mac)
+        continueSweepIfNeeded(mac, newStatus)
     }
 
     accumulateBinHours(mac, elapsedMin)
@@ -1016,17 +1051,45 @@ private void handleCleaningSessionEnd(String mac, def reportedCleanTimeMinutes, 
 
 // Continues a rotation sweep (see cleanNextRooms) once a room-clean run
 // genuinely finishes -- if a sweep is active for this vacuum and there's
-// still at least one rotation room actually due, dispatches the next batch
-// after a short delay; otherwise the sweep is done and clears itself.
-private void continueSweepIfNeeded(String mac) {
+// still at least one rotation room actually due, dispatches the next batch;
+// otherwise the sweep is done and clears itself.
+private void continueSweepIfNeeded(String mac, String newStatus) {
     if (!(state.rotationSweepActive?.getAt(mac))) return
-    if (pendingRoomCount(mac) > 0) {
-        ifDebug("continueSweepIfNeeded(${mac}): more due rooms remain, continuing sweep")
-        runIn(5, "continueSweepDispatch", [data: [mac: mac]])
-    } else {
+
+    if (newStatus == "Paused" || newStatus == "Error") {
+        // Landed in an ambiguous/problem state -- don't guess at whether to
+        // push forward into a new room. Treat it the same as an explicit stop.
+        ifDebug("continueSweepIfNeeded(${mac}): ended as ${newStatus}, not continuing the sweep")
+        state.rotationSweepActive[mac] = false
+        state.rotationSweepPending?.put(mac, false)
+        return
+    }
+
+    if (pendingRoomCount(mac) <= 0) {
         ifDebug("continueSweepIfNeeded(${mac}): nothing else due, sweep finished")
         state.rotationSweepActive[mac] = false
+        state.rotationSweepPending?.put(mac, false)
+        return
     }
+
+    if (newStatus == "Returning to charge") {
+        // Confirmed live: dispatching a new room-clean command while the
+        // vacuum is still physically driving back to the dock gets silently
+        // ignored -- it just finishes docking on its own instead of
+        // redirecting, and the dispatched room never actually starts. Defer
+        // until it's actually settled (Docked/Standby); see the matching
+        // check in handleVacuumStatusResponse that resumes this once that
+        // happens. Fast polling stays engaged via rotationSweepPending so
+        // this gets picked up within about a minute, not up to 15.
+        ifDebug("continueSweepIfNeeded(${mac}): still returning to dock, deferring next dispatch until it settles")
+        state.rotationSweepPending = state.rotationSweepPending ?: [:]
+        state.rotationSweepPending[mac] = true
+        return
+    }
+
+    state.rotationSweepPending?.put(mac, false)
+    ifDebug("continueSweepIfNeeded(${mac}): more due rooms remain, continuing sweep")
+    runIn(5, "continueSweepDispatch", [data: [mac: mac]])
 }
 
 // Re-checks the sweep flag before dispatching -- if dock()/pause()/off() was
@@ -1101,6 +1164,7 @@ private String deriveStatusFromMode(Integer modeCode, boolean charging) {
 def startVacuum(String mac) {
     ifDebug("startVacuum: ${mac}")
     state.rotationSweepActive?.put(mac, false) // whole-house start is a different mode than room rotation
+    state.rotationSweepPending?.put(mac, false)
     venusControl(mac, 0, 1) // GLOBAL_SWEEPING / START
     pollVacuum(mac)
 }
@@ -1108,6 +1172,7 @@ def startVacuum(String mac) {
 def pauseVacuum(String mac) {
     ifDebug("pauseVacuum: ${mac}")
     state.rotationSweepActive?.put(mac, false) // explicit stop -- don't auto-continue to the next room
+    state.rotationSweepPending?.put(mac, false)
     venusControl(mac, 0, 2) // GLOBAL_SWEEPING / PAUSE
     pollVacuum(mac)
 }
@@ -1115,6 +1180,7 @@ def pauseVacuum(String mac) {
 def dockVacuum(String mac) {
     ifDebug("dockVacuum: ${mac}")
     state.rotationSweepActive?.put(mac, false) // explicit stop -- don't auto-continue to the next room
+    state.rotationSweepPending?.put(mac, false)
     venusControl(mac, 3, 1) // RETURN_TO_CHARGING / START
     pollVacuum(mac)
 }
