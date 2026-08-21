@@ -17,6 +17,23 @@ Does it abandon the current room and switch immediately? No evidence of
 command queuing in the reverse-engineered API, so "abandons and switches" is
 the working assumption, but unconfirmed.
 
+## ~~17. status vs. charging cross-poll race (cosmetic)~~ — DONE (1.18.3)
+
+Confirmed live right after the 1.18.2 fault-code fix: with mode/charging
+both finally working correctly, `status` still briefly showed `Standby`
+instead of `Docked` immediately after the vacuum actually docked (device
+page showed `mode: Idle`, `charging: true`, but `status: Standby`) --
+purely cosmetic, both are non-`Cleaning` states so nothing functional was
+affected, but undermines confidence after all the status-accuracy work
+this session. Cause: `charging` was read from the separately-polled props
+attribute, which can lag a poll behind the status poll's `mode` reading
+since they're two independent async calls (same root class of issue as
+the original 1.17.0 charging-override work, now actually fully closed).
+Fix: read `charge_state` directly from the *same* status-poll response
+`mode` came from (confirmed present there in the same raw dump that
+revealed `mode`), instead of the cross-poll device attribute. Verified via
+simulation against the real payload shape.
+
 ## ~~16. Add fault code 2102 to the default ignore list~~ — DONE (1.18.2)
 
 First seen right after the sweep-continuation fix went live and actually

@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.18.2 - Brian Wilson / bubba@bubba.org
+ * 1.18.3 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -679,9 +679,20 @@ def handleVacuumStatusResponse(resp, data) {
         log.warn "Wyze Vacuum ${mac}: status poll has no mode either -- heartBeat=${statusData?.heartBeat} eventFlag=${statusData?.eventFlag} raw=${statusData}"
         return
     }
-    def newStatus = deriveStatusFromMode(toInt(modeCode), d.currentValue("charging") == "true")
+    // Read charge_state from this *same* status-poll payload, not the
+    // separately-polled "charging" device attribute -- confirmed live those
+    // two async polls can land moments apart (props updates "charging"
+    // slightly after or before status's callback runs), producing a
+    // transient wrong label (mode 0 + a stale charging=false read ->
+    // "Standby" instead of "Docked") right after the vacuum actually docks.
+    // Functionally harmless either way (both are non-Cleaning), but reading
+    // charge_state from the same response as mode removes the race outright.
+    def chargeStateCode = statusData?.heartBeat?.charge_state
+    if (chargeStateCode == null) chargeStateCode = statusData?.eventFlag?.charge_state
+    boolean isCharging = toInt(chargeStateCode) == 1
+    def newStatus = deriveStatusFromMode(toInt(modeCode), isCharging)
 
-    log.info "Wyze Vacuum ${mac} mode=${modeCode} charging=${d.currentValue('charging')} -> status=\"${newStatus}\""
+    log.info "Wyze Vacuum ${mac} mode=${modeCode} charge_state=${chargeStateCode} -> status=\"${newStatus}\""
 
     // Deliberately NOT d.currentValue("status") -- the driver's own command
     // methods (start/pause/dock/cleanNextRooms/etc.) optimistically write

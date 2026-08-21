@@ -278,6 +278,8 @@ This bug wasn't limited to notifications — a missed transition also meant `han
 
 1.18.0's own first attempt at this fix had a bug of its own, fixed in 1.18.1: it extracted `mode` with `heartBeat?.mode ?: eventFlag?.mode`, and Groovy treats `0` as falsy — so `mode: 0` ("Idle," a real, common value) was silently discarded and fell through to `eventFlag.mode` (which doesn't exist), landing on the "no mode" warning for perfectly valid data, every single poll while idle. Fixed with explicit null checks instead of `?:`. If you're on an older version, re-import to pick up the fix — and check your logs for `status poll has no vacuum_work_status` or `status poll has no mode either` (1.17.1/1.18.0-only diagnostic warnings) as confirmation you were hitting one of these.
 
+One more small wrinkle, fixed in 1.18.3: right after `mode` and `charging` were both correctly working, `status` still occasionally showed `Standby` instead of `Docked` immediately after the vacuum actually docked (confirmed live: `mode: Idle` + `charging: true` on the device page, but `status: Standby`). Purely cosmetic — both are non-`Cleaning` states, so nothing functional was affected — but the cause was the `charging` boolean being read from the device's separately-polled attribute, which can lag a poll or two behind `mode` since they come from two independent async calls. `charge_state` is available in the *same* status-poll response as `mode`, so `status` now reads it from there directly instead, removing the cross-poll race entirely.
+
 ---
 
 ## License

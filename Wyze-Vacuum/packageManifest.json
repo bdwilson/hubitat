@@ -5,8 +5,8 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "",
   "dateReleased": "2026-08-21",
-  "releaseNotes": "1.18.2 — Adds fault code 2102 to the default ignored-faults list, alongside 2103/2105. Confirmed live twice: both times it fired right as the vacuum was returning to charge after a room finished, with no visible problem either time -- same benign-charging-status pattern as the other ignored codes. Note: this only changes the default for new installs; existing installs keep whatever value is already saved in the app's 'Fault codes to treat as normal' field and need it updated by hand to pick up 2102.",
-  "version": "1.18.2",
+  "releaseNotes": "1.18.3 — Fixes a cosmetic (non-functional) status mislabel confirmed live right after a room finished: status briefly showed 'Standby' instead of 'Docked' despite mode:Idle and charging:true both being correct, caused by charging being read from a separately-polled device attribute that can lag a poll behind mode. status now reads charge_state from the same status-poll payload as mode, removing that cross-poll race.",
+  "version": "1.18.3",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.18.2"
+      "version": "1.18.3"
     }
   ]
 }
