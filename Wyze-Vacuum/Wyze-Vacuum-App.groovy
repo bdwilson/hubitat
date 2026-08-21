@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.18.3 - Brian Wilson / bubba@bubba.org
+ * 1.18.4 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -375,7 +375,12 @@ def uninstalled() {
 }
 
 def updated() {
-    unschedule()
+    // Named, not bare unschedule() -- see rescheduleDynamicPoll() for why:
+    // a bare unschedule() cancels every pending one-shot job for this app,
+    // including an in-flight rotation-sweep continuation (runIn(5,
+    // "continueSweepDispatch", ...)) if settings happen to be saved while
+    // one's pending, silently killing it with no error or explanation.
+    unschedule("pollAllVacuums")
     if (settings.isDebug) runIn(3600, logsOff)
 
     if (state.wyzeAccessToken && settings.selectedVacuums) {
@@ -421,7 +426,15 @@ private void rescheduleDynamicPoll() {
     if (state.currentPollMode == desiredMode) return
 
     def minutes = anyCleaning ? (settings.pollIntervalCleaning ?: "1") : (settings.pollIntervalIdle ?: "15")
-    unschedule()
+    // Deliberately NOT bare unschedule() -- that cancels *every* pending
+    // scheduled job for this app instance, not just the recurring poll.
+    // Confirmed live: a room finishing correctly scheduled the next sweep
+    // room via runIn(5, "continueSweepDispatch", ...), but this function
+    // runs right afterward in the same handleVacuumStatusResponse call (now
+    // that cleaning has ended, polling should slow back down) -- and its
+    // bare unschedule() wiped out that just-scheduled continuation before it
+    // ever fired. Named unschedule only touches the poll job.
+    unschedule("pollAllVacuums")
     schedule(pollCron(minutes), pollAllVacuums)
     state.currentPollMode = desiredMode
     ifDebug("rescheduleDynamicPoll: switched to ${desiredMode} polling (every ${minutes} min)")

@@ -17,6 +17,32 @@ Does it abandon the current room and switch immediately? No evidence of
 command queuing in the reverse-engineered API, so "abandons and switches" is
 the working assumption, but unconfirmed.
 
+## ~~18. Rotation sweep silently self-cancelling via bare unschedule()~~ — DONE (1.18.4)
+
+User: "nobody is home... something must have turned it off" -- Kitchen had
+genuinely finished, `Rooms Pending This Cycle` still showed 3, Low Battery
+Protection was confirmed disabled (ruling out that theory), yet `switch`
+was `off` and nothing advanced to Hallway. Traced by re-reading the code
+rather than more live back-and-forth: `handleCleaningSessionEnd` (called on
+every genuine finish) calls `continueSweepIfNeeded()`, which schedules
+`runIn(5, "continueSweepDispatch", ...)` to dispatch the next room. Right
+after that, in the *same* `handleVacuumStatusResponse` call,
+`rescheduleDynamicPoll()` runs (since cleaning just ended, polling should
+slow back down) -- and it called bare `unschedule()`, which cancels *every*
+pending one-shot job for the app instance, not just the recurring poll.
+That wiped out the just-scheduled Hallway dispatch before it ever fired,
+silently, with zero logging (matching the user's "nothing turned it off
+that I can see" experience).
+
+Fixed by unscheduling only the poll job by name (`unschedule("pollAllVacuums")`)
+in both `rescheduleDynamicPoll()` and `updated()` (the latter has the same
+risk whenever settings are saved while a sweep continuation is pending).
+This is the second time a bare/overly-broad Hubitat scheduler or Groovy
+truthiness gotcha has caused a hard-to-see silent failure in the sweep path
+this session (see #15) -- worth remembering as a pattern for future review:
+prefer named/scoped variants of `unschedule`/state-clearing operations over
+blanket ones whenever multiple independent scheduled jobs can coexist.
+
 ## ~~17. status vs. charging cross-poll race (cosmetic)~~ — DONE (1.18.3)
 
 Confirmed live right after the 1.18.2 fault-code fix: with mode/charging

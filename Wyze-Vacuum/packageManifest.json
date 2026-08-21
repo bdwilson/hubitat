@@ -5,8 +5,8 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "",
   "dateReleased": "2026-08-21",
-  "releaseNotes": "1.18.3 — Fixes a cosmetic (non-functional) status mislabel confirmed live right after a room finished: status briefly showed 'Standby' instead of 'Docked' despite mode:Idle and charging:true both being correct, caused by charging being read from a separately-polled device attribute that can lag a poll behind mode. status now reads charge_state from the same status-poll payload as mode, removing that cross-poll race.",
-  "version": "1.18.3",
+  "releaseNotes": "1.18.4 — Fixes rotation sweeps silently stopping partway through with no explanation (switch: off, rooms still pending, nothing advancing). Cause: rescheduleDynamicPoll() called bare unschedule() when slowing polling back down after a room finished, which cancels every pending one-shot job for the app -- including the sweep's own runIn() call to dispatch the next room, scheduled moments earlier in the same function call. Fixed by unscheduling only the poll job by name instead of everything.",
+  "version": "1.18.4",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.18.3"
+      "version": "1.18.4"
     }
   ]
 }
