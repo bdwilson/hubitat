@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.18.1 - Brian Wilson / bubba@bubba.org
+ * 1.18.2 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -140,7 +140,7 @@ def mainPage() {
                     }
                     input "ignoredFaultCodes", "text",
                         title: "Fault codes to treat as normal, not real faults (comma-separated) — e.g. some codes may just mean \"charging\"/\"fully charged\", not an actual problem",
-                        defaultValue: "2103,2105", required: false
+                        defaultValue: "2102,2103,2105", required: false
                 }
 
                 settings.selectedVacuums.each { mac ->
@@ -935,7 +935,7 @@ private void updateFaultAttribute(def d, String mac, Map props) {
 }
 
 private List ignoredFaultCodesList() {
-    def raw = settings.ignoredFaultCodes ?: "2103,2105"
+    def raw = settings.ignoredFaultCodes ?: "2102,2103,2105"
     return raw.split(",").collect { toInt(it.trim()) }.findAll { it != null }
 }
 

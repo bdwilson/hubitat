@@ -17,6 +17,22 @@ Does it abandon the current room and switch immediately? No evidence of
 command queuing in the reverse-engineered API, so "abandons and switches" is
 the working assumption, but unconfirmed.
 
+## ~~16. Add fault code 2102 to the default ignore list~~ — DONE (1.18.2)
+
+First seen right after the sweep-continuation fix went live and actually
+worked (Kitchen cleaned automatically for the first time). Confirmed twice
+now, both times firing right as the vacuum returned to charge after a room
+finished, no visible problem either time -- same pattern as 2103/2105.
+Added to the default `ignoredFaultCodes` value. `2101` stays off the list
+on purpose (see existing note) -- it was tied to a genuine low-battery
+recharge-and-resume cycle, which may carry real information rather than
+being purely benign like 2102/2103/2105.
+
+Note for existing installs: changing the code's `defaultValue` only affects
+*new* app installs -- an already-configured instance keeps whatever's
+already saved in the "Fault codes to treat as normal" field regardless of
+this change, and needs `2102` added by hand to pick it up.
+
 ## ~~15. Groovy Truth bug in 1.18.0's own mode extraction~~ — DONE (1.18.1)
 
 1.18.0 shipped, user re-imported (confirmed 1.18.0 in the code editor),
