@@ -1,5 +1,7 @@
 # Wyze Vacuum Connect — Hubitat Integration
 
+Support / discussion: [Hubitat Community thread](https://community.hubitat.com/t/release-wyze-vacuum-integration-cloud/165866)
+
 Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / model `JA_RO2`). No external servers, proxies, or bridges (Matterbridge/Homebridge) required — this app talks to Wyze's servers directly from your hub.
 
 ## Important: this is unofficial
@@ -291,6 +293,10 @@ This bug wasn't limited to notifications — a missed transition also meant `han
 One more small wrinkle, fixed in 1.18.3: right after `mode` and `charging` were both correctly working, `status` still occasionally showed `Standby` instead of `Docked` immediately after the vacuum actually docked (confirmed live: `mode: Idle` + `charging: true` on the device page, but `status: Standby`). Purely cosmetic — both are non-`Cleaning` states, so nothing functional was affected — but the cause was the `charging` boolean being read from the device's separately-polled attribute, which can lag a poll or two behind `mode` since they come from two independent async calls. `charge_state` is available in the *same* status-poll response as `mode`, so `status` now reads it from there directly instead, removing the cross-poll race entirely.
 
 ---
+
+## Support
+
+Questions, bug reports, or feature requests: [Hubitat Community thread](https://community.hubitat.com/t/release-wyze-vacuum-integration-cloud/165866).
 
 ## License
 
