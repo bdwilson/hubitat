@@ -5,6 +5,36 @@ its own top-level directory (one app/driver pair, or a single driver, plus
 `packageManifest.json` and `README.md`). Root `repository.json` is the
 Hubitat Package Manager (HPM) index listing every released package.
 
+## `importUrl` must always match the branch a file actually lives on
+
+This is a standing rule, active on every commit — not just something to fix
+right before a release. Every driver/app `.groovy` file's `importUrl` (in
+its `metadata { definition { ... } }` block) must point at wherever *that
+exact file* currently lives:
+
+- **Committing a brand-new `.groovy` file** to a branch (a new driver, a new
+  app, or a copy of one under a new name): give it an `importUrl` pointing
+  at **that same branch** from the start —
+  `.../refs/heads/<branch-name>/<Dir>/<File>.groovy` — never `master`, even
+  if the plan is to release it soon. Do this in the same commit that adds
+  the file, without being asked.
+- **Committing further changes to an existing file already on a branch**:
+  leave `importUrl` as-is if it already points at that branch (it should,
+  assuming this rule was followed when the file first landed there).
+- **A file's `importUrl` doesn't match the branch it's actually on** (stale
+  from an earlier branch, or still pointing at `master` while real
+  development is happening elsewhere): fix it as part of whatever commit
+  you're already making to that file — don't leave it stale, don't treat it
+  as a separate cleanup task for later.
+- On `master` itself, `importUrl` points at `master`. That's the one place
+  the "matches the branch it lives on" rule and "points at master" happen to
+  be the same statement — it isn't a special case, it falls out of the rule
+  above naturally.
+
+The practical effect: at any point in time, reading any `.groovy` file's
+`importUrl` tells you exactly which branch it currently lives on — never
+early, never stale, never a leftover from a previous branch.
+
 ## Releasing an integration to `master`
 
 Development happens on a feature/fix branch. A package only becomes
@@ -13,22 +43,17 @@ and (for a first release) it's listed in the root `repository.json`. When
 opening a PR that releases an integration's current branch state to
 `master`, do all three of the following in that same PR:
 
-### 1. Point every `.groovy` file's `importUrl` at `master`
+### 1. Flip every `.groovy` file's `importUrl` to `master`
 
-For the entire lifetime of a feature/fix branch, `importUrl` in each
-driver/app's `metadata { definition { ... } }` block stays pointed at
-**that branch** (e.g. `.../refs/heads/<branch-name>/<Dir>/<File>.groovy`),
-not `master` — that's what lets it be imported into a real hub for testing
-throughout development. Leave it alone through every normal commit; don't
-flip it to `master` early "to get it out of the way," and don't do the flip
-as its own separate PR.
-
-Flipping `importUrl` to `master` (`.../master/<Dir>/<File>.groovy`, or the
-`refs/heads/master/...` form — match whichever style the file already used)
-happens exactly once, as one of the changes *inside* the PR that actually
-merges this branch to `master` — the same PR covered by the rest of this
-checklist. Remove any `// TODO: point back at master once merged`-style
-comment left as a reminder during development at the same time.
+This is the one moment `importUrl` changes to something other than the
+current branch's own location — because the file is *becoming* part of
+`master`. Per the rule above, this happens exactly once, as one of the
+changes *inside* the PR that actually merges this branch to `master` (never
+early, never as its own separate PR): change each file's `importUrl` to
+`.../master/<Dir>/<File>.groovy` (or the `refs/heads/master/...` form —
+match whichever style the file already used), and remove any
+`// TODO: point back at master once merged`-style comment left as a
+reminder during development.
 
 ### 2. Update (or create) `<Dir>/packageManifest.json`, and `repository.json` if needed
 
