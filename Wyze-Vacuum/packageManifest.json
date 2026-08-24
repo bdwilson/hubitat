@@ -3,7 +3,7 @@
   "author": "Brian Wilson",
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
-  "communityLink": "",
+  "communityLink": "https://community.hubitat.com/t/release-wyze-vacuum-integration-cloud/165866",
   "dateReleased": "2026-08-24",
   "releaseNotes": "1.22.0 — Two small fixes: (1) the high-traffic cycle length setting now shows the actual weekly frequency computed from whatever number you enter (e.g. '2.3 times a week' for a 3-day cycle), not a fixed example text; (2) roomsPendingThisCycle/nextRoomsToClean/nextRoomDueAt now only generate a new device event when their value actually changes, instead of a fresh identical entry every single poll cycle filling up the event history.",
   "version": "1.22.0",

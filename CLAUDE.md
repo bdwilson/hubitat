@@ -35,6 +35,24 @@ The practical effect: at any point in time, reading any `.groovy` file's
 `importUrl` tells you exactly which branch it currently lives on — never
 early, never stale, never a leftover from a previous branch.
 
+## README links to `.groovy` files must be raw URLs, matching `importUrl`
+
+When a `<Dir>/README.md` links to one of its own `.groovy` files — most
+commonly in install instructions telling someone what to paste into
+**Drivers Code** / **Apps Code** — link the same **raw** URL that file's own
+`importUrl` currently points at:
+`https://raw.githubusercontent.com/bdwilson/hubitat/<branch>/<Dir>/<File>.groovy`.
+Never a relative link (`[...](File.groovy)`) or a GitHub `blob/`-style link
+— those open GitHub's syntax-highlighted file *viewer*, not the raw source,
+which isn't useful when someone's trying to copy-paste the file's contents
+into Hubitat.
+
+This follows the same standing rule as `importUrl` above, applied to
+README links instead of the `importUrl` field: whenever `importUrl` changes
+branch (a new file added, or the release flip to `master`), update any
+README links to that same file in the same commit, so the two never point
+at different places.
+
 ## Releasing an integration to `master`
 
 Development happens on a feature/fix branch. A package only becomes
@@ -92,6 +110,11 @@ the README in **two places** so users can find support either way they
 land on the page:
 - near the top, right under the title (e.g. `Support / discussion: <link>`)
 - at the bottom, under a "Support" or "Credits"-type heading
+
+Since `importUrl` is flipping to `master` in this same PR (step 1 above),
+double-check any README links to the `.groovy` file(s) themselves — they
+should already be raw URLs per the rule above, and now need to point at
+`master` too, same as `importUrl`.
 
 ### Before opening the PR
 
