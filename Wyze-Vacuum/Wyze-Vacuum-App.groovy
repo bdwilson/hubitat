@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.19.0 - Brian Wilson / bubba@bubba.org
+ * 1.20.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -192,6 +192,10 @@ def mainPage() {
                                         title: "Cycle length (days) for high-traffic rooms — e.g. 3 for roughly twice a week",
                                         defaultValue: 3, required: true
                                 }
+
+                                input "rotationContinuousMode_${mac}", "bool",
+                                    title: "Keep sweeping continuously while triggered, even once nothing's technically due yet (works through the whole rotation list on a loop; stops only when dock()/pause()/off() is called)",
+                                    defaultValue: false, required: false
 
                                 def pending = pendingRoomCount(mac)
                                 paragraph "${pending} of ${(settings["rotationRooms_${mac}"] ?: []).size()} rotation room(s) are due for cleaning right now."
@@ -1065,8 +1069,16 @@ private void continueSweepIfNeeded(String mac, String newStatus) {
         return
     }
 
-    if (pendingRoomCount(mac) <= 0) {
-        ifDebug("continueSweepIfNeeded(${mac}): nothing else due, sweep finished")
+    // Normally the sweep only continues while something's actually due
+    // (elapsed >= that room's own cycle length -- see pendingRoomCount).
+    // In continuous mode, it ignores that and just keeps working through
+    // the rotation list on a loop -- previewNextRooms() always returns
+    // *something* (whichever room is least-recently-cleaned), it just
+    // isn't gated on "due" in this mode.
+    boolean continuous = (settings["rotationContinuousMode_${mac}"] ?: false) as boolean
+    boolean somethingToDispatch = continuous ? !previewNextRooms(mac).isEmpty() : pendingRoomCount(mac) > 0
+    if (!somethingToDispatch) {
+        ifDebug("continueSweepIfNeeded(${mac}): ${continuous ? 'nothing left to clean' : 'nothing else due'}, sweep finished")
         state.rotationSweepActive[mac] = false
         state.rotationSweepPending?.put(mac, false)
         return

@@ -4,9 +4,9 @@
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "",
-  "dateReleased": "2026-08-21",
-  "releaseNotes": "1.19.0 — Fixes rotation sweeps failing to advance to the next room even after 1.18.4: confirmed live that dispatching a new room-clean command while the vacuum is still physically returning to its dock (status: Returning to charge) gets silently ignored -- it just finishes docking on its own and the new room never starts, with no error anywhere. Sweep continuation now waits for the vacuum to actually settle (Docked/Standby) before dispatching the next room, instead of firing a fixed few seconds after the previous one 'finished'. Also adds a safety net that clears a dispatch that never actually started within 10 minutes, so a dropped command can't silently exclude that room from rotation forever.",
-  "version": "1.19.0",
+  "dateReleased": "2026-08-22",
+  "releaseNotes": "1.20.0 — Adds a per-vacuum toggle, 'Keep sweeping continuously...', that makes a rotation sweep ignore due-status entirely and keep working through the full rotation list on a loop (using free time to get ahead, not just catch up) instead of stopping once everything's merely caught up. Off by default, preserving the existing 'sweep through due rooms, then stop' behavior.",
+  "version": "1.20.0",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.19.0"
+      "version": "1.20.0"
     }
   ]
 }

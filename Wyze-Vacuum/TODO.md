@@ -17,6 +17,26 @@ Does it abandon the current room and switch immediately? No evidence of
 command queuing in the reverse-engineered API, so "abandons and switches" is
 the working assumption, but unconfirmed.
 
+## ~~20. Continuous sweep mode toggle~~ — DONE (1.20.0)
+
+After Master Bedroom finished and `Rooms Pending This Cycle` correctly hit
+0, the sweep stopped -- exactly per the "sweep due rooms, then stop" design
+the user picked earlier (item #10). But live, that turned out not to match
+what they actually wanted in practice: "If there is free time to clean, you
+should keep cleaning. Maybe this is a toggle on the app." I.e. use a
+triggered sweep to get *ahead* of the rotation, not just to catch up to it.
+
+Added `rotationContinuousMode_${mac}` (default off, preserving existing
+behavior). When on, `continueSweepIfNeeded()` ignores `pendingRoomCount()`
+entirely and instead keeps going as long as `previewNextRooms()` returns
+anything at all (which it always will, picking whichever room is
+least-recently-cleaned) -- looping through the full rotation list
+continuously until an explicit `dock()`/`pause()`/`off()` stops it, same
+stop mechanism already in place. Verified via simulation against the exact
+"nothing due" scenario from the live logs (Rooms Pending: 0): continuous
+mode off correctly stops (matching observed behavior), continuous mode on
+correctly keeps going.
+
 ## ~~19. Command dispatched while "Returning to charge" gets silently dropped~~ — DONE (1.19.0)
 
 Resolves the open question from item #1 above ("how does the physical
