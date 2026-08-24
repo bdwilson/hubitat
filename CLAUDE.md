@@ -15,14 +15,20 @@ opening a PR that releases an integration's current branch state to
 
 ### 1. Point every `.groovy` file's `importUrl` at `master`
 
-During development, `importUrl` in each driver/app's
-`metadata { definition { ... } }` block points at the feature branch (e.g.
-`.../refs/heads/<branch-name>/<Dir>/<File>.groovy`) so it can be imported
-for testing before merge. Before merging, change it to point at `master`
-instead (`.../master/<Dir>/<File>.groovy`, or the `refs/heads/master/...`
-form — match whichever style the file already used). Remove any
-`// TODO: point back at master once merged`-style comment left as a
-reminder during development.
+For the entire lifetime of a feature/fix branch, `importUrl` in each
+driver/app's `metadata { definition { ... } }` block stays pointed at
+**that branch** (e.g. `.../refs/heads/<branch-name>/<Dir>/<File>.groovy`),
+not `master` — that's what lets it be imported into a real hub for testing
+throughout development. Leave it alone through every normal commit; don't
+flip it to `master` early "to get it out of the way," and don't do the flip
+as its own separate PR.
+
+Flipping `importUrl` to `master` (`.../master/<Dir>/<File>.groovy`, or the
+`refs/heads/master/...` form — match whichever style the file already used)
+happens exactly once, as one of the changes *inside* the PR that actually
+merges this branch to `master` — the same PR covered by the rest of this
+checklist. Remove any `// TODO: point back at master once merged`-style
+comment left as a reminder during development at the same time.
 
 ### 2. Update (or create) `<Dir>/packageManifest.json`, and `repository.json` if needed
 
