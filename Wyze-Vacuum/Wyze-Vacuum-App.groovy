@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.20.0 - Brian Wilson / bubba@bubba.org
+ * 1.21.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -1267,6 +1267,39 @@ private void updateRotationPreviewAttributes(def d, String mac) {
     d.sendEvent(name: "roomsPendingThisCycle", value: pendingRoomCount(mac))
     def next = previewNextRooms(mac)
     d.sendEvent(name: "nextRoomsToClean", value: next ? next.collect { it.name }.join(", ") : "none")
+    d.sendEvent(name: "nextRoomDueAt", value: nextRoomDueDescription(mac))
+}
+
+// Answers "when does the next room actually become due" -- distinct from
+// nextRoomsToClean, which just names whichever room is currently
+// least-recently-cleaned (a candidate regardless of due-status). This finds
+// the single room with the earliest (lastCleaned + its own cycle length)
+// across the rotation list -- mathematically the same room previewNextRooms
+// would rank first, since both are driven by the same per-room urgency.
+private String nextRoomDueDescription(String mac) {
+    def roomIds = (settings["rotationRooms_${mac}"] ?: []).collect { it as Integer }
+    if (!roomIds) return "no rotation rooms configured"
+
+    def known = state.discoveredRooms?.getAt(mac) ?: []
+    def history = state.roomHistory?.getAt(mac) ?: [:]
+    def nowMs = now()
+    Integer soonestId = null
+    Long soonestDueAt = null
+    roomIds.each { id ->
+        long last = (history[id.toString()] ?: 0L) as Long
+        long cycleMs = roomCycleDays(mac, id) * 24L * 60L * 60L * 1000L
+        long dueAt = last + cycleMs
+        if (soonestDueAt == null || dueAt < soonestDueAt) {
+            soonestDueAt = dueAt
+            soonestId = id
+        }
+    }
+    if (soonestId == null) return "none"
+
+    def roomName = known.find { it.id == soonestId }?.name ?: "Room ${soonestId}"
+    if (soonestDueAt <= nowMs) return "${roomName} (already due)"
+    def dateStr = new Date(soonestDueAt).format("MM/dd/yyyy HH:mm", location.timeZone)
+    return "${roomName} (due ${dateStr})"
 }
 
 // Which cycle length applies to a given room -- the shorter high-traffic

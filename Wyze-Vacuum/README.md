@@ -59,6 +59,7 @@ Hubitat creates a child device per vacuum, named after its Wyze nickname.
 | `lastCleanedRooms` | string | Rooms confirmed cleaned by the most recent room-clean run |
 | `lastRunCompleteness` | number | Rough % of the last room-clean run's *total* expected time that actually elapsed — see below |
 | `nextRoomsToClean` | string | What `cleanNextRooms()` would pick right now, given current rotation config and room history |
+| `nextRoomDueAt` | string | When the soonest-due rotation room actually crosses its own cycle threshold — e.g. `"Kitchen (due 08/28/2026 14:30)"`, or `"(already due)"` if it's already past that point |
 | `roomsPendingThisCycle` | number | Rotation rooms not cleaned within the configured cycle window |
 | `hoursSinceEmptied` | number | Cumulative cleaning hours since the bin was last reset |
 | `learningStatus` | string | `Idle` / `Learning <room> (N more queued)` / `Stopped early` |
@@ -188,6 +189,7 @@ So dispatching 3 rooms estimated at 15 min each (45 min total) and getting inter
 | `lastCleanedRooms` | Rooms confirmed cleaned by the most recent room-clean run |
 | `lastRunCompleteness` | Rough % of the last run's total expected time that actually elapsed (see above) |
 | `nextRoomsToClean` | What `cleanNextRooms()` would pick right now — recomputed every poll, so it stays current as room history and rotation config change |
+| `nextRoomDueAt` | When the soonest-due room actually crosses its own cycle threshold (a real timestamp, not just "how many are due right now") — there's no calendar-based reset (no "every Monday"); each room runs its own rolling `last cleaned + cycle length` countdown independently |
 | `roomsPendingThisCycle` | How many of your selected rotation rooms are currently due (not cleaned within the cycle window) |
 
 ### Limitations

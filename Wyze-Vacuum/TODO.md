@@ -17,6 +17,22 @@ Does it abandon the current room and switch immediately? No evidence of
 command queuing in the reverse-engineered API, so "abandons and switches" is
 the working assumption, but unconfirmed.
 
+## ~~21. nextRoomDueAt attribute~~ — DONE (1.21.0)
+
+User asked how `roomsPendingThisCycle` "resets" now that it's a new week --
+clarified there's no calendar-based reset at all (deliberately: each room
+runs its own rolling `last cleaned + cycle length` countdown, not tied to
+any day of the week). Follow-up: "How can one see when the next room is
+due?" There wasn't a good answer -- `nextRoomsToClean` names a candidate
+regardless of due-status, `roomsPendingThisCycle` is just a count. Added
+`nextRoomDueAt`, computing the earliest `(lastCleaned + cycleLength)`
+across the rotation list and showing it as a real timestamp (or
+"(already due)" if in the past) alongside the room name. Mathematically
+the same room `nextRoomsToClean`/`previewNextRooms` would rank first,
+since both are driven by the same per-room urgency ratio. Verified via
+simulation (distinct due times picking the correct soonest room, and a
+never-cleaned room correctly reporting already-due).
+
 ## ~~20. Continuous sweep mode toggle~~ — DONE (1.20.0)
 
 After Master Bedroom finished and `Rooms Pending This Cycle` correctly hit

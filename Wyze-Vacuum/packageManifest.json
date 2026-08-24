@@ -4,9 +4,9 @@
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "",
-  "dateReleased": "2026-08-22",
-  "releaseNotes": "1.20.0 — Adds a per-vacuum toggle, 'Keep sweeping continuously...', that makes a rotation sweep ignore due-status entirely and keep working through the full rotation list on a loop (using free time to get ahead, not just catch up) instead of stopping once everything's merely caught up. Off by default, preserving the existing 'sweep through due rooms, then stop' behavior.",
-  "version": "1.20.0",
+  "dateReleased": "2026-08-24",
+  "releaseNotes": "1.21.0 — Adds nextRoomDueAt: a real timestamp for when the soonest-due rotation room actually crosses its own cycle threshold, since there's no calendar-based reset (no 'every Monday') -- each room runs its own rolling last-cleaned-plus-cycle-length countdown independently. Complements nextRoomsToClean (which names the candidate) and roomsPendingThisCycle (which just counts).",
+  "version": "1.21.0",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -14,7 +14,7 @@
       "namespace": "brianwilson-hubitat",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-Driver.groovy",
       "required": true,
-      "version": "1.7.0"
+      "version": "1.8.0"
     }
   ],
   "apps": [
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.20.0"
+      "version": "1.21.0"
     }
   ]
 }
