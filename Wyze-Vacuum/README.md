@@ -148,7 +148,7 @@ You can also call `cleanRooms("Kitchen, Living Room")` directly (e.g. from a but
 
 ### High-traffic rooms — cleaning some rooms more often than others
 
-By default every rotation room shares the same cycle length, so `cleanNextRooms()` just works through the whole list evenly (oldest-cleaned first). If some rooms genuinely get dirtier faster — a kitchen or entryway vs. a guest room — mark them under `<vacuum> — Room Rotation` → **"High-traffic rooms"**, and give that group its own (shorter) cycle length, e.g. 3 days for roughly twice a week vs. the normal 7-day default for everything else.
+By default every rotation room shares the same cycle length, so `cleanNextRooms()` just works through the whole list evenly (oldest-cleaned first). If some rooms genuinely get dirtier faster — a kitchen or entryway vs. a guest room — mark them under `<vacuum> — Room Rotation` → **"High-traffic rooms"**, and give that group its own (shorter) cycle length, e.g. 3 days for roughly twice a week vs. the normal 7-day default for everything else. Once you enter a number, a line right below it shows the actual weekly frequency that translates to (`7 ÷ your number`), computed from whatever you entered — not a fixed example.
 
 Under the hood, room picking isn't a hard-gated "queue A always drains before queue B" split — it sorts every candidate room by how overdue it is **relative to its own cycle length** (elapsed time ÷ that room's cycle length), highest first. A high-traffic room on a 3-day cycle reaches "fully due" three times as fast as a normal room on a 7-day cycle, so across repeated `cleanNextRooms()` triggers it naturally rises to the top and gets picked more often — without starving normal-traffic rooms outright, since their fraction keeps climbing the whole time and eventually overtakes a high-traffic room that just got reset. This is the same sort the plain oldest-first behavior was always using; giving every room the same cycle length reduces to exactly the old behavior.
 
@@ -190,6 +190,8 @@ So dispatching 3 rooms estimated at 15 min each (45 min total) and getting inter
 | `lastRunCompleteness` | Rough % of the last run's total expected time that actually elapsed (see above) |
 | `nextRoomsToClean` | What `cleanNextRooms()` would pick right now — recomputed every poll, so it stays current as room history and rotation config change |
 | `nextRoomDueAt` | When the soonest-due room actually crosses its own cycle threshold (a real timestamp, not just "how many are due right now") — there's no calendar-based reset (no "every Monday"); each room runs its own rolling `last cleaned + cycle length` countdown independently |
+
+These three (`roomsPendingThisCycle`, `nextRoomsToClean`, `nextRoomDueAt`) get recomputed on every poll, but only actually create a new device event when the value changed since the last poll — not a fresh identical entry every single cycle, which would otherwise fill up the device's event history with noise for values that usually don't move minute to minute.
 | `roomsPendingThisCycle` | How many of your selected rotation rooms are currently due (not cleaned within the cycle window) |
 
 ### Limitations

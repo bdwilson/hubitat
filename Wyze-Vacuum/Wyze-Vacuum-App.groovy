@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.21.0 - Brian Wilson / bubba@bubba.org
+ * 1.22.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -190,7 +190,11 @@ def mainPage() {
                                 if (settings["highTrafficRooms_${mac}"]) {
                                     input "rotationCycleDaysHighTraffic_${mac}", "number",
                                         title: "Cycle length (days) for high-traffic rooms — e.g. 3 for roughly twice a week",
-                                        defaultValue: 3, required: true
+                                        defaultValue: 3, required: true, submitOnChange: true
+                                    def highDays = (settings["rotationCycleDaysHighTraffic_${mac}"] ?: 3) as Double
+                                    if (highDays > 0) {
+                                        paragraph "Currently this is about ${String.format('%.1f', 7.0 / highDays)} times a week, based on the number you've entered."
+                                    }
                                 }
 
                                 input "rotationContinuousMode_${mac}", "bool",
@@ -1263,11 +1267,22 @@ def cleanNextRooms(String mac) {
 // Computes what cleanNextRooms(mac) would pick right now, without dispatching
 // anything -- shared by the actual dispatch above and the nextRoomsToClean
 // attribute so the two can never drift out of sync with each other.
+//
+// This runs every poll, but these values usually don't change between polls
+// -- only sendEvent when the value actually differs from what's already
+// there, so the device's event history isn't filled with a fresh identical
+// entry every single poll cycle for values that haven't moved.
 private void updateRotationPreviewAttributes(def d, String mac) {
-    d.sendEvent(name: "roomsPendingThisCycle", value: pendingRoomCount(mac))
+    sendEventIfChanged(d, "roomsPendingThisCycle", pendingRoomCount(mac))
     def next = previewNextRooms(mac)
-    d.sendEvent(name: "nextRoomsToClean", value: next ? next.collect { it.name }.join(", ") : "none")
-    d.sendEvent(name: "nextRoomDueAt", value: nextRoomDueDescription(mac))
+    sendEventIfChanged(d, "nextRoomsToClean", next ? next.collect { it.name }.join(", ") : "none")
+    sendEventIfChanged(d, "nextRoomDueAt", nextRoomDueDescription(mac))
+}
+
+private void sendEventIfChanged(def d, String name, def value) {
+    if (d.currentValue(name)?.toString() != value?.toString()) {
+        d.sendEvent(name: name, value: value)
+    }
 }
 
 // Answers "when does the next room actually become due" -- distinct from

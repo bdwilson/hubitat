@@ -17,6 +17,21 @@ Does it abandon the current room and switch immediately? No evidence of
 command queuing in the reverse-engineered API, so "abandons and switches" is
 the working assumption, but unconfirmed.
 
+## ~~22. Computed weekly-frequency text + event-log noise reduction~~ — DONE (1.22.0)
+
+Two small requests from the same message: (1) the high-traffic cycle
+length setting's "e.g. 3 for roughly twice a week" was static example
+text, not computed from what's actually entered -- now shows
+`7.0 / enteredDays` live under the input (`submitOnChange: true` added so
+it recomputes as you type). (2) User noticed `nextRoomDueAt` (and by
+extension `roomsPendingThisCycle`/`nextRoomsToClean`, which share the same
+code path) logging a brand new identical device event on *every single
+poll*, even when nothing changed -- "not sure we need this many events."
+Added `sendEventIfChanged()`, comparing against `d.currentValue(name)`
+first and only calling `sendEvent` when the value actually differs.
+Verified via simulation (identical values skip, a real change still
+sends).
+
 ## ~~21. nextRoomDueAt attribute~~ — DONE (1.21.0)
 
 User asked how `roomsPendingThisCycle` "resets" now that it's a new week --
