@@ -27,8 +27,8 @@ Wyze has no public, supported API for the robot vacuum. This integration speaks 
 
 ## Step 2 — Install in Hubitat
 
-1. **Drivers Code** → **+ New Driver** → paste [`Wyze-Vacuum-Driver.groovy`](Wyze-Vacuum-Driver.groovy) → **Save**
-2. **Apps Code** → **+ New App** → paste [`Wyze-Vacuum-App.groovy`](Wyze-Vacuum-App.groovy) → **Save**
+1. **Drivers Code** → **+ New Driver** → paste [`Wyze-Vacuum-Driver.groovy`](https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-Driver.groovy) → **Save**
+2. **Apps Code** → **+ New App** → paste [`Wyze-Vacuum-App.groovy`](https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy) → **Save**
 3. **Apps** → **+ Add User App** → **Wyze Vacuum Connect**
 
 ## Step 3 — Configure the App
