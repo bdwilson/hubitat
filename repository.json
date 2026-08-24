@@ -134,14 +134,13 @@
       "description": "Control your generator via Genmon using Hubitat"
     },
     {
-      "name": "Tuya Zigbee Valve - SONOFF SWV-ZF2 dual-port",
+      "name": "Wyze Vacuum Connect",
       "category": "Control",
       "tags": [
-        "Irrigation",
-        "Water"
+        "Appliances"
       ],
-      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Tuya-Zigbee-Valve/packageManifest.json",
-      "description": "Fork of kkossev's Tuya Zigbee Valve driver adding SONOFF SWV-ZF2 dual-port support: independent per-port child devices, per-port irrigation history and auto-off timers, and a per-run open(duration) command."
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/packageManifest.json",
+      "description": "Native integration for Wyze Robot Vacuums (200S/JA_RO2) -- room-based rotation cleaning, room timing learning mode, and status monitoring, no external server required"
     }
   ]
 }

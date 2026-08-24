@@ -1,0 +1,31 @@
+{
+  "packageName": "Wyze Vacuum Connect",
+  "author": "Brian Wilson",
+  "minimumHEVersion": "0.0",
+  "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
+  "communityLink": "",
+  "dateReleased": "2026-08-24",
+  "releaseNotes": "1.22.0 — Two small fixes: (1) the high-traffic cycle length setting now shows the actual weekly frequency computed from whatever number you enter (e.g. '2.3 times a week' for a 3-day cycle), not a fixed example text; (2) roomsPendingThisCycle/nextRoomsToClean/nextRoomDueAt now only generate a new device event when their value actually changes, instead of a fresh identical entry every single poll cycle filling up the event history.",
+  "version": "1.22.0",
+  "drivers": [
+    {
+      "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
+      "name": "Wyze Robot Vacuum Driver",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-Driver.groovy",
+      "required": true,
+      "version": "1.8.0"
+    }
+  ],
+  "apps": [
+    {
+      "id": "b1eeff5d-2c69-48c6-a4a5-7b26cbca53d6",
+      "name": "Wyze Vacuum Connect",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
+      "required": true,
+      "oauth": false,
+      "version": "1.22.0"
+    }
+  ]
+}
