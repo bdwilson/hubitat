@@ -1,0 +1,28 @@
+{
+  "packageName": "Tuya Zigbee Valve - SONOFF SWV-ZF2 dual-port",
+  "author": "Brian Wilson",
+  "version": "2.0.0",
+  "minimumHEVersion": "0.0",
+  "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Tuya-Zigbee-Valve",
+  "communityLink": "https://community.hubitat.com/t/sonoff-zigbee-sprinklers-on-pre-order-sale/162398",
+  "dateReleased": "2026-08-15",
+  "releaseNotes": "v2.0.0: major architecture change after several rounds of chasing a Maker API 500 on open(duration) without a confirmed root cause. The parent driver ('Tuya Zigbee Valve') is now upstream kkossev/Hubitat's driver, unmodified except the importUrl and which child driver it creates - dropping this fork's own autoOffTimer1/autoOffTimer2 preferences, zf2ScheduleAutoClose(), and all runIn()/firmware-write duration handling that had accumulated on top of it (v1.9.0 through v1.16.0). Its version number (now kkossev's own, 1.8.1 at time of writing) intentionally does not continue this fork's old numbering - it IS upstream's file. The child driver ('Tuya Zigbee Valve Port') is likewise based on upstream's Component Child, re-namespaced to 'bdwilson' so it has a distinct identity from a separately-installed real kkossev driver, with exactly one addition: open(duration) - optional minutes - opens normally (identical to what on() already does) and, only if a duration was given, arms a runIn() timer LOCAL to that child device to close itself later. No parent involvement, no firmware attribute writes, no shared/cross-port state, no per-port preference config. Confirmed against three independently-working precedents using the same capability \"Valve\" + command \"open\", [\"number\"] shape: a 'Simple Valve Driver' and a 'Raincloud Valve' driver, both previously used in production - and Raincloud's own connector app already used exactly this open-now-plus-runIn()-later pattern for its own follow-up check. close() unschedules the pending auto-close first, so a manual close doesn't leave a stale timer that could later fire and incorrectly close an unrelated future open; on()/off() route through open()/close() so this applies no matter which capability is used. Child DNI scheme changed to match upstream (-ZF2-N, was -PN) - upgrading from an older version of this fork orphans existing child devices; expected, recreate them via the parent's Configure command. See each driver file's own header for full detail.",
+  "drivers": [
+    {
+      "id": "d82ce2cc-92a0-4abf-a774-d593a402b95b",
+      "name": "Tuya Zigbee Valve",
+      "namespace": "kkossev",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Tuya-Zigbee-Valve/Tuya%20Zigbee%20Valve.groovy",
+      "required": true,
+      "version": "1.8.1"
+    },
+    {
+      "id": "ddbda288-2c93-4a35-9372-930c28ec2943",
+      "name": "Tuya Zigbee Valve Port",
+      "namespace": "bdwilson",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Tuya-Zigbee-Valve/Tuya%20Zigbee%20Valve%20Port.groovy",
+      "required": true,
+      "version": "1.0.0"
+    }
+  ]
+}

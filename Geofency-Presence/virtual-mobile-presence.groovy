@@ -7,7 +7,8 @@ metadata {
         definition (name: "Geofency Virtual Mobile Presence Device", 
 					namespace: "brianwilson-hubitat", 
 					author: "Brian Wilson",
-					importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/virtual-mobile-presence.groovy"
+					importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/virtual-mobile-presence.groovy",
+			version: "1.1.3"
 		) {
         capability "Switch"
         capability "Refresh"
@@ -24,7 +25,7 @@ metadata {
 	}
 }
 
-def refresh() { }
+def refresh() {}
 
 def arrived() {
 	sendEvent(name: "switch", value: "on")
@@ -34,9 +35,6 @@ def arrived() {
 def departed () {
 	sendEvent(name: "switch", value: "off")
 	sendEvent(name: "presence", value: "not present")
-}
-
-def parse(String description) {
 }
 
 def on() {
@@ -50,11 +48,8 @@ def off() {
     sendEvent(name: "presence", value: "not present")
 
 }
-def installed () {
-}
-
 def updated() {
 	state.clear()
-	sendEvent(name: "user", value: "${user}") 
-	sendEvent(name: "region", value: "${region}")
+	sendEvent(name: "user", value: user?.trim())
+	sendEvent(name: "region", value: region?.trim())
 }
