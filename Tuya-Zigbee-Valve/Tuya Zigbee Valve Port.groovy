@@ -6,22 +6,25 @@
  *  identity from a separately-installed real kkossev driver, paired with this fork's parent driver
  *  ("Tuya Zigbee Valve", also namespace 'kkossev' - matches upstream exactly, only the importUrl differs).
  *
- *  The ONE addition on top of upstream: open() takes an optional duration (minutes). Earlier versions of this
+ *  The ONE addition on top of upstream: openFor(duration) - a timed open, in minutes. Earlier versions of this
  *  fork tried to make the PARENT handle a per-run duration - first by writing the shared Zigbee firmware
  *  attribute (FC11 0x501D, "manual run duration") before opening, then by having the parent arm a runIn() timer
- *  itself - both of which meant carrying real, hand-maintained deltas against upstream's parent driver, and
- *  neither one is what actually fixed a real Maker API 500 chased across several earlier attempts. This version
- *  drops all of that: the parent is upstream, completely unmodified in its open-related behavior (plain,
+ *  itself - both of which meant carrying real, hand-maintained deltas against upstream's parent driver. This
+ *  version drops all of that: the parent is upstream, completely unmodified in its open-related behavior (plain,
  *  zero-arg open()/close(), no duration parameter, no per-port auto-off preferences, no software timer). This
- *  driver's own open(duration) calls the normal open (exactly what on() already does) and, if a duration was
- *  given, arms its OWN runIn() timer - entirely local to this child device, calling this driver's own close()
- *  after the requested time. No parent involvement, no firmware writes, no shared/cross-port state.
+ *  driver's own openFor(duration) calls the normal open (exactly what on() already does) and arms its OWN
+ *  runIn() timer - entirely local to this child device, calling this driver's own close() after the requested
+ *  time. No parent involvement, no firmware writes, no shared/cross-port state.
  *
- *  Confirmed against three independently-working precedents using this same
- *  capability "Valve" + command "open", ["number"] shape (not a duplicate/ambiguous command - Maker API resolves
- *  this fine): a "Simple Valve Driver" and a "Raincloud Valve" driver, both previously used in production, and
- *  Raincloud's own connector app already implementing exactly this open-now-plus-runIn(15,...)-later pattern for
- *  its own follow-up status check.
+ *  Why openFor and not an overloaded open(duration): a previous version declared
+ *  `command 'open', ['number']` alongside `capability 'Valve'`, which already defines a zero-argument open().
+ *  That registers TWO commands sharing one name. The Hubitat device page copes - it renders an Open(number)
+ *  field that dispatches correctly - but Maker API cannot resolve which open to call and answers
+ *  /devices/{id}/open/{minutes} with a generic
+ *  {"error":true,"type":"java.lang.Exception","message":"An unexpected error occurred."}.
+ *  This was mis-diagnosed several times as a parent/firmware/timer problem before the device page vs. Maker API
+ *  split made it obvious. A distinctly-named command is the actual fix. Over Maker API, use
+ *  /devices/{id}/openFor/{minutes}.
  *
  *  Upgrade note: this fork's child DNI scheme changed to match upstream (-ZF2-N, was -PN) - upgrading orphans any
  *  previously-created child devices from an older version of this fork. Expected; recreate them (parent's
@@ -51,9 +54,10 @@ metadata {
         capability 'Switch'
         capability 'Refresh'
 
-        // Optional duration (minutes) - see the file header for why this is safe (matches proven precedents) and
-        // what it does (local runIn() timer only, nothing sent to the parent/firmware).
-        command 'open', ['number']
+        // Timed open, in minutes. Deliberately NOT an overload of the Valve capability's open() - see the file
+        // header: a second command named 'open' is what Maker API cannot dispatch. Local runIn() timer only,
+        // nothing sent to the parent/firmware.
+        command 'openFor', [[name:'duration', type:'NUMBER', constraints:['1..719']]]
 
         attribute 'irrigationStartTime', 'string'
         attribute 'irrigationEndTime', 'string'
@@ -79,7 +83,7 @@ metadata {
     }
 }
 
-static String version() { '1.0.0' }
+static String version() { '1.1.0' }
 static String timeStamp() { '2026/08/15 09:00 PM' }
 String driverVersionAndTimeStamp() { version() + ' ' + timeStamp() }
 
@@ -137,29 +141,36 @@ void parse(List<Map> events) {
     }
 }
 
-// duration (minutes), optional: opens normally (identical to a plain open - exactly what on() does), then, only
-// if given, arms a LOCAL runIn() timer to close this same child device after that many minutes. Nothing about
-// the duration is sent to the parent or written to the device's firmware - this device closing itself is the
-// only mechanism. overwrite:true replaces any previously-armed timer from an earlier open(duration) on this
-// same child, so re-opening with a new duration doesn't leave two competing close schedules.
-void open(duration = null) {
+// The Valve capability's plain, zero-argument open - and what on() routes to. Cancels any pending openFor()
+// auto-close: an explicit open with no duration means "stay open", so a timer armed by an earlier timed run
+// must not close it out from under the caller.
+void open() {
+    unschedule('autoCloseAfterDuration')
+    logInfo 'requesting valve open'
+    parent?.componentOpen(device)
+}
+
+// Timed open (minutes): opens normally, then arms a LOCAL runIn() timer to close this same child device after
+// that many minutes. Nothing about the duration is sent to the parent or written to the device's firmware -
+// this device closing itself is the only mechanism. overwrite:true replaces any previously-armed timer from an
+// earlier openFor() on this same child, so re-opening with a new duration doesn't leave two competing close
+// schedules. Maker API passes path arguments as strings, hence the explicit BigDecimal coercion.
+void openFor(duration) {
     try {
+        if (duration == null) { open(); return }
+        BigDecimal mins = duration as BigDecimal
+        if (mins <= 0) { open(); return }
         logInfo 'requesting valve open'
         parent?.componentOpen(device)
-        if (duration != null) {
-            BigDecimal mins = duration as BigDecimal
-            if (mins > 0) {
-                logInfo "opened for ${mins} minute${mins == 1 ? '' : 's'} - closing via a local timer on this device"
-                runIn((mins * 60).toLong(), 'autoCloseAfterDuration', [overwrite: true])
-            }
-        }
+        logInfo "opened for ${mins} minute${mins == 1 ? '' : 's'} - closing via a local timer on this device"
+        runIn((mins * 60).toLong(), 'autoCloseAfterDuration', [overwrite: true])
     } catch (Exception e) {
-        log.error "open(duration=${duration}) threw: ${e}"
+        log.error "openFor(duration=${duration}) threw: ${e}"
         throw e
     }
 }
 
-// Cancels any pending open(duration) auto-close first - otherwise a stale timer from an earlier timed run could
+// Cancels any pending openFor() auto-close first - otherwise a stale timer from an earlier timed run could
 // fire later and incorrectly close an unrelated, still-wanted-open future run.
 void close() {
     unschedule('autoCloseAfterDuration')
@@ -168,7 +179,7 @@ void close() {
 }
 
 void autoCloseAfterDuration() {
-    logInfo 'open(duration) timer expired - closing'
+    logInfo 'openFor() timer expired - closing'
     close()
 }
 

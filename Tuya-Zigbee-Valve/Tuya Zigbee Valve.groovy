@@ -802,7 +802,7 @@ String zf2ChildDni(int endpoint) { "${device.deviceNetworkId}-ZF2-${endpoint}" }
 
 // Creates children on this fork's own child driver (namespace 'bdwilson', name 'Tuya Zigbee Valve Port') rather
 // than upstream's 'kkossev'/'Tuya Zigbee Valve Component Child' - keeps this fork's child identity distinct from
-// a separately-installed real kkossev driver, and is where the runIn()-based open(duration) timer lives; see that
+// a separately-installed real kkossev driver, and is where the runIn()-based openFor(duration) timer lives; see that
 // driver's changelog. Note: this DNI scheme (-ZF2-N) differs from this fork's own previous scheme (-PN), so
 // upgrading from an older version of this fork will orphan existing child devices - expected, not a bug; recreate
 // them (Configure) after updating.
