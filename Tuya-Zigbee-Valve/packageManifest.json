@@ -1,12 +1,12 @@
 {
   "packageName": "Tuya Zigbee Valve - SONOFF SWV-ZF2 dual-port",
   "author": "Brian Wilson",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Tuya-Zigbee-Valve",
   "communityLink": "https://community.hubitat.com/t/sonoff-zigbee-sprinklers-on-pre-order-sale/162398",
-  "dateReleased": "2026-08-15",
-  "releaseNotes": "v2.0.0: major architecture change after several rounds of chasing a Maker API 500 on open(duration) without a confirmed root cause. The parent driver ('Tuya Zigbee Valve') is now upstream kkossev/Hubitat's driver, unmodified except the importUrl and which child driver it creates - dropping this fork's own autoOffTimer1/autoOffTimer2 preferences, zf2ScheduleAutoClose(), and all runIn()/firmware-write duration handling that had accumulated on top of it (v1.9.0 through v1.16.0). Its version number (now kkossev's own, 1.8.1 at time of writing) intentionally does not continue this fork's old numbering - it IS upstream's file. The child driver ('Tuya Zigbee Valve Port') is likewise based on upstream's Component Child, re-namespaced to 'bdwilson' so it has a distinct identity from a separately-installed real kkossev driver, with exactly one addition: open(duration) - optional minutes - opens normally (identical to what on() already does) and, only if a duration was given, arms a runIn() timer LOCAL to that child device to close itself later. No parent involvement, no firmware attribute writes, no shared/cross-port state, no per-port preference config. Confirmed against three independently-working precedents using the same capability \"Valve\" + command \"open\", [\"number\"] shape: a 'Simple Valve Driver' and a 'Raincloud Valve' driver, both previously used in production - and Raincloud's own connector app already used exactly this open-now-plus-runIn()-later pattern for its own follow-up check. close() unschedules the pending auto-close first, so a manual close doesn't leave a stale timer that could later fire and incorrectly close an unrelated future open; on()/off() route through open()/close() so this applies no matter which capability is used. Child DNI scheme changed to match upstream (-ZF2-N, was -PN) - upgrading from an older version of this fork orphans existing child devices; expected, recreate them via the parent's Configure command. See each driver file's own header for full detail.",
+  "dateReleased": "2026-08-26",
+  "releaseNotes": "v2.1.0: renames the child driver's timed open from open(duration) to openFor(duration) - the actual fix for the Maker API 500 that v2.0.0's notes described as unresolved. Root cause confirmed: declaring `command 'open', ['number']` alongside `capability 'Valve'` (which already defines a zero-argument open()) registers two commands sharing one name. The Hubitat device page copes - it renders an Open(number) field that dispatches correctly - but Maker API cannot resolve which open to call and returns a generic {\"error\":true,\"type\":\"java.lang.Exception\",\"message\":\"An unexpected error occurred.\"} for /devices/{id}/open/{minutes}. The device-page-works / Maker-API-fails split is what finally identified it; the three 'proven precedent' drivers cited in v2.0.0's notes do not disprove this, since none of them were verified against Maker API specifically. Timed opens are now /devices/{id}/openFor/{minutes}; plain open/close/on/off are unchanged. open() with no argument now also cancels a pending auto-close, so an explicit indefinite open is no longer closed early by a timer left over from an earlier timed run. BREAKING for anything that called open(30): switch it to openFor(30). Parent driver unchanged (still upstream kkossev 1.8.1); no re-pairing or child device recreation needed for this upgrade.",
   "drivers": [
     {
       "id": "d82ce2cc-92a0-4abf-a774-d593a402b95b",
@@ -22,7 +22,7 @@
       "namespace": "bdwilson",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Tuya-Zigbee-Valve/Tuya%20Zigbee%20Valve%20Port.groovy",
       "required": true,
-      "version": "1.0.0"
+      "version": "1.1.0"
     }
   ]
 }
