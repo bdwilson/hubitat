@@ -2,6 +2,28 @@
 
 Not yet implemented. Tracked here so they survive across sessions.
 
+## ~~23. Silently-dropped dispatch while fully charged/idle~~ — DONE (1.23.0)
+
+User's presence-based trigger only fires once ("everyone left"). Confirmed
+via a specific log line -- `room-clean dispatched 11 min ago never
+actually started cleaning` -- that a dispatch had failed the entire
+previous day, costing the whole day since there was no second trigger to
+retry it. Distinct from the two dispatch-drop bugs already fixed (#19):
+`battery=100`, `charge_state=1`, `mode=0` the entire 11-minute window --
+the vacuum was sitting fully charged and idle the whole time, not
+mid-transit returning to the dock. Wyze's control API acknowledged the
+command (no `code != "1"` warning at dispatch time) but the vacuum simply
+never acted on it.
+
+`checkStaleActiveCleanRun()` now retries the same `venusControl` dispatch
+once, 2 minutes in, if `Cleaning` still hasn't been confirmed -- before
+falling back to the existing 10-minute give-up/clear behavior. If it still
+never starts even after the retry, sends a push notification (not just a
+`log.warn`) so a silent failure doesn't cost an entire day unnoticed.
+Verified via simulation against the exact real timeline (11-minute-old
+dispatch, retry at minute 2, notification once at minute 10, no duplicate
+notification after the run is cleared).
+
 ## ~~1. Skip in-progress rooms when `cleanNextRooms()` is called again~~ — DONE (1.8.0)
 
 Confirmed live: calling `cleanNextRooms()` again while a batch was still

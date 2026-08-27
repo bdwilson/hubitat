@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.22.0 - Brian Wilson / bubba@bubba.org
+ * 1.23.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -779,8 +779,25 @@ private void checkStaleActiveCleanRun(String mac) {
     def startedAt = run.startedAt as Long
     if (!startedAt) return
     double minutesSinceDispatch = (now() - startedAt) / 60000.0
+
+    // Confirmed live: Wyze's control API can acknowledge a room-clean
+    // dispatch (code:1, no error) that the vacuum then simply never acts
+    // on -- even while sitting fully charged and idle (not mid-transit
+    // returning to the dock, which is the other known drop case). Since
+    // most triggers here are presence-based and only fire once (e.g. "away"),
+    // a silently-ignored command can otherwise cost an entire day before
+    // the next chance. One automatic retry partway through the stale
+    // window meaningfully improves the odds of it actually starting.
+    if (!run.retried && minutesSinceDispatch >= 2.0) {
+        log.warn "Wyze Vacuum ${mac}: room-clean dispatched ${Math.round(minutesSinceDispatch)} min ago never actually started cleaning -- retrying the command once"
+        run.retried = true
+        venusControl(mac, 0, 1, run.roomIds)
+        return
+    }
+
     if (minutesSinceDispatch >= 10.0) {
-        log.warn "Wyze Vacuum ${mac}: room-clean dispatched ${Math.round(minutesSinceDispatch)} min ago never actually started cleaning (likely dropped by the vacuum, e.g. sent while it was still returning to its dock) -- clearing it so its room(s) aren't excluded from rotation indefinitely."
+        log.warn "Wyze Vacuum ${mac}: room-clean dispatched ${Math.round(minutesSinceDispatch)} min ago never actually started cleaning, even after a retry -- clearing it so its room(s) aren't excluded from rotation indefinitely."
+        sendVacuumNotification("${getChildDevice(mac)?.displayName ?: mac}: a room-clean command was sent but the vacuum never started -- worth checking it's not stuck or offline.")
         state.activeCleanRun.remove(mac)
     }
 }
