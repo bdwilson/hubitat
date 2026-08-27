@@ -146,6 +146,8 @@ Wyze's app lets the vacuum clean specific rooms from its saved map. This integra
 
 As of 1.19.0, a sweep continuation now waits for the vacuum to actually settle (`Docked` or `Standby`) before dispatching the next room, instead of firing a fixed few seconds after the previous room "finished." Polling stays fast the whole time it's waiting, so this typically resolves within about a minute of the vacuum actually reaching its dock. There's also a safety net: if a dispatched room never actually started cleaning within 10 minutes (the exact failure mode above, before this fix), it's automatically cleared so that room doesn't stay silently excluded from rotation forever.
 
+**A third failure mode, fixed in 1.23.0:** confirmed live that a dispatch can silently fail even while the vacuum is sitting fully charged and idle — not mid-transit at all. Wyze's control API acknowledges the command (no error reported) but the vacuum simply never acts on it. This matters most for a presence-based trigger that only fires once (e.g. "everyone left") — a silently-ignored command could cost the entire day before the next chance. A dispatch that hasn't confirmed `Cleaning` within 2 minutes now gets retried once automatically; if it still hasn't started after 10 minutes even with the retry, you get a push notification (not just a log warning) so you know to check on it, instead of just quietly losing the day.
+
 You can also call `cleanRooms("Kitchen, Living Room")` directly (e.g. from a button or a one-off automation) to clean specific named rooms regardless of rotation state — it still updates that room's "last cleaned" time, so it counts toward the rotation too.
 
 ### High-traffic rooms — cleaning some rooms more often than others
