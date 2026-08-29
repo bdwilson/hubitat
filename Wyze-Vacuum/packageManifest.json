@@ -4,9 +4,9 @@
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "https://community.hubitat.com/t/release-wyze-vacuum-integration-cloud/165866",
-  "dateReleased": "2026-08-27",
-  "releaseNotes": "1.23.0 — Fixes a room-clean dispatch that Wyze's control API acknowledges (no error) but the vacuum never actually acts on -- confirmed live while sitting fully charged and idle (not the previously-fixed mid-transit case). Since most triggers are presence-based and fire once, a silently-ignored command could otherwise cost an entire day before the next chance. Now retries the command once partway through the stale-dispatch window, and sends a push notification if it still never starts after the retry, instead of only a log warning.",
-  "version": "1.23.0",
+  "dateReleased": "2026-08-29",
+  "releaseNotes": "1.24.0 — Two real bugs found from live logs: (1) a room exiting via mode 11 ('docked, cleaning will resume') was being credited as finished immediately, even though the vacuum genuinely auto-resumed the same job later -- confirmed live (a 9-minute credit when the real total was 34 minutes across two segments). Now leaves the run active and carries elapsed time forward until it actually, genuinely finishes. (2) Adds stuck detection: if the vacuum reports idle-and-not-charging for 30+ minutes, you get a push notification, since a healthy vacuum is always cleaning, returning to charge, or charging -- confirmed live via a 7-hour stuck episode that drained the battery with no alert.",
+  "version": "1.24.0",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.23.0"
+      "version": "1.24.0"
     }
   ]
 }

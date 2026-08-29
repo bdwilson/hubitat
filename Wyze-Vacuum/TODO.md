@@ -2,6 +2,47 @@
 
 Not yet implemented. Tracked here so they survive across sessions.
 
+## ~~24. Mode-11 "will resume" mis-credited as finished, plus no stuck alerting~~ — DONE (1.24.0)
+
+Two real bugs found from the same Aug 28 log paste + Wyze app cleaning-history
+screenshot ("stopped cleaning the sitting room a bit early... got stuck on
+the way home under the living room sofa").
+
+**Mis-crediting:** the vacuum's `mode` signal distinguishes mode `10`
+("cleaning completed, returning to charge" -- a genuine finish) from mode
+`11` ("docked, cleaning will resume" -- not a finish, the vacuum fully
+intends to auto-resume the same job). Both were previously collapsed into
+the same "Returning to charge" `status` label, so a mode-11 exit credited
+and cleared the room immediately. Confirmed live: Kitchen was credited at 9
+minutes when mode 11 appeared, then the vacuum resumed on its own 1h42m
+later and cleaned for another 25 minutes, completely uncredited -- 34 real
+minutes, only 9 recorded. New `modeSignalsResume()` helper + carry-forward
+logic in `finishActiveCleanRun()`/`handleCleaningSessionEnd()`: a mode-11
+exit now leaves the run active and carries elapsed time forward
+(`pausedElapsedMin`/`pausedAt`) instead of crediting/clearing, so the
+eventual genuine finish credits the full total across both segments. Also
+suppresses the rotation-sweep continuation and "finished cleaning"
+notification on a mode-11 exit, since dispatching a new room while the
+vacuum still intends to finish this one would conflict. A 3-hour safety
+timeout in `checkStaleActiveCleanRun()` force-finishes a run that never
+actually resumes, so nothing can get stuck "active" forever. Verified via
+simulation reproducing the exact 9+25=34-minute total from the log.
+
+**No stuck alerting:** Sitting Room's dispatch stopped after 3 minutes,
+`status` went to `Standby` with `charge_state` not charging, and stayed
+that way continuously for 7+ hours while battery drained 42% -> 6%, with no
+alert of any kind. New `checkPossiblyStuck()`: idle-and-not-charging for
+30+ minutes isn't a state a healthy vacuum should ever sit in (it's always
+cleaning, returning to charge, or charging), so it now fires one push
+notification per episode, resetting once the vacuum is next seen cleaning
+or charging. Verified via simulation against the real 7.5-hour timeline
+(exactly one notification, correctly reset on recovery).
+
+Deliberately left un-extended this round: Learning Mode's
+`handleLearningRoomEnd` doesn't get the same mode-11 treatment yet (only
+normal rotation/single-room dispatches do), and the 30-minute/3-hour
+thresholds are hardcoded rather than configurable settings.
+
 ## ~~23. Silently-dropped dispatch while fully charged/idle~~ — DONE (1.23.0)
 
 User's presence-based trigger only fires once ("everyone left"). Confirmed
