@@ -2,6 +2,32 @@
 
 Not yet implemented. Tracked here so they survive across sessions.
 
+## ~~25. Optional time limit on continuous sweep mode~~ — DONE (1.25.0)
+
+Continuous sweep mode (#20) has no natural stopping point -- it loops the
+whole rotation list forever until an explicit `dock()`/`pause()`/`off()`,
+which meant "just run forever even if things don't need cleaning" if you
+forgot to stop it. Requested directly: an option that, when checked,
+requires a number of minutes and docks the vacuum after that long instead
+of running indefinitely.
+
+Added a second toggle, **"Limit how long continuous sweeping runs before
+docking"**, shown only when continuous mode itself is on, plus a required
+minutes field once that's checked. `cleanNextRooms()` now stamps
+`state.rotationSweepStartedAt[mac]` on a genuine fresh sweep start (not on
+`continueSweepDispatch`'s re-call for the next batch, so the clock is
+measured from when the whole sweep began, not the most recent room).
+`continueSweepIfNeeded()` checks elapsed time against the configured limit
+before dispatching the next room and, once it's reached, clears the sweep
+state and calls `dockVacuum()` instead of continuing. The explicit-stop
+command handlers (`startVacuum`/`pauseVacuum`/`dockVacuum`) also clear the
+started-at timestamp, so a later trigger starts its clock cleanly. Leaving
+the limit toggle off preserves the original unbounded behavior. Verified
+via simulation: dispatches every 10 minutes with a 60-minute limit produced
+exactly one `dock()` call at the 60-minute mark and no further dispatches;
+with the limit disabled, the same simulation ran 20 cycles with zero dock
+calls.
+
 ## ~~24. Mode-11 "will resume" mis-credited as finished, plus no stuck alerting~~ — DONE (1.24.0)
 
 Two real bugs found from the same Aug 28 log paste + Wyze app cleaning-history

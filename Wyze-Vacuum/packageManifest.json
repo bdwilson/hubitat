@@ -4,9 +4,9 @@
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "https://community.hubitat.com/t/release-wyze-vacuum-integration-cloud/165866",
-  "dateReleased": "2026-08-29",
-  "releaseNotes": "1.24.0 — Two real bugs found from live logs: (1) a room exiting via mode 11 ('docked, cleaning will resume') was being credited as finished immediately, even though the vacuum genuinely auto-resumed the same job later -- confirmed live (a 9-minute credit when the real total was 34 minutes across two segments). Now leaves the run active and carries elapsed time forward until it actually, genuinely finishes. (2) Adds stuck detection: if the vacuum reports idle-and-not-charging for 30+ minutes, you get a push notification, since a healthy vacuum is always cleaning, returning to charge, or charging -- confirmed live via a 7-hour stuck episode that drained the battery with no alert.",
-  "version": "1.24.0",
+  "dateReleased": "2026-08-30",
+  "releaseNotes": "1.25.0 — Continuous sweep mode (\"keep sweeping even once nothing's technically due\") previously only stopped on an explicit dock()/pause()/off(), so it would run forever if you forgot to stop it. Added an optional time limit: when enabled, continuous sweeping now docks itself once the sweep has been running for a configured number of minutes, counted from when it started.",
+  "version": "1.25.0",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.24.0"
+      "version": "1.25.0"
     }
   ]
 }

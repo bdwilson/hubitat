@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.24.0 - Brian Wilson / bubba@bubba.org
+ * 1.25.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -197,8 +197,19 @@ def mainPage() {
                                 }
 
                                 input "rotationContinuousMode_${mac}", "bool",
-                                    title: "Keep sweeping continuously while triggered, even once nothing's technically due yet (works through the whole rotation list on a loop; stops only when dock()/pause()/off() is called)",
-                                    defaultValue: false, required: false
+                                    title: "Keep sweeping continuously while triggered, even once nothing's technically due yet (works through the whole rotation list on a loop; stops when dock()/pause()/off() is called, or when it hits the time limit below)",
+                                    defaultValue: false, required: false, submitOnChange: true
+
+                                if (settings["rotationContinuousMode_${mac}"]) {
+                                    input "rotationContinuousLimitEnabled_${mac}", "bool",
+                                        title: "Limit how long continuous sweeping runs before docking",
+                                        defaultValue: false, required: false, submitOnChange: true
+                                    if (settings["rotationContinuousLimitEnabled_${mac}"]) {
+                                        input "rotationContinuousMaxMinutes_${mac}", "number",
+                                            title: "Stop continuous sweeping and dock after this many minutes (counted from when the sweep started)",
+                                            defaultValue: 60, required: true
+                                    }
+                                }
 
                                 def pending = pendingRoomCount(mac)
                                 paragraph "${pending} of ${(settings["rotationRooms_${mac}"] ?: []).size()} rotation room(s) are due for cleaning right now."
@@ -1139,6 +1150,7 @@ private void continueSweepIfNeeded(String mac, String newStatus) {
         ifDebug("continueSweepIfNeeded(${mac}): ended as ${newStatus}, not continuing the sweep")
         state.rotationSweepActive[mac] = false
         state.rotationSweepPending?.put(mac, false)
+        state.rotationSweepStartedAt?.remove(mac)
         return
     }
 
@@ -1149,11 +1161,35 @@ private void continueSweepIfNeeded(String mac, String newStatus) {
     // *something* (whichever room is least-recently-cleaned), it just
     // isn't gated on "due" in this mode.
     boolean continuous = (settings["rotationContinuousMode_${mac}"] ?: false) as boolean
+
+    // Continuous mode has no natural "nothing left to do" stopping point
+    // (it loops the rotation list forever), so it's the one mode that can
+    // optionally be capped to a max runtime instead, counted from when the
+    // whole sweep started (see cleanNextRooms). Checked before the
+    // somethingToDispatch gate below since continuous mode would otherwise
+    // always have something to dispatch.
+    if (continuous && (settings["rotationContinuousLimitEnabled_${mac}"] ?: false)) {
+        def maxMinutes = (settings["rotationContinuousMaxMinutes_${mac}"] ?: 0) as Integer
+        def startedAt = state.rotationSweepStartedAt?.getAt(mac) as Long
+        if (maxMinutes > 0 && startedAt) {
+            long elapsedMin = (now() - startedAt) / 60000
+            if (elapsedMin >= maxMinutes) {
+                ifDebug("continueSweepIfNeeded(${mac}): continuous sweep hit its ${maxMinutes}-minute limit (${elapsedMin} min elapsed), docking")
+                state.rotationSweepActive[mac] = false
+                state.rotationSweepPending?.put(mac, false)
+                state.rotationSweepStartedAt?.remove(mac)
+                dockVacuum(mac)
+                return
+            }
+        }
+    }
+
     boolean somethingToDispatch = continuous ? !previewNextRooms(mac).isEmpty() : pendingRoomCount(mac) > 0
     if (!somethingToDispatch) {
         ifDebug("continueSweepIfNeeded(${mac}): ${continuous ? 'nothing left to clean' : 'nothing else due'}, sweep finished")
         state.rotationSweepActive[mac] = false
         state.rotationSweepPending?.put(mac, false)
+        state.rotationSweepStartedAt?.remove(mac)
         return
     }
 
@@ -1265,6 +1301,7 @@ def startVacuum(String mac) {
     ifDebug("startVacuum: ${mac}")
     state.rotationSweepActive?.put(mac, false) // whole-house start is a different mode than room rotation
     state.rotationSweepPending?.put(mac, false)
+    state.rotationSweepStartedAt?.remove(mac)
     venusControl(mac, 0, 1) // GLOBAL_SWEEPING / START
     pollVacuum(mac)
 }
@@ -1273,6 +1310,7 @@ def pauseVacuum(String mac) {
     ifDebug("pauseVacuum: ${mac}")
     state.rotationSweepActive?.put(mac, false) // explicit stop -- don't auto-continue to the next room
     state.rotationSweepPending?.put(mac, false)
+    state.rotationSweepStartedAt?.remove(mac)
     venusControl(mac, 0, 2) // GLOBAL_SWEEPING / PAUSE
     pollVacuum(mac)
 }
@@ -1281,6 +1319,7 @@ def dockVacuum(String mac) {
     ifDebug("dockVacuum: ${mac}")
     state.rotationSweepActive?.put(mac, false) // explicit stop -- don't auto-continue to the next room
     state.rotationSweepPending?.put(mac, false)
+    state.rotationSweepStartedAt?.remove(mac)
     venusControl(mac, 3, 1) // RETURN_TO_CHARGING / START
     pollVacuum(mac)
 }
@@ -1341,7 +1380,17 @@ def cleanNextRooms(String mac) {
     // single trigger works through the whole due-list instead of requiring
     // a fresh call per room. dock()/pause()/start() clear this flag again.
     state.rotationSweepActive = state.rotationSweepActive ?: [:]
+    boolean freshSweepStart = !(state.rotationSweepActive[mac])
     state.rotationSweepActive[mac] = true
+
+    // Only stamped on a genuine fresh start, not on continueSweepDispatch's
+    // re-call for the next batch -- continuous mode's time limit (see
+    // continueSweepIfNeeded) is measured from when the whole sweep began,
+    // not from the most recent batch.
+    if (freshSweepStart) {
+        state.rotationSweepStartedAt = state.rotationSweepStartedAt ?: [:]
+        state.rotationSweepStartedAt[mac] = now()
+    }
 
     def chosen = previewNextRooms(mac)
     if (!chosen) { ifDebug("cleanNextRooms(${mac}): nothing to clean"); return }
