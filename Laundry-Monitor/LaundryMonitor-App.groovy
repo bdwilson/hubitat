@@ -96,7 +96,8 @@ def mainPage() {
             }
         }
 
-        section("<b>Notifications (off by default)</b>", hideable: true, hidden: true) {
+        boolean anyNotifyEnabled = (enableStartNotify || enableDoneNotify || enableReminder || enableConcurrentLoadNotify) as boolean
+        section("<b>Notifications (off by default)</b>", hideable: true, hidden: !anyNotifyEnabled) {
             input "enableStartNotify", "bool", title: "Notify when a cycle starts", required: false, defaultValue: false, submitOnChange: true
             input "enableDoneNotify", "bool", title: "Notify when a cycle finishes", required: false, defaultValue: false, submitOnChange: true
             if (enableStartNotify || enableDoneNotify) {
