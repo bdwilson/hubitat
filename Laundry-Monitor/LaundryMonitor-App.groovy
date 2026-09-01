@@ -111,6 +111,10 @@ def mainPage() {
                 input "washerDoneMessage", "text", title: "Washer done message", required: false, defaultValue: "Washer is done"
                 input "dryerDoneMessage", "text", title: "Dryer done message", required: false, defaultValue: "Dryer is done"
             }
+            input "enableConcurrentLoadNotify", "bool", title: "Notify when the washer starts again while the dryer is still running (second load heads-up)", required: false, defaultValue: false, submitOnChange: true
+            if (enableConcurrentLoadNotify) {
+                input "concurrentLoadMessage", "text", title: "Second-load message", required: false, defaultValue: "Washer started again - the dryer is still running the previous load"
+            }
             input "enableReminder", "bool", title: "Send a reminder if the washer finishes and nobody moves the load", required: false, defaultValue: false, submitOnChange: true
             if (enableReminder) {
                 input "reminderMinutes", "number", title: "Reminder delay (minutes after washer done)", required: false, defaultValue: 15
@@ -139,6 +143,9 @@ def mainPage() {
         section("") {
             paragraph "Washer: ${state.washerOn ? 'running' : 'idle'}${state.washerCycleStart ? " (since ${new Date(state.washerCycleStart as Long).format('MM-dd h:mma')})" : ''}"
             paragraph "Dryer: ${state.dryerOn ? 'running' : 'idle'}${state.dryerCycleStart ? " (since ${new Date(state.dryerCycleStart as Long).format('MM-dd h:mma')})" : ''}"
+            if (state.washerOn && state.dryerOn) {
+                paragraph "<b>Both running at once - second load in progress.</b>"
+            }
         }
     }
 }
@@ -303,24 +310,28 @@ def washerPowerHandler(evt) {
 }
 
 private void startWasherCycle(Long ts, BigDecimal p) {
+    boolean concurrentDryer = state.dryerOn as boolean
     state.washerOn = true
     state.washerCycleStart = ts
     state.washerPeakW = p
     state.washerLowCount = 0
     state.remove("washerEndingSince")
     state.remove("washerPendingSince")
-    logCycleEvent("washer", "start", ts, [peakW: p])
-    if (txtEnable) log.info "Washer started (${p}W)"
+    logCycleEvent("washer", "start", ts, [peakW: p, concurrent: concurrentDryer])
+    if (txtEnable) log.info "Washer started (${p}W)${concurrentDryer ? ' - dryer is still running (second load)' : ''}"
     if (washerDeadmanMin) runIn(((washerDeadmanMin as Integer) * 60), "washerDeadmanFired", [overwrite: true])
     if (switchList) switchList*.on()
     if (enableStartNotify) notify(washerStartMessage ?: "Washer started")
+    if (concurrentDryer && enableConcurrentLoadNotify) {
+        notify(concurrentLoadMessage ?: "Washer started again - the dryer is still running the previous load")
+    }
 }
 
 private void endWasherCycle(String reason) {
     Long ts = now()
     Long startTs = state.washerCycleStart as Long
     Integer durMin = startTs ? Math.round((ts - startTs) / 60000d) as Integer : 0
-    logCycleEvent("washer", "end", ts, [durationMin: durMin, peakW: state.washerPeakW, reason: reason])
+    logCycleEvent("washer", "end", ts, [durationMin: durMin, peakW: state.washerPeakW, reason: reason, concurrent: (state.dryerOn as boolean)])
     if (txtEnable) log.info "Washer done after ${durMin} min (peak ${state.washerPeakW}W, ${reason})"
     unschedule("washerDeadmanFired")
     state.washerOn = false
@@ -349,8 +360,14 @@ def dryerAccelHandler(evt) {
     boolean active = (evt.value == "active")
     Long nowTs = now()
 
+    // Cross-talk suppression only ever blocks a *new* dryer cycle from being
+    // mistaken for washer vibration bleed-through. Once the dryer is
+    // genuinely running (state.dryerOn), later washer activity - including a
+    // second washer load starting mid-dryer-cycle - must never blind the
+    // dryer's own stop detection, or a real finish would sit undetected
+    // until the deadman timer force-ends it.
     boolean suppress = false
-    if (suppressCrossTalk) {
+    if (suppressCrossTalk && !state.dryerOn) {
         if (state.washerOn) {
             suppress = true
         } else {
@@ -364,7 +381,7 @@ def dryerAccelHandler(evt) {
 
     if (suppress) {
         state.totalSuppressedCount = (state.totalSuppressedCount ?: 0) + 1
-        if (debugEnable) log.debug "dryer vibration '${evt.value}' suppressed (washer cross-talk)"
+        if (debugEnable) log.debug "dryer vibration '${evt.value}' suppressed (washer cross-talk, dryer not yet running)"
         return
     }
 
@@ -386,11 +403,12 @@ def dryerAccelHandler(evt) {
 }
 
 private void startDryerCycle(Long ts) {
+    boolean concurrentWasher = state.washerOn as boolean
     state.dryerOn = true
     state.dryerCycleStart = ts
     state.dryerLowCount = 0
-    logCycleEvent("dryer", "start", ts, [:])
-    if (txtEnable) log.info "Dryer started"
+    logCycleEvent("dryer", "start", ts, [concurrent: concurrentWasher])
+    if (txtEnable) log.info "Dryer started${concurrentWasher ? ' - washer is also running' : ''}"
     if (dryerDeadmanMin) runIn(((dryerDeadmanMin as Integer) * 60), "dryerDeadmanFired", [overwrite: true])
     if (switchList) switchList*.on()
     if (enableStartNotify) notify(dryerStartMessage ?: "Dryer started")
@@ -400,7 +418,7 @@ private void endDryerCycle(String reason) {
     Long ts = now()
     Long startTs = state.dryerCycleStart as Long
     Integer durMin = startTs ? Math.round((ts - startTs) / 60000d) as Integer : 0
-    logCycleEvent("dryer", "end", ts, [durationMin: durMin, reason: reason])
+    logCycleEvent("dryer", "end", ts, [durationMin: durMin, reason: reason, concurrent: (state.washerOn as boolean)])
     if (txtEnable) log.info "Dryer done after ${durMin} min (${reason})"
     unschedule("dryerDeadmanFired")
     state.dryerOn = false
@@ -467,9 +485,9 @@ private String rawLogCsv() {
 private String cycleLogCsv() {
     List rows = (state.cycleLog instanceof List) ? state.cycleLog : []
     StringBuilder sb = new StringBuilder()
-    sb << "timestamp,device,phase,durationMin,peakW,reason\n"
+    sb << "timestamp,device,phase,durationMin,peakW,reason,concurrent\n"
     rows.each { e ->
-        sb << "${new Date(e.t as Long).format('yyyy-MM-dd HH:mm:ss')},${e.d},${e.p},${e.durationMin ?: ''},${e.peakW ?: ''},${e.reason ?: ''}\n"
+        sb << "${new Date(e.t as Long).format('yyyy-MM-dd HH:mm:ss')},${e.d},${e.p},${e.durationMin ?: ''},${e.peakW ?: ''},${e.reason ?: ''},${e.concurrent ? 1 : 0}\n"
     }
     return sb.toString()
 }

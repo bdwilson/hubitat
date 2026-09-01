@@ -83,16 +83,40 @@ running at all.
 With **Ignore dryer vibration while the washer is actively running**
 enabled (on by default), any vibration report that arrives while the
 washer is mid-cycle is logged (so you can still see it happened) but never
-starts or extends a dryer cycle. An optional grace period extends that
+**starts** a new dryer cycle. An optional grace period extends that
 suppression for a few minutes after the washer itself stops, since
 vibration can linger briefly.
 
+Crucially, this suppression only ever blocks a dryer cycle from *starting*.
+Once the dryer is genuinely running, it is never blocked by washer
+activity - see "Running both machines at once" below for why that matters.
+
 This is a mitigation, not a fix - if your two machines share a wall you'll
-still see occasional real dryer loads run *alongside* a washer load
-(rather than fully contained inside it), which this can't and shouldn't
-suppress. If cross-talk is frequent enough to matter, the more reliable
-long-term fix is remounting the vibration sensor further from the washer,
-or moving the dryer to power monitoring too.
+still see occasional real dryer loads *start* alongside an already-running
+washer load, which this can't and shouldn't try to filter (a single
+vibration sensor can't tell "washer bleed-through" from "the dryer really
+did just start" in that instant). If that's frequent enough to matter, the
+more reliable long-term fix is remounting the vibration sensor further from
+the washer, or moving the dryer to power monitoring too.
+
+Running both machines at once (second load in progress)
+---
+A common real sequence: washer finishes → clothes go in the dryer → the
+washer gets started again for a second load while the dryer is still
+running the first. The app handles this explicitly:
+
+- Cross-talk suppression (above) never applies once the dryer has already
+  started, so a second washer load running at the same time cannot blind
+  the dryer's own stop detection or delay it until the deadman timer.
+- Every cycle-start/end event in the Cycle Summary Log carries a
+  `concurrent` column - true if the *other* machine was running at that
+  moment. A washer-start row with `concurrent=1` means the dryer still had
+  the previous load in it.
+- The main page shows **"Both running at once - second load in progress"**
+  whenever washer and dryer are on simultaneously.
+- Optionally, turn on **Notify when the washer starts again while the dryer
+  is still running** (off by default, under Notifications) for a
+  heads-up push/speech notification the moment that happens.
 
 Data Log
 ---
@@ -105,8 +129,9 @@ exportable as CSV from **View / Export Data Log** on the main page:
   raise it if you want a longer history, at the cost of a bit more hub
   storage).
 - **Cycle summary log** - one row per detected start/end, with duration,
-  peak washer power, and how the cycle ended (`normal`, `deadman`, or
-  `manual reset`). Capped separately (default 300).
+  peak washer power, how the cycle ended (`normal`, `deadman`, or `manual
+  reset`), and whether the *other* machine was running at that moment
+  (`concurrent`). Capped separately (default 300).
 
 Both logs persist across hub reboots and app setting changes. Use **Clear
 Raw Log** / **Clear Cycle Log** to reset them (e.g. after you've exported
@@ -120,9 +145,12 @@ threshold changes.
 
 Known limitations
 ---
-- Cross-talk suppression only helps when the dryer cycle is fully inside a
-  washer session; genuinely overlapping (but distinct) loads aren't
-  filtered, by design.
+- Cross-talk suppression can only prevent a *false start* of the dryer
+  while the washer is running; it can't tell a real dryer start apart from
+  washer bleed-through in that same instant, so an occasional genuine dryer
+  start right as the washer is running will still be suppressed. Once a
+  dryer cycle is actually running, though, nothing about the washer can
+  block or delay its detection - see "Running both machines at once" above.
 - The deadman timer is a hard cap on cycle length. If you regularly run
   loads longer than 90 minutes, raise it - otherwise a legitimately long
   cycle will get force-ended and logged as `deadman` instead of `normal`.
