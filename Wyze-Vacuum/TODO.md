@@ -2,6 +2,25 @@
 
 Not yet implemented. Tracked here so they survive across sessions.
 
+## ~~26. nextRoomDueAt/lastRefresh firing twice per poll~~ — DONE (1.25.1)
+
+User noticed `nextRoomDueAt` (and its siblings `roomsPendingThisCycle`,
+`nextRoomsToClean`, `lastRefresh`) still showing a fresh event on every
+update despite the 1.22.0 dedup fix (`sendEventIfChanged`), even though the
+value never actually changed. Root cause, confirmed by reading the raw
+event timestamps: `pollVacuum()` runs the props poll and the status poll as
+two independent async HTTP calls every cycle, and both response handlers
+(`handleVacuumPropsResponse`/`handleVacuumStatusResponse`) called
+`updateRotationPreviewAttributes()` and sent `lastRefresh` themselves --
+producing two near-identical events milliseconds apart every poll, not one.
+`sendEventIfChanged`'s dedup itself wasn't broken (values genuinely didn't
+change poll-to-poll) -- the second callback's `d.currentValue()` read just
+doesn't reliably see the first callback's `sendEvent()` yet, since they're
+two separate concurrent async contexts, so the comparison silently missed
+it. Moved both updates into `handleVacuumStatusResponse` only, removed from
+`handleVacuumPropsResponse` -- each poll cycle now produces at most one
+event per attribute, matching what 1.22.0 actually intended.
+
 ## ~~25. Optional time limit on continuous sweep mode~~ — DONE (1.25.0)
 
 Continuous sweep mode (#20) has no natural stopping point -- it loops the

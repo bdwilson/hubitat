@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.25.0 - Brian Wilson / bubba@bubba.org
+ * 1.25.1 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -677,8 +677,9 @@ def handleVacuumPropsResponse(resp, data) {
     if (props.cleanTime != null)  d.sendEvent(name: "cleanTime", value: toInt(props.cleanTime))
     updateFaultAttribute(d, mac, props)
 
-    updateRotationPreviewAttributes(d, mac)
-    d.sendEvent(name: "lastRefresh", value: new Date().format("MM/dd/yyyy HH:mm:ss", location.timeZone))
+    // Rotation-preview attributes and lastRefresh are updated only from
+    // handleVacuumStatusResponse below, not here too -- see that function's
+    // matching comment for why.
 }
 
 def handleVacuumStatusResponse(resp, data) {
@@ -773,6 +774,15 @@ def handleVacuumStatusResponse(resp, data) {
     rescheduleDynamicPoll()
     checkStaleActiveCleanRun(mac)
 
+    // pollVacuum() fires the props and status polls as two independent async
+    // HTTP calls every cycle, and both callbacks used to call this same pair
+    // of updates -- confirmed live: every poll produced two near-identical
+    // nextRoomDueAt/lastRefresh events milliseconds apart, since the second
+    // callback's d.currentValue() read doesn't reliably see the first
+    // callback's sendEvent yet (two concurrent async contexts), so
+    // sendEventIfChanged's dedup (1.22.0) couldn't catch it. Rotation-preview
+    // state doesn't depend on anything specific to the props poll, so this
+    // only runs from here now -- once per cycle, not twice.
     updateRotationPreviewAttributes(d, mac)
     d.sendEvent(name: "lastRefresh", value: new Date().format("MM/dd/yyyy HH:mm:ss", location.timeZone))
 }

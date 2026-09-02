@@ -4,9 +4,9 @@
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "https://community.hubitat.com/t/release-wyze-vacuum-integration-cloud/165866",
-  "dateReleased": "2026-08-30",
-  "releaseNotes": "1.25.0 — Continuous sweep mode (\"keep sweeping even once nothing's technically due\") previously only stopped on an explicit dock()/pause()/off(), so it would run forever if you forgot to stop it. Added an optional time limit: when enabled, continuous sweeping now docks itself once the sweep has been running for a configured number of minutes, counted from when it started.",
-  "version": "1.25.0",
+  "dateReleased": "2026-09-02",
+  "releaseNotes": "1.25.1 — Fixed nextRoomDueAt/roomsPendingThisCycle/nextRoomsToClean/lastRefresh firing twice per poll cycle, milliseconds apart: pollVacuum() runs the props and status polls as two independent async calls, and both callbacks used to update these attributes -- the second callback's read of the device's current value doesn't reliably see the first callback's write yet, so the 1.22.0 dedup fix couldn't catch it. These attributes now update from only one of the two callbacks.",
+  "version": "1.25.1",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.25.0"
+      "version": "1.25.1"
     }
   ]
 }
