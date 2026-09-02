@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.23.0 - Brian Wilson / bubba@bubba.org
+ * 1.25.1 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -197,8 +197,19 @@ def mainPage() {
                                 }
 
                                 input "rotationContinuousMode_${mac}", "bool",
-                                    title: "Keep sweeping continuously while triggered, even once nothing's technically due yet (works through the whole rotation list on a loop; stops only when dock()/pause()/off() is called)",
-                                    defaultValue: false, required: false
+                                    title: "Keep sweeping continuously while triggered, even once nothing's technically due yet (works through the whole rotation list on a loop; stops when dock()/pause()/off() is called, or when it hits the time limit below)",
+                                    defaultValue: false, required: false, submitOnChange: true
+
+                                if (settings["rotationContinuousMode_${mac}"]) {
+                                    input "rotationContinuousLimitEnabled_${mac}", "bool",
+                                        title: "Limit how long continuous sweeping runs before docking",
+                                        defaultValue: false, required: false, submitOnChange: true
+                                    if (settings["rotationContinuousLimitEnabled_${mac}"]) {
+                                        input "rotationContinuousMaxMinutes_${mac}", "number",
+                                            title: "Stop continuous sweeping and dock after this many minutes (counted from when the sweep started)",
+                                            defaultValue: 60, required: true
+                                    }
+                                }
 
                                 def pending = pendingRoomCount(mac)
                                 paragraph "${pending} of ${(settings["rotationRooms_${mac}"] ?: []).size()} rotation room(s) are due for cleaning right now."
@@ -666,8 +677,9 @@ def handleVacuumPropsResponse(resp, data) {
     if (props.cleanTime != null)  d.sendEvent(name: "cleanTime", value: toInt(props.cleanTime))
     updateFaultAttribute(d, mac, props)
 
-    updateRotationPreviewAttributes(d, mac)
-    d.sendEvent(name: "lastRefresh", value: new Date().format("MM/dd/yyyy HH:mm:ss", location.timeZone))
+    // Rotation-preview attributes and lastRefresh are updated only from
+    // handleVacuumStatusResponse below, not here too -- see that function's
+    // matching comment for why.
 }
 
 def handleVacuumStatusResponse(resp, data) {
@@ -741,7 +753,7 @@ def handleVacuumStatusResponse(resp, data) {
             sendVacuumNotification("${d.displayName} started cleaning: ${roomDesc}.")
         }
     } else if (prevStatus == "Cleaning" && newStatus != "Cleaning") {
-        handleCleaningSessionEnd(mac, d.currentValue("cleanTime"), d, newStatus)
+        handleCleaningSessionEnd(mac, d.currentValue("cleanTime"), d, newStatus, modeCode)
     }
     if (newStatus == "Cleaning" && state.activeCleanRun?.getAt(mac) != null) {
         state.activeCleanRun[mac].everConfirmedCleaning = true
@@ -756,10 +768,21 @@ def handleVacuumStatusResponse(resp, data) {
         runIn(5, "continueSweepDispatch", [data: [mac: mac]])
     }
 
+    checkPossiblyStuck(mac, newStatus, isCharging, d)
+
     state.lastKnownStatus[mac] = newStatus
     rescheduleDynamicPoll()
     checkStaleActiveCleanRun(mac)
 
+    // pollVacuum() fires the props and status polls as two independent async
+    // HTTP calls every cycle, and both callbacks used to call this same pair
+    // of updates -- confirmed live: every poll produced two near-identical
+    // nextRoomDueAt/lastRefresh events milliseconds apart, since the second
+    // callback's d.currentValue() read doesn't reliably see the first
+    // callback's sendEvent yet (two concurrent async contexts), so
+    // sendEventIfChanged's dedup (1.22.0) couldn't catch it. Rotation-preview
+    // state doesn't depend on anything specific to the props poll, so this
+    // only runs from here now -- once per cycle, not twice.
     updateRotationPreviewAttributes(d, mac)
     d.sendEvent(name: "lastRefresh", value: new Date().format("MM/dd/yyyy HH:mm:ss", location.timeZone))
 }
@@ -775,7 +798,25 @@ def handleVacuumStatusResponse(resp, data) {
 // legitimately long-running clean is left alone and resolves normally.
 private void checkStaleActiveCleanRun(String mac) {
     def run = state.activeCleanRun?.getAt(mac)
-    if (!run || run.learning || run.everConfirmedCleaning) return
+    if (!run || run.learning) return
+
+    // A run parked mid-resume (see finishActiveCleanRun's mode-11 handling)
+    // has already confirmed Cleaning once, so the "never started" check
+    // below doesn't apply to it -- but it still needs its own timeout in
+    // case the expected resume never actually happens (e.g. a charging
+    // fault), so a room can't stay excluded from rotation forever waiting
+    // for a resume that's never coming.
+    if (run.pausedAt) {
+        double hoursSincePause = (now() - (run.pausedAt as Long)) / 3600000.0
+        if (hoursSincePause >= 3.0) {
+            log.warn "Wyze Vacuum ${mac}: room-clean run has been waiting to resume for ${String.format('%.1f', hoursSincePause)}h with no sign of it -- finishing it as-is with what was measured so far."
+            sendVacuumNotification("${getChildDevice(mac)?.displayName ?: mac}: expected to resume cleaning after charging, but hasn't after ${String.format('%.1f', hoursSincePause)} hours -- worth checking on it.")
+            finishActiveCleanRun(mac, 0, "Docked", null)
+        }
+        return
+    }
+
+    if (run.everConfirmedCleaning) return
     def startedAt = run.startedAt as Long
     if (!startedAt) return
     double minutesSinceDispatch = (now() - startedAt) / 60000.0
@@ -799,6 +840,33 @@ private void checkStaleActiveCleanRun(String mac) {
         log.warn "Wyze Vacuum ${mac}: room-clean dispatched ${Math.round(minutesSinceDispatch)} min ago never actually started cleaning, even after a retry -- clearing it so its room(s) aren't excluded from rotation indefinitely."
         sendVacuumNotification("${getChildDevice(mac)?.displayName ?: mac}: a room-clean command was sent but the vacuum never started -- worth checking it's not stuck or offline.")
         state.activeCleanRun.remove(mac)
+    }
+}
+
+// Confirmed live: a room-clean run stopped after 3 minutes, the vacuum
+// reported "Standby" (idle, NOT charging) instead of Cleaning/Docked/
+// Returning to charge, and just sat there for 7+ hours with the battery
+// draining continuously -- consistent with it being physically stuck (e.g.
+// wedged under furniture) rather than resting. A healthy vacuum is always
+// either cleaning, on its way back to the dock, or sitting on the dock
+// charging -- "idle and not charging" for an extended stretch is itself
+// the anomaly, regardless of the underlying cause. One notification per
+// episode, not a repeat on every poll.
+private void checkPossiblyStuck(String mac, String newStatus, boolean isCharging, def d) {
+    state.standbyStartedAt = state.standbyStartedAt ?: [:]
+    state.stuckNotified = state.stuckNotified ?: [:]
+
+    if (newStatus == "Standby" && !isCharging) {
+        if (!state.standbyStartedAt[mac]) state.standbyStartedAt[mac] = now()
+        double minutesStandby = (now() - (state.standbyStartedAt[mac] as Long)) / 60000.0
+        if (minutesStandby >= 30.0 && !state.stuckNotified[mac]) {
+            state.stuckNotified[mac] = true
+            log.warn "Wyze Vacuum ${mac}: possibly stuck -- idle and not charging for ${Math.round(minutesStandby)} min"
+            sendVacuumNotification("${d?.displayName ?: mac} has been idle and not charging for over 30 minutes -- it may be stuck (e.g. wedged under furniture), powered off, or otherwise needs attention.")
+        }
+    } else {
+        state.standbyStartedAt.remove(mac)
+        state.stuckNotified[mac] = false
     }
 }
 
@@ -1037,7 +1105,7 @@ private List<String> roomNamesFor(String mac, List ids) {
 // down at 21% -- low battery at dock time is apparently unremarkable, not a
 // sign of an interrupted room. Reverted back to trusting the vacuum: any
 // exit that isn't Paused/Error is a genuine finish, full stop.
-private void handleCleaningSessionEnd(String mac, def reportedCleanTimeMinutes, def d, String newStatus) {
+private void handleCleaningSessionEnd(String mac, def reportedCleanTimeMinutes, def d, String newStatus, def modeCode = null) {
     def sessionStart = state.cleaningSessionStart?.getAt(mac)
     def reported = toInt(reportedCleanTimeMinutes)
     Integer elapsedMin = (reported != null && reported > 0)
@@ -1046,16 +1114,22 @@ private void handleCleaningSessionEnd(String mac, def reportedCleanTimeMinutes, 
 
     def run = state.activeCleanRun?.getAt(mac)
     Map finishResult = null
+    boolean willResume = modeSignalsResume(modeCode)
     if (run?.learning) {
         handleLearningRoomEnd(mac, run, elapsedMin, newStatus)
     } else if (run) {
-        finishResult = finishActiveCleanRun(mac, elapsedMin, newStatus)
-        continueSweepIfNeeded(mac, newStatus)
+        finishResult = finishActiveCleanRun(mac, elapsedMin, newStatus, modeCode)
+        // Not a real finish -- don't push the sweep into a new room while
+        // this one is still expected to resume on its own.
+        if (!willResume) continueSweepIfNeeded(mac, newStatus)
     }
 
     accumulateBinHours(mac, elapsedMin)
 
-    if (settings.notifyCleaningFinished && elapsedMin > 0) {
+    // Same reasoning -- don't tell the user it "finished" when it's really
+    // just pausing to resume the same job; the eventual genuine finish
+    // fires its own correct notification once totalElapsed is known.
+    if (!willResume && settings.notifyCleaningFinished && elapsedMin > 0) {
         def completedNames = finishResult?.completedNames
         def incompleteNames = finishResult?.incompleteNames
         String msg
@@ -1086,6 +1160,7 @@ private void continueSweepIfNeeded(String mac, String newStatus) {
         ifDebug("continueSweepIfNeeded(${mac}): ended as ${newStatus}, not continuing the sweep")
         state.rotationSweepActive[mac] = false
         state.rotationSweepPending?.put(mac, false)
+        state.rotationSweepStartedAt?.remove(mac)
         return
     }
 
@@ -1096,11 +1171,35 @@ private void continueSweepIfNeeded(String mac, String newStatus) {
     // *something* (whichever room is least-recently-cleaned), it just
     // isn't gated on "due" in this mode.
     boolean continuous = (settings["rotationContinuousMode_${mac}"] ?: false) as boolean
+
+    // Continuous mode has no natural "nothing left to do" stopping point
+    // (it loops the rotation list forever), so it's the one mode that can
+    // optionally be capped to a max runtime instead, counted from when the
+    // whole sweep started (see cleanNextRooms). Checked before the
+    // somethingToDispatch gate below since continuous mode would otherwise
+    // always have something to dispatch.
+    if (continuous && (settings["rotationContinuousLimitEnabled_${mac}"] ?: false)) {
+        def maxMinutes = (settings["rotationContinuousMaxMinutes_${mac}"] ?: 0) as Integer
+        def startedAt = state.rotationSweepStartedAt?.getAt(mac) as Long
+        if (maxMinutes > 0 && startedAt) {
+            long elapsedMin = (now() - startedAt) / 60000
+            if (elapsedMin >= maxMinutes) {
+                ifDebug("continueSweepIfNeeded(${mac}): continuous sweep hit its ${maxMinutes}-minute limit (${elapsedMin} min elapsed), docking")
+                state.rotationSweepActive[mac] = false
+                state.rotationSweepPending?.put(mac, false)
+                state.rotationSweepStartedAt?.remove(mac)
+                dockVacuum(mac)
+                return
+            }
+        }
+    }
+
     boolean somethingToDispatch = continuous ? !previewNextRooms(mac).isEmpty() : pendingRoomCount(mac) > 0
     if (!somethingToDispatch) {
         ifDebug("continueSweepIfNeeded(${mac}): ${continuous ? 'nothing left to clean' : 'nothing else due'}, sweep finished")
         state.rotationSweepActive[mac] = false
         state.rotationSweepPending?.put(mac, false)
+        state.rotationSweepStartedAt?.remove(mac)
         return
     }
 
@@ -1191,12 +1290,28 @@ private String deriveStatusFromMode(Integer modeCode, boolean charging) {
     return charging ? "Docked" : "Standby"
 }
 
+// mode 11 (and its higher-tier equivalents) specifically means "docked,
+// cleaning will resume" -- distinct from mode 10 ("cleaning completed,
+// returning to charge"), even though both collapse to the same "Returning
+// to charge" status label above. Confirmed live: a room exiting through
+// mode 11 really did auto-resume ~1h42m later and continued the same job
+// for another 25 minutes. Used specifically to gate room-completion
+// crediting -- treating any non-Paused/Error exit as a genuine finish
+// (the general rule, kept after live testing disproved a battery-percent
+// version of this same idea) is wrong for this one specific, unambiguous
+// signal.
+private boolean modeSignalsResume(def modeCode) {
+    def c = toInt(modeCode)
+    return c != null && (c in [11, 33, 1104, 1204, 1304, 1404])
+}
+
 // =================== Commands from Driver ===================
 
 def startVacuum(String mac) {
     ifDebug("startVacuum: ${mac}")
     state.rotationSweepActive?.put(mac, false) // whole-house start is a different mode than room rotation
     state.rotationSweepPending?.put(mac, false)
+    state.rotationSweepStartedAt?.remove(mac)
     venusControl(mac, 0, 1) // GLOBAL_SWEEPING / START
     pollVacuum(mac)
 }
@@ -1205,6 +1320,7 @@ def pauseVacuum(String mac) {
     ifDebug("pauseVacuum: ${mac}")
     state.rotationSweepActive?.put(mac, false) // explicit stop -- don't auto-continue to the next room
     state.rotationSweepPending?.put(mac, false)
+    state.rotationSweepStartedAt?.remove(mac)
     venusControl(mac, 0, 2) // GLOBAL_SWEEPING / PAUSE
     pollVacuum(mac)
 }
@@ -1213,6 +1329,7 @@ def dockVacuum(String mac) {
     ifDebug("dockVacuum: ${mac}")
     state.rotationSweepActive?.put(mac, false) // explicit stop -- don't auto-continue to the next room
     state.rotationSweepPending?.put(mac, false)
+    state.rotationSweepStartedAt?.remove(mac)
     venusControl(mac, 3, 1) // RETURN_TO_CHARGING / START
     pollVacuum(mac)
 }
@@ -1273,7 +1390,17 @@ def cleanNextRooms(String mac) {
     // single trigger works through the whole due-list instead of requiring
     // a fresh call per room. dock()/pause()/start() clear this flag again.
     state.rotationSweepActive = state.rotationSweepActive ?: [:]
+    boolean freshSweepStart = !(state.rotationSweepActive[mac])
     state.rotationSweepActive[mac] = true
+
+    // Only stamped on a genuine fresh start, not on continueSweepDispatch's
+    // re-call for the next batch -- continuous mode's time limit (see
+    // continueSweepIfNeeded) is measured from when the whole sweep began,
+    // not from the most recent batch.
+    if (freshSweepStart) {
+        state.rotationSweepStartedAt = state.rotationSweepStartedAt ?: [:]
+        state.rotationSweepStartedAt[mac] = now()
+    }
 
     def chosen = previewNextRooms(mac)
     if (!chosen) { ifDebug("cleanNextRooms(${mac}): nothing to clean"); return }
@@ -1450,10 +1577,27 @@ def markRoomsCleanedByName(String mac, String roomNamesCsv) {
 // over-credits, and whatever didn't get done stays eligible next time. The
 // time-estimate average is only refined when the whole batch completed
 // cleanly, so a partial run doesn't skew future time-budget estimates.
-private Map finishActiveCleanRun(String mac, Integer elapsedMin, String newStatus) {
+private Map finishActiveCleanRun(String mac, Integer elapsedMin, String newStatus, def modeCode = null) {
     def run = state.activeCleanRun?.getAt(mac)
     if (!run) return [:]
     def rooms = run.roomIds ?: []
+
+    if (modeSignalsResume(modeCode)) {
+        // Not a real finish -- the vacuum itself intends to pick this exact
+        // job back up once charged (confirmed live, see modeSignalsResume).
+        // Leave the run active (still excluded from re-picking, still not
+        // credited) and carry this segment's elapsed time forward so the
+        // eventual real finish gets the full total instead of just
+        // whichever segment happened to be measured last.
+        state.activeCleanRun[mac] = run + [
+            pausedElapsedMin: ((run.pausedElapsedMin ?: 0) as Integer) + (elapsedMin ?: 0),
+            pausedAt: now()
+        ]
+        ifDebug("finishActiveCleanRun(${mac}): mode ${modeCode} signals the vacuum intends to resume -- not crediting yet, carrying forward ${state.activeCleanRun[mac].pausedElapsedMin} min so far")
+        return [:]
+    }
+
+    Integer totalElapsed = (elapsedMin ?: 0) + ((run.pausedElapsedMin ?: 0) as Integer)
 
     state.roomAvgMinutes = state.roomAvgMinutes ?: [:]
     def avgMap = state.roomAvgMinutes[mac] ?: [:]
@@ -1464,11 +1608,11 @@ private Map finishActiveCleanRun(String mac, Integer elapsedMin, String newStatu
     // just the learned/estimated minutes for each room that was targeted --
     // so it works even for rooms whose exact finish point is ambiguous.
     double expectedTotal = rooms.sum { id -> (avgMap[id.toString()] ?: 15.0) as Double } ?: 0.0
-    Integer completenessPct = expectedTotal > 0 ? Math.min(100, Math.round((elapsedMin ?: 0) / expectedTotal * 100)) as Integer : null
+    Integer completenessPct = expectedTotal > 0 ? Math.min(100, Math.round(totalElapsed / expectedTotal * 100)) as Integer : null
     if (completenessPct != null) {
         getChildDevice(mac)?.sendEvent(name: "lastRunCompleteness", value: completenessPct, unit: "%")
     }
-    ifDebug("finishActiveCleanRun(${mac}): elapsedMin=${elapsedMin} expectedTotal=${expectedTotal}min across ${rooms.size()} room(s) -> completeness=${completenessPct}%")
+    ifDebug("finishActiveCleanRun(${mac}): elapsedMin=${totalElapsed} expectedTotal=${expectedTotal}min across ${rooms.size()} room(s) -> completeness=${completenessPct}%")
 
     def completed
     def incomplete
@@ -1477,15 +1621,15 @@ private Map finishActiveCleanRun(String mac, Integer elapsedMin, String newStatu
         // so there's no need to guess against an estimate. Paused/Error is
         // the only genuinely ambiguous exit (could still resume); anything
         // else (Docked/Returning/Standby) means this room's pass is over.
-        boolean genuinelyFinished = !(newStatus == "Paused" || newStatus == "Error") && elapsedMin != null && elapsedMin > 0
+        boolean genuinelyFinished = !(newStatus == "Paused" || newStatus == "Error") && totalElapsed > 0
         completed = genuinelyFinished ? rooms : []
         incomplete = genuinelyFinished ? [] : rooms
         if (genuinelyFinished) {
             def roomName = (state.discoveredRooms?.getAt(mac) ?: []).find { it.id == rooms[0] }?.name ?: "Room ${rooms[0]}"
-            log.info "Wyze Vacuum ${mac}: '${roomName}' took ${elapsedMin} min to clean"
+            log.info "Wyze Vacuum ${mac}: '${roomName}' took ${totalElapsed} min to clean"
         }
     } else {
-        double remaining = elapsedMin ?: 0
+        double remaining = totalElapsed
         completed = []
         rooms.each { id ->
             double est = (avgMap[id.toString()] ?: 15.0) as Double
@@ -1503,9 +1647,9 @@ private Map finishActiveCleanRun(String mac, Integer elapsedMin, String newStatu
         if (rooms.size() == 1) {
             // A single-room batch is ground truth -- overwrite outright
             // rather than blending, same treatment Learning Mode gives.
-            avgMap[rooms[0].toString()] = (elapsedMin ?: 0) as Double
+            avgMap[rooms[0].toString()] = totalElapsed as Double
         } else {
-            double perRoom = (elapsedMin ?: 0) / (double) rooms.size()
+            double perRoom = totalElapsed / (double) rooms.size()
             rooms.each { id ->
                 def key = id.toString()
                 def prevAvg = avgMap[key]
@@ -1524,7 +1668,7 @@ private Map finishActiveCleanRun(String mac, Integer elapsedMin, String newStatu
     }
 
     state.activeCleanRun.remove(mac)
-    ifDebug("finishActiveCleanRun(${mac}): elapsedMin=${elapsedMin} completed=${completed} incomplete=${incomplete}")
+    ifDebug("finishActiveCleanRun(${mac}): elapsedMin=${totalElapsed} completed=${completed} incomplete=${incomplete}")
     return [completedNames: completedNames, incompleteNames: incompleteNames]
 }
 
