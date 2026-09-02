@@ -62,8 +62,12 @@ Dryer vibration thresholds
 ---
 | Setting | Default | What it does |
 |---|---|---|
-| Stop after N sequential inactive reports | 2 | How many consecutive `inactive` reports are needed before ending the cycle. A cycle starts immediately on the first `active` report. |
+| Require N 'active' reports within the confirmation window | 2 | How many `active` reports have to arrive within the window below before a cycle is confirmed started. Filters out a single spurious vibration blip (a bump, nearby footsteps/HVAC) that never repeats - see below. Set to 1 to start instantly on the first report, like the old behavior. |
+| Start confirmation window | 5 min | The window the above reports have to fall within. |
+| Stop after N sequential inactive reports | 2 | How many consecutive `inactive` reports are needed before ending the cycle, once a cycle has been confirmed started. |
 | Deadman timer | 90 min | Same idea as the washer's - force-ends a cycle that's run this long without a confirmed stop. |
+
+**Why the start needs confirming:** a vibration sensor doesn't just report your dryer - it reports anything that shakes it a little, even once. A real cycle on this kind of sensor tends to report in a burst of several active/inactive toggles right when it starts, then goes quiet for long stretches (confirmed from a month of real logs: gaps of 20-50 minutes with no reports at all mid-cycle are normal). A single isolated `active` report with no follow-up burst is indistinguishable from noise and, before this setting existed, was enough on its own to declare a cycle "started" - including firing a start notification and, since nothing ever confirmed a stop, eventually getting force-closed by the 90-minute deadman timer and logged as a fake completed cycle. Raising "Require N reports" fixes that without losing real starts, since real ones burst within the first minute or two anyway. The raw reading is still logged either way (with no `Started`/cycle-log entry created for an unconfirmed blip), so you can always see what the sensor actually reported.
 
 These defaults came from reviewing about a month of real washer power
 readings and dryer vibration reports against the previous Node-RED-based

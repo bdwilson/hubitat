@@ -84,6 +84,8 @@ def mainPage() {
         }
 
         section("<b>Dryer - Vibration Thresholds</b>", hideable: true, hidden: false) {
+            input "dryerStartReports", "number", title: "Require this many 'active' vibration reports within the confirmation window before calling it a real start (filters single spurious blips)", required: false, defaultValue: 2
+            input "dryerStartWindowMin", "number", title: "Start confirmation window (minutes)", required: false, defaultValue: 5
             input "dryerStopReadings", "number", title: "Stop after no vibration for this many sequential reportings", required: false, defaultValue: 2
             input "dryerDeadmanMin", "number", title: "Maximum cycle time in minutes (deadman timer, force-ends a stuck cycle)", required: false, defaultValue: 90
         }
@@ -240,6 +242,7 @@ def appButtonHandler(String btn) {
             break
         case "resetDryerButton":
             if (state.dryerOn) endDryerCycle("manual reset")
+            state.remove("dryerPendingActive")
             break
     }
 }
@@ -387,10 +390,33 @@ def dryerAccelHandler(evt) {
     }
 
     Integer stopReadings = (dryerStopReadings ?: 2) as Integer
+    Integer startReports = (dryerStartReports ?: 2) as Integer
+    Integer startWindowMin = (dryerStartWindowMin ?: 5) as Integer
     if (debugEnable) log.debug "dryer vibration=${evt.value} on=${state.dryerOn}"
 
+    // A vibration sensor can report a single isolated "active" blip (a bump,
+    // nearby HVAC/footsteps) that never repeats. Real cycles on this kind of
+    // sensor report in bursts of several active/inactive toggles right at
+    // the start, then go quiet for long stretches - so a lone blip with no
+    // follow-up burst is not distinguishable from noise and must not start a
+    // cycle (or fire a notification / log a fake 90-minute deadman cycle).
     if (!state.dryerOn) {
-        if (active) startDryerCycle(nowTs)
+        if (!active) return
+        if (startReports <= 1) {
+            startDryerCycle(nowTs)
+            return
+        }
+        List pending = (state.dryerPendingActive instanceof List) ? state.dryerPendingActive : []
+        Long windowMs = startWindowMin * 60000L
+        pending = pending.findAll { (nowTs - (it as Long)) < windowMs }
+        pending << nowTs
+        if (pending.size() >= startReports) {
+            state.remove("dryerPendingActive")
+            startDryerCycle(pending[0] as Long)
+        } else {
+            state.dryerPendingActive = pending
+            if (debugEnable) log.debug "dryer vibration pending start confirmation (${pending.size()}/${startReports} within ${startWindowMin}m)"
+        }
         return
     }
 
