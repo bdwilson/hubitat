@@ -84,8 +84,8 @@ def mainPage() {
         }
 
         section("<b>Dryer - Vibration Thresholds</b>", hideable: true, hidden: false) {
-            input "dryerStartReports", "number", title: "Require this many 'active' vibration reports within the confirmation window before calling it a real start (filters single spurious blips)", required: false, defaultValue: 2
-            input "dryerStartWindowMin", "number", title: "Start confirmation window (minutes)", required: false, defaultValue: 5
+            input "dryerStartReports", "number", title: "Require this many 'active' vibration reports within the confirmation window before calling it a real start (filters spurious blips)", required: false, defaultValue: 3
+            input "dryerStartWindowMin", "number", title: "Start confirmation window (minutes)", required: false, defaultValue: 10
             input "dryerStopReadings", "number", title: "Stop after no vibration for this many sequential reportings", required: false, defaultValue: 2
             input "dryerDeadmanMin", "number", title: "Maximum cycle time in minutes (deadman timer, force-ends a stuck cycle)", required: false, defaultValue: 90
         }
@@ -219,12 +219,21 @@ def initialize() {
 private void rescheduleDeadman(String which) {
     boolean on = which == "washer" ? (state.washerOn as boolean) : (state.dryerOn as boolean)
     if (!on) return
-    Integer deadmanMin = (which == "washer" ? washerDeadmanMin : dryerDeadmanMin) as Integer
-    if (!deadmanMin) return
     Long startTs = (which == "washer" ? state.washerCycleStart : state.dryerCycleStart) as Long
     if (!startTs) return
-    Long remainMs = (deadmanMin * 60000L) - (now() - startTs)
+    armDeadman(which, startTs)
+}
+
+// Deadman timers are always measured from the cycle's recorded/confirmed
+// start (not "now"), so a start that's only confirmed a few minutes after
+// the fact (start-wait windows, multi-report confirmation) doesn't quietly
+// stretch the deadman past the configured cap, and the logged cycle
+// duration lines up with the configured deadman minutes when it fires.
+private void armDeadman(String which, Long startTs) {
+    Integer deadmanMin = (which == "washer" ? washerDeadmanMin : dryerDeadmanMin) as Integer
+    if (!deadmanMin) return
     String handler = which == "washer" ? "washerDeadmanFired" : "dryerDeadmanFired"
+    Long remainMs = (deadmanMin * 60000L) - (now() - startTs)
     Integer delaySec = remainMs > 0 ? Math.max(1, (remainMs / 1000) as Integer) : 1
     runIn(delaySec, handler, [overwrite: true])
 }
@@ -280,8 +289,9 @@ def washerPowerHandler(evt) {
                 }
                 if (nowTs - (state.washerPendingSince as Long) < startWaitMin * 60000L) return
             }
+            Long trueStart = (state.washerPendingSince ?: nowTs) as Long
             state.remove("washerPendingSince")
-            startWasherCycle(nowTs, p)
+            startWasherCycle(trueStart, p)
         } else if (state.washerPendingSince && p < stopW) {
             if (debugEnable) log.debug "washer power dropped back to idle before start-wait elapsed, cancelling"
             state.remove("washerPendingSince")
@@ -323,7 +333,7 @@ private void startWasherCycle(Long ts, BigDecimal p) {
     state.remove("washerPendingSince")
     logCycleEvent("washer", "start", ts, [peakW: p, concurrent: concurrentDryer])
     if (txtEnable) log.info "Washer started (${p}W)${concurrentDryer ? ' - dryer is still running (second load)' : ''}"
-    if (washerDeadmanMin) runIn(((washerDeadmanMin as Integer) * 60), "washerDeadmanFired", [overwrite: true])
+    armDeadman("washer", ts)
     if (switchList) switchList*.on()
     if (enableStartNotify) notify(washerStartMessage ?: "Washer started")
     if (concurrentDryer && enableConcurrentLoadNotify) {
@@ -436,7 +446,7 @@ private void startDryerCycle(Long ts) {
     state.dryerLowCount = 0
     logCycleEvent("dryer", "start", ts, [concurrent: concurrentWasher])
     if (txtEnable) log.info "Dryer started${concurrentWasher ? ' - washer is also running' : ''}"
-    if (dryerDeadmanMin) runIn(((dryerDeadmanMin as Integer) * 60), "dryerDeadmanFired", [overwrite: true])
+    armDeadman("dryer", ts)
     if (switchList) switchList*.on()
     if (enableStartNotify) notify(dryerStartMessage ?: "Dryer started")
 }
