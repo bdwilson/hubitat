@@ -22,8 +22,8 @@ definition(
     iconUrl: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience.png",
     iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
     iconX3Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
-	importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/geofency-presence.groovy",
-    version: "1.2.0",
+	importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/claude/geofency-presence-install-42ldx6/Geofency-Presence/geofency-presence.groovy",
+    version: "1.3.0",
     oauth: true)
 
 
@@ -47,15 +47,28 @@ def setupScreen(){
    			section("<h1>Geofency Presence</h1>") {
             	paragraph ("Please read all the steps below in order to link your presence to a Geofency Location. This integration requires the <a href='https://www.geofency.com/'>Geofency</a> <b>iOS</b> app.")
 			}
-			section("<h2>1. Create Geofency Virtual Presence Devices</h2>") {
-            	paragraph ("Go to <i>Devices -> Add Virtual Device</i> and create a new virtual device of type <b>Geofency Virtual Mobile Presence Device</b> corresponding to each user and location you wish to monitor within Geofency - or update your existing virtual presence devices to use this device type. You will then need to add device preference entries for each device to correspond to both the <b>user</b> and <b>location</b> that you will configure in Geofency.")
+			section("<h2>1. Create a Geofency Virtual Presence Device</h2>") {
+            	paragraph ("<b>Quick Setup:</b> enter the location and user you'll configure in Geofency below, then click <b>Create Device</b>. This creates a new <b>Geofency Virtual Mobile Presence Device</b>, configures it for you, and selects it in step 2 below - no need to visit the Devices page at all.")
+            	input "newLocation", "text", title: "Location to Track (e.g. Home)", required: false, submitOnChange: true
+            	input "newUser", "text", title: "User to Track (e.g. Brian)", required: false, submitOnChange: true
+            	input "createDeviceBtn", "button", title: "Create Device"
+            	if (state.createMessage) paragraph "<b>${state.createMessage}</b>"
+            	paragraph ("<i>Prefer to do it yourself, or already have a virtual presence device?</i> Go to <i>Devices -> Add Virtual Device</i> and create a new virtual device of type <b>Geofency Virtual Mobile Presence Device</b> corresponding to each user and location you wish to monitor within Geofency - or update your existing virtual presence devices to use this device type. You will then need to add device preference entries for each device to correspond to both the <b>user</b> and <b>location</b> that you will configure in Geofency.")
         	}
         section ("<h2>2. Select Virtual Presence Devices</h2>") {
             paragraph ("This will allow this App to control the devices you created above")
     		input "presence", "capability.presenceSensor", multiple: true, required: true
     	}
-        section("<h2>3. Setup URL in Geofency App</h2>"){ 
+        section("<h2>3. Setup URL in Geofency App</h2>"){
             paragraph("Use the following as the URL for Geofency but make sure that you add <b>your</b> user info after /location/ in the URL using the same <b>user</b> you configured in your virtual device in step 1: <a href='${extUri}'>${extUri}</a>. You will also need to create a location in Geofency that matches the location configured in your device.")
+            def configuredUsers = presence ? presence.collect { it.currentValue("user")?.trim() }.findAll { it }.unique() : []
+            if (configuredUsers) {
+                paragraph("<b>Your configured user(s) below - copy the exact URL for each into Geofency's Webhook URL field:</b>")
+                configuredUsers.each { u ->
+                    def perUserUri = extUri.replace("?access_token=", "${java.net.URLEncoder.encode(u, 'UTF-8')}?access_token=")
+                    paragraph("<b>${u}:</b> <a href='${perUserUri}'>${perUserUri}</a>")
+                }
+            }
             paragraph("Detailed installation instructions for Geofency can be found <a href='https://github.com/bdwilson/hubitat/tree/master/Geofency-Presence#Installation'>here</a>.")
             paragraph("If for some reason you want to use the Internal URL it would be <a href='${uri}'>${uri}</a>, however it's inaccessible from outside your home. ")
         }
@@ -69,6 +82,55 @@ def setupScreen(){
         }
 
     }
+}
+
+def appButtonHandler(btn) {
+    if (btn == "createDeviceBtn") {
+        createPresenceDevice()
+    }
+}
+
+private void createPresenceDevice() {
+    state.createMessage = null
+    def loc = newLocation?.trim()
+    def usr = newUser?.trim()
+    if (!loc || !usr) {
+        state.createMessage = "Please enter both a Location and a User above, then click Create Device again."
+        return
+    }
+    def dni = childDni(loc, usr)
+    if (getChildDevice(dni)) {
+        state.createMessage = "A device for location '${loc}' and user '${usr}' already exists."
+        return
+    }
+    def label = "Geofency - ${loc} - ${usr}"
+    def child
+    try {
+        child = addChildDevice("brianwilson-hubitat", "Geofency Virtual Mobile Presence Device", dni, null,
+            [name: "Geofency Virtual Mobile Presence Device", label: label, completedSetup: true])
+    } catch (e) {
+        state.createMessage = "Error creating device: ${e.message}. Make sure 'Geofency Virtual Mobile Presence Device' is installed under Drivers Code."
+        return
+    }
+    child.updateSetting("region", [value: loc, type: "text"])
+    child.updateSetting("user", [value: usr, type: "text"])
+    child.updated()
+    app.updateSetting("newLocation", [value: "", type: "text"])
+    app.updateSetting("newUser", [value: "", type: "text"])
+    try {
+        def ids = (settings.presence?.collect { it.id } ?: []) as Set
+        ids << child.id
+        app.updateSetting("presence", [value: ids as List, type: "capability.presenceSensor"])
+        state.createMessage = "Created device '${label}' and selected it in step 2 below. Scroll down to step 3 for its webhook URL."
+    } catch (e) {
+        state.createMessage = "Created device '${label}'. Check the box next to it in step 2 below, then scroll down to step 3 for its webhook URL."
+    }
+}
+
+private String childDni(String loc, String usr) {
+    def safeLoc = loc.toLowerCase().replaceAll(/[^a-z0-9]+/, "-").replaceAll(/(^-+|-+$)/, "")
+    def safeUser = usr.toLowerCase().replaceAll(/[^a-z0-9]+/, "-").replaceAll(/(^-+|-+$)/, "")
+    return "geofency-${safeLoc}-${safeUser}-${app.id}"
 }
 
 def installed() {
