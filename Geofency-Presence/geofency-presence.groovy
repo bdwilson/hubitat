@@ -48,22 +48,23 @@ def setupScreen(){
             	paragraph ("Please read all the steps below in order to link your presence to a Geofency Location. This integration requires the <a href='https://www.geofency.com/'>Geofency</a> <b>iOS</b> app.")
 			}
 			section("<h2>1. Create a Geofency Virtual Presence Device</h2>") {
-            	paragraph ("<b>Quick Setup:</b> enter the location and user you'll configure in Geofency below, then click <b>Create Device</b>. This creates a new <b>Geofency Virtual Mobile Presence Device</b>, configures it for you, and selects it in step 2 below - no need to visit the Devices page at all.")
+            	paragraph ("<b>Quick Setup:</b> enter the location and user you'll configure in Geofency below, then click <b>Create Device</b>. This creates a new <b>Geofency Virtual Mobile Presence Device</b> and configures it for you. Devices created this way are automatically usable by this app right away - you don't need to select them in step 2 below.")
             	input "newLocation", "text", title: "Location to Track (e.g. Home)", required: false, submitOnChange: true
             	input "newUser", "text", title: "User to Track (e.g. Brian)", required: false, submitOnChange: true
             	input "createDeviceBtn", "button", title: "Create Device"
             	if (state.createMessage) paragraph "<b>${state.createMessage}</b>"
-            	paragraph ("<i>Prefer to do it yourself, or already have a virtual presence device?</i> Go to <i>Devices -> Add Virtual Device</i> and create a new virtual device of type <b>Geofency Virtual Mobile Presence Device</b> corresponding to each user and location you wish to monitor within Geofency - or update your existing virtual presence devices to use this device type. You will then need to add device preference entries for each device to correspond to both the <b>user</b> and <b>location</b> that you will configure in Geofency.")
+            	paragraph ("<i>Prefer to do it yourself, or already have a virtual presence device?</i> Go to <i>Devices -> Add Virtual Device</i> and create a new virtual device of type <b>Geofency Virtual Mobile Presence Device</b> corresponding to each user and location you wish to monitor within Geofency - or update your existing virtual presence devices to use this device type. You will then need to add device preference entries for each device to correspond to both the <b>user</b> and <b>location</b> that you will configure in Geofency. Devices created this way need to be selected in step 2 below.")
         	}
-        section ("<h2>2. Select Virtual Presence Devices</h2>") {
-            paragraph ("This will allow this App to control the devices you created above")
-    		input "presence", "capability.presenceSensor", multiple: true, required: true, submitOnChange: true
+        section ("<h2>2. Select Additional Virtual Presence Devices</h2>") {
+            paragraph ("Devices you created with <b>Quick Setup</b> in step 1 are already usable and don't need to be selected here. Use this only for devices you created yourself outside this app (Devices -> Add Virtual Device, or existing devices from before Quick Setup existed) - select them here to let this App control them too.")
+    		input "presence", "capability.presenceSensor", multiple: true, required: false, submitOnChange: true
     	}
         section("<h2>3. Setup URL in Geofency App</h2>"){
             paragraph("Use the following as the URL for Geofency but make sure that you add <b>your</b> user info after /location/ in the URL using the same <b>user</b> you configured in your virtual device in step 1: <a href='${extUri}'>${extUri}</a>. You will also need to create a location in Geofency that matches the location configured in your device.")
-            if (presence) {
-                def configured = presence.findAll { it.currentValue("region")?.trim() && it.currentValue("user")?.trim() }
-                def unconfigured = presence.findAll { !(it.currentValue("region")?.trim() && it.currentValue("user")?.trim()) }
+            def allDevices = getAllPresenceDevices()
+            if (allDevices) {
+                def configured = allDevices.findAll { it.currentValue("region")?.trim() && it.currentValue("user")?.trim() }
+                def unconfigured = allDevices.findAll { !(it.currentValue("region")?.trim() && it.currentValue("user")?.trim()) }
                 if (configured) {
                     paragraph("<b>Your configured device(s) below - copy the exact URL for each into Geofency's Webhook URL field:</b>")
                     configured.sort { it.currentValue("user") }.each { d ->
@@ -125,20 +126,23 @@ private void createPresenceDevice() {
     child.updated()
     app.updateSetting("newLocation", [value: "", type: "text"])
     app.updateSetting("newUser", [value: "", type: "text"])
-    try {
-        def ids = (settings.presence?.collect { it.id } ?: []) as Set
-        ids << child.id
-        app.updateSetting("presence", [value: ids as List, type: "capability.presenceSensor"])
-        state.createMessage = "Created device '${label}' and selected it in step 2 below. Scroll down to step 3 for its webhook URL."
-    } catch (e) {
-        state.createMessage = "Created device '${label}'. Check the box next to it in step 2 below, then scroll down to step 3 for its webhook URL."
-    }
+    state.createMessage = "Created device '${label}'. It's ready to use - see step 3 below for its webhook URL."
 }
 
 private String childDni(String loc, String usr) {
     def safeLoc = loc.toLowerCase().replaceAll(/[^a-z0-9]+/, "-").replaceAll(/(^-+|-+$)/, "")
     def safeUser = usr.toLowerCase().replaceAll(/[^a-z0-9]+/, "-").replaceAll(/(^-+|-+$)/, "")
     return "geofency-${safeLoc}-${safeUser}-${app.id}"
+}
+
+// Devices this app can control: everything it created itself via Quick Setup
+// (owned as child devices, no selection needed) plus anything manually picked
+// in step 2, de-duplicated in case a device somehow ends up in both.
+private List getAllPresenceDevices() {
+    def children = getChildDevices() ?: []
+    def childIds = children*.id as Set
+    def selected = (presence ?: []).findAll { !childIds.contains(it.id) }
+    return children + selected
 }
 
 def installed() {
@@ -156,7 +160,7 @@ def updated() {
 
 def listLocations() {
     def resp = []
-    presence.each {
+    getAllPresenceDevices().each {
       ifDebug("RECEIVED: ${it.displayName}, attribute ${it.name}, ID: ${it.id}")
       resp << [Name: it.displayName, ID: it.id]
     }
@@ -182,7 +186,7 @@ def validCommandsp() {
 }
 
 void updateLocation() {
-    update(presence)
+    update(getAllPresenceDevices())
 }
 
 def update (devices) {

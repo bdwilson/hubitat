@@ -31,10 +31,9 @@ Installation
 --------------------
 1. Install via [HPM](https://community.hubitat.com/t/beta-hubitat-package-manager/38016) - search for keyword "presence" (or go to Drivers Code and Apps Code and install [virtual-mobile-presence.groovy](https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/virtual-mobile-presence.groovy) and [geofency-presence.groovy](https://raw.githubusercontent.com/bdwilson/hubitat/claude/geofency-presence-install-42ldx6/Geofency-Presence/geofency-presence.groovy) manually. <b>Click Oauth</b> after saving the app.)
 2. Install the User App (Apps -> Add User App -> Geofency Multi-User API Presence App)
-3. In **Step 1** of the app, enter a **Location** and **User** (the same ones you'll use in Geofency) and click **Create Device** - this creates and configures the virtual presence device for you and selects it in Step 2. Repeat for each user/location pair you want to track. You can create as many as you like.
-   * Prefer to do it yourself, or already have virtual presence devices from an older install? Go to _Devices -> Add Virtual Device_, create (or update an existing device to) type ___Geofency Virtual Mobile Presence Device___, and set its ___Location___ and ___User___ preferences to match what you'll use in Geofency - the app's manual "Select Virtual Presence Devices" step still works exactly as before.
-4. Continue to **Step 2** and make sure each device you created is selected (devices created via **Create Device** above are selected automatically).
-5. In **Step 3**, copy the webhook URL for each configured user - the app lists the exact, ready-to-paste URL per user so you don't have to hand-edit anything.
+3. In **Step 1** of the app, enter a **Location** and **User** (the same ones you'll use in Geofency) and click **Create Device** - this creates and configures the virtual presence device for you. It's usable by the app immediately - you don't need to select it anywhere. Repeat for each user/location pair you want to track. You can create as many as you like.
+   * Prefer to do it yourself, or already have virtual presence devices from an older install? Go to _Devices -> Add Virtual Device_, create (or update an existing device to) type ___Geofency Virtual Mobile Presence Device___, set its ___Location___ and ___User___ preferences to match what you'll use in Geofency, then select it in **Step 2** ("Select Additional Virtual Presence Devices") - the app's manual selection step still works exactly as before, for devices it didn't create itself.
+4. In **Step 3**, copy the webhook URL for each device - the app lists the exact, ready-to-paste URL per device (with its Location and User shown alongside) so you don't have to hand-edit anything. If a device you selected in Step 2 doesn't show a URL, the app tells you why (usually a missing Location/User on that device).
 
 Configure Geofency
 ------------------
@@ -52,8 +51,8 @@ If you'd rather not use the **Create Device** button, or you're maintaining an e
 2. Set:
   * ___Location___ to be the name of the monitored location in Geofency (call it whatever you want in Geofency, just make sure it matches in HE)
   * ___User___ to be the name entered and saved in HE and added to the webhook.
-3. In the app's Step 2 ("Select Virtual Presence Devices"), select the device(s) you just created.
-4. Copy the per-user URL shown in the app's Step 3 (or build it yourself: take the Endpoint URL and add your user's name after `/location/` and before `?access_token=`).
+3. In the app's Step 2 ("Select Additional Virtual Presence Devices"), select the device(s) you just created.
+4. Copy the per-device URL shown in the app's Step 3 (or build it yourself: take the Endpoint URL and add your user's name after `/location/` and before `?access_token=`).
 
 Bugs/Contact Info
 -----------------
