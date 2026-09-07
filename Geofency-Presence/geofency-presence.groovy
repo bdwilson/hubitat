@@ -52,8 +52,12 @@ def setupScreen(){
             	input "newLocation", "text", title: "Location to Track (e.g. Home)", required: false, submitOnChange: true
             	input "newUser", "text", title: "User to Track (e.g. Brian)", required: false, submitOnChange: true
             	input "createDeviceBtn", "button", title: "Create Device"
-            	if (state.createMessage) paragraph "<b>${state.createMessage}</b>"
+            	if (state.createMessage) {
+            	    paragraph "<b>${state.createMessage}</b>"
+            	    state.remove("createMessage")
+            	}
             	paragraph ("<i>Prefer to do it yourself, or already have a virtual presence device?</i> Go to <i>Devices -> Add Virtual Device</i> and create a new virtual device of type <b>Geofency Virtual Mobile Presence Device</b> corresponding to each user and location you wish to monitor within Geofency - or update your existing virtual presence devices to use this device type. You will then need to add device preference entries for each device to correspond to both the <b>user</b> and <b>location</b> that you will configure in Geofency. Devices created this way need to be selected in step 2 below.")
+            	paragraph ("<b>Upgrading from a previous version of this app?</b> If you already had virtual presence devices set up before Quick Setup existed, they are not created as child devices of this app, so make sure they're still selected in <b>step 2</b> below (\"Select Additional Virtual Presence Devices\") - check there if a device you were relying on before stops working after upgrading.")
         	}
         section ("<h2>2. Select Additional Virtual Presence Devices</h2>") {
             paragraph ("Devices you created with <b>Quick Setup</b> in step 1 are already usable and don't need to be selected here. Use this only for devices you created yourself outside this app (or with a previous version of this app). If you select devices that are not <b>Geofency Virtual Mobile Presence Device</b> devices, they will not work - the instructions in step 3 below will tell you this.")
@@ -97,8 +101,7 @@ def setupScreen(){
        		input "isDebug", "bool", title: "Enable Debug Mode", required: false, multiple: false, defaultValue: true, submitOnChange: true
     	}
         section("<h2>5. Testing your installation</h2>") {
-            paragraph("To test your installation, make sure debug mode is enabled, your URL above is configured in Geofency location (under Settings -> Webhook but <b>with the addition of your user info after /location/</b>), then within Geofency create your location and name it corresponding to your location in step 1. Also make sure that HTTP Method is set to POST(JSON)")
-            paragraph("Once added, use the <b>Test Connection Entry</b> items under Webhooks to test entering and existing and review your logs & virtual devices events.")
+            paragraph("To test your installation, make sure debug mode is enabled, and use the <b>Test Enter</b> / <b>Test Exit</b> buttons from each entry above. Review your logs & virtual devices events.")
         }
 
     }
