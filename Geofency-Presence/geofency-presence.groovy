@@ -65,7 +65,7 @@ def setupScreen(){
     		input "presence", "capability.presenceSensor", multiple: true, required: false, submitOnChange: true
     	}
         section("<h2>3. Setup URL in Geofency App</h2>"){
-            paragraph("Use the following as the URL for Geofency but make sure that you add <b>your</b> user info after /location/ in the URL using the same <b>user</b> you configured in your virtual device in step 1: <a href='${extUri}'>${extUri}</a>. You will also need to create a location in Geofency that matches the location configured in your device.")
+            paragraph("Listed below are each of your locations that you'll need to configure in Geofency and the URL to use for each person.")
         }
         def allDevices = getAllPresenceDevices()
         if (allDevices) {
