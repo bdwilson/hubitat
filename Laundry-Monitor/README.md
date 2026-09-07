@@ -53,10 +53,13 @@ Washer power thresholds
 | Start threshold | 5W | Power level a reading has to reach to be considered "the washer turned on." |
 | Minimum minutes before end detection | 10 min | Ignore drops below the stop threshold until the cycle has been running at least this long (covers fill/pause dips early in a cycle). |
 | Stop threshold | 3W | Power level a reading has to drop below to be considered "the washer might be done." |
-| Stop after N sequential low readings | 2 | How many consecutive readings below the stop threshold are needed before ending the cycle. |
+| Stop after N sequential low readings | 2 | Fast path: how many consecutive readings below the stop threshold are needed before ending the cycle immediately. Only fires if the meter actually keeps reporting - see below. |
 | Also require N continuous minutes below threshold | 0 (off) | Extra debounce on top of the reading count, if you want it. |
+| Quiet-timeout confirmation | 10 min | Backstop: also ends the cycle after this many minutes with no reading back above the stop threshold, even if a second low reading never arrives. See below - this is the important one. |
 | Ignore readings above (spike filter) | 1500W | A single reading this high or higher is treated as sensor noise and never starts a new cycle. |
 | Deadman timer | 90 min | Hard cap - force-ends a cycle that's been "on" this long, in case a real stop never gets detected. |
+
+**Why there are two ways to detect a stop:** a lot of power meters only report a new value when it *changes*. Once your washer settles at a genuinely stable idle wattage, it may never send another event at all - which means "stop after 2 sequential low readings" can silently wait forever for a second reading that's never coming, and the cycle only ever ends via the 90-minute deadman timer, 40+ minutes after the wash actually finished. Confirmed on real data: a wash that visibly finished at 10:36am (last high reading, then one 2W reading, then total silence for the next 2h45m) sat "on" until the deadman forced it closed at 11:20am. The quiet-timeout setting fixes this: once the *first* low reading arrives, it schedules its own check independent of whether anything else ever reports, and ends the cycle using that first low reading's timestamp as the true end time (so the logged duration reflects when the wash actually stopped, not when the timeout happened to fire). The two mechanisms race - whichever confirms first wins - so a chatty meter still gets the fast 2-reading path, and a quiet one still gets a correct, reasonably prompt stop instead of a 90-minute wait.
 
 Dryer vibration thresholds
 ---
@@ -64,8 +67,13 @@ Dryer vibration thresholds
 |---|---|---|
 | Require N 'active' reports within the confirmation window | 3 | How many `active` reports have to arrive within the window below before a cycle is confirmed started. Filters out spurious vibration blips (a bump, nearby footsteps/HVAC) that don't repeat enough - see below. Set to 1 to start instantly on the first report, like the original behavior. |
 | Start confirmation window | 10 min | The window the above reports have to fall within. |
-| Stop after N sequential inactive reports | 2 | How many consecutive `inactive` reports are needed before ending the cycle, once a cycle has been confirmed started. |
+| Stop after N sequential inactive reports | 2 | Fast path, same idea as the washer's - but see the warning below: vibration sensors are typically edge-triggered (report only on active↔inactive transitions), so a second `inactive` report in a row essentially never arrives in practice. Don't rely on this alone. |
+| Quiet-timeout confirmation | 30 min | Backstop: also ends the cycle after this many minutes with no further vibration at all. **Read the warning below before changing this** - it's a real trade-off on this hardware, not a simple "shorter is better" dial. |
 | Deadman timer | 90 min | Same idea as the washer's - force-ends a cycle that's run this long without a confirmed stop. |
+
+**Important trade-off - read before tuning the dryer's quiet-timeout:** unlike the washer, this vibration sensor has been observed going completely silent for **45-60+ minutes in the middle of a real, still-running cycle** - confirmed independently on two different days (a 48.7-minute gap in the original calibration log, a 47-minute gap and a 61-minute gap on a later day, all inside cycles later confirmed real). That means a short quiet-timeout will sometimes end a cycle that hasn't actually finished yet - it'll just look like two separate shorter cycles instead of one long one. The 30-minute default is a deliberate middle ground: short enough to meaningfully improve on waiting out the full deadman for cycles that really did just finish, but you should expect it to occasionally split a long real cycle in two. Watch the Data Log: if you see a dryer `end`/`start` pair a few minutes apart where you know it was actually one continuous run, raise this setting (or set it to 0 to disable it and rely purely on the deadman, which is what happened before this setting existed). If you mostly see fast, correctly-timed normal stops, leave it or lower it further. There's no vibration-only setting that eliminates this trade-off - the underlying limitation is the sensor, not the app (see "Known limitations" below).
+
+Before this fix, every single dryer cycle observed ended via the deadman timer, none normally - not occasionally, but 100% of the time - because the fast path (2 sequential inactive reports) can basically never be satisfied by an edge-triggered sensor. Worse, because the washer's equivalent bug (above) kept `washerOn` stuck `true` for up to an hour past the real end of a wash, the dryer's washer-cross-talk suppression was blocking genuinely real dryer starts that happened to occur while the washer was (incorrectly) still considered running - a real ~30-minute dryer cycle went completely unlogged this way, with no start or end entry at all. Fixing the washer's stop detection removes that cascade too.
 
 **Why the start needs confirming:** a vibration sensor doesn't just report your dryer - it reports anything that shakes it a little, even once. A real cycle on this kind of sensor tends to report in a burst of several active/inactive toggles right when it starts, then goes quiet for long stretches (confirmed from a month of real logs: gaps of 20-50 minutes with no reports at all mid-cycle are normal). A single isolated `active` report - or even two, a couple minutes apart - with no further follow-up is indistinguishable from noise and, before this setting existed, was enough on its own to declare a cycle "started": firing a start notification and, since nothing ever confirmed a stop, eventually getting force-closed by the deadman timer and logged as a fake completed cycle. Two real-world false positives on the same hardware (a single 14-second blip, and later a pair of 14-second blips ~2.5 minutes apart) both topped out at 2 reports and then went permanently silent, while the one confirmed real cycle in the original log data showed 3 toggles in its opening burst - hence requiring 3. Raising "Require N reports" fixes this without meaningfully delaying real starts, since real ones burst within the first minute or two anyway. The raw reading is still logged either way (with no `Started`/cycle-log entry created for an unconfirmed blip), so you can always see what the sensor actually reported - and if a triple-blip false positive ever shows up in your own data, raise it again.
 
@@ -162,7 +170,15 @@ Known limitations
   cycle will get force-ended and logged as `deadman` instead of `normal`.
 - There's no dryer power monitoring option in this app (this build assumes
   vibration-only on the dryer); if you later add a power meter to the
-  dryer, use the washer's power-threshold settings as a model.
+  dryer, use the washer's power-threshold settings as a model - it doesn't
+  have this problem, since power meters report their idle wattage far more
+  frequently than a vibration sensor reports "still not moving."
+- The dryer's vibration sensor genuinely goes silent for 45-60+ minutes in
+  the middle of confirmed real cycles (not a bug - just how sparse this
+  sensor's reporting is). That means there's a hard limit on how fast and
+  how reliably a stop can be detected from vibration alone; see the
+  quiet-timeout trade-off above. Dryer power monitoring is the only way to
+  fully remove this limitation.
 
 Credits
 ---

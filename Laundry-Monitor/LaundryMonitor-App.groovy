@@ -77,8 +77,9 @@ def mainPage() {
             input "washerStartW", "decimal", title: "Start cycle when power (W) rises above", required: false, defaultValue: 5
             input "washerMinEndMin", "number", title: "Minimum minutes after start before end detection begins", required: false, defaultValue: 10
             input "washerStopW", "decimal", title: "Stop cycle when power (W) drops below", required: false, defaultValue: 3
-            input "washerStopReadings", "number", title: "Stop after power is below threshold for this many sequential readings", required: false, defaultValue: 2
+            input "washerStopReadings", "number", title: "Stop after power is below threshold for this many sequential readings (fast path, if the meter keeps reporting)", required: false, defaultValue: 2
             input "washerStopMinutes", "number", title: "Also require this many continuous minutes below threshold before stopping (0 = off)", required: false, defaultValue: 0
+            input "washerStopConfirmMin", "number", title: "Also confirm stop after this many minutes with no reading back above the stop threshold, even without a second low reading (handles meters that stop reporting once idle; 0 = off)", required: false, defaultValue: 10
             input "washerIgnoreW", "decimal", title: "Ignore extraneous power (W) readings above (spike filter)", required: false, defaultValue: 1500
             input "washerDeadmanMin", "number", title: "Maximum cycle time in minutes (deadman timer, force-ends a stuck cycle)", required: false, defaultValue: 90
         }
@@ -86,7 +87,8 @@ def mainPage() {
         section("<b>Dryer - Vibration Thresholds</b>", hideable: true, hidden: false) {
             input "dryerStartReports", "number", title: "Require this many 'active' vibration reports within the confirmation window before calling it a real start (filters spurious blips)", required: false, defaultValue: 3
             input "dryerStartWindowMin", "number", title: "Start confirmation window (minutes)", required: false, defaultValue: 10
-            input "dryerStopReadings", "number", title: "Stop after no vibration for this many sequential reportings", required: false, defaultValue: 2
+            input "dryerStopReadings", "number", title: "Stop after no vibration for this many sequential reportings (fast path; rarely satisfied by edge-triggered sensors - see README)", required: false, defaultValue: 2
+            input "dryerStopConfirmMin", "number", title: "Also confirm stop after this many minutes with no further vibration, even without a second inactive reading (0 = off; see README before lowering much - this sensor shows real mid-cycle silences of 45-60+ min)", required: false, defaultValue: 30
             input "dryerDeadmanMin", "number", title: "Maximum cycle time in minutes (deadman timer, force-ends a stuck cycle)", required: false, defaultValue: 90
         }
 
@@ -210,10 +212,12 @@ def initialize() {
 
     if (debugEnable) runIn(1800, logsOff)
 
-    // Reschedule deadman timers for any cycle already in progress so a
-    // settings save mid-cycle doesn't silently drop the safety net.
+    // Reschedule deadman and stop-confirm timers for any cycle already in
+    // progress so a settings save mid-cycle doesn't silently drop them.
     rescheduleDeadman("washer")
     rescheduleDeadman("dryer")
+    rescheduleStopConfirm("washer")
+    rescheduleStopConfirm("dryer")
 }
 
 private void rescheduleDeadman(String which) {
@@ -222,6 +226,17 @@ private void rescheduleDeadman(String which) {
     Long startTs = (which == "washer" ? state.washerCycleStart : state.dryerCycleStart) as Long
     if (!startTs) return
     armDeadman(which, startTs)
+}
+
+private void rescheduleStopConfirm(String which) {
+    Long endingSince = (which == "washer" ? state.washerEndingSince : state.dryerEndingSince) as Long
+    if (!endingSince) return
+    Integer confirmMin = (which == "washer" ? washerStopConfirmMin : dryerStopConfirmMin) as Integer
+    if (!confirmMin) return
+    String handler = which == "washer" ? "washerStopConfirmFired" : "dryerStopConfirmFired"
+    Long remainMs = (confirmMin * 60000L) - (now() - endingSince)
+    Integer delaySec = remainMs > 0 ? Math.max(1, (remainMs / 1000) as Integer) : 1
+    runIn(delaySec, handler, [overwrite: true])
 }
 
 // Deadman timers are always measured from the cycle's recorded/confirmed
@@ -247,10 +262,10 @@ def appButtonHandler(String btn) {
             state.cycleLog = []
             break
         case "resetWasherButton":
-            if (state.washerOn) endWasherCycle("manual reset")
+            if (state.washerOn) endWasherCycle("manual reset", now())
             break
         case "resetDryerButton":
-            if (state.dryerOn) endDryerCycle("manual reset")
+            if (state.dryerOn) endDryerCycle("manual reset", now())
             state.remove("dryerPendingActive")
             break
     }
@@ -305,7 +320,10 @@ def washerPowerHandler(evt) {
 
     if (p > stopW) {
         state.washerLowCount = 0
-        state.remove("washerEndingSince")
+        if (state.washerEndingSince) {
+            unschedule("washerStopConfirmFired")
+            state.remove("washerEndingSince")
+        }
         return
     }
 
@@ -315,12 +333,22 @@ def washerPowerHandler(evt) {
     }
 
     state.washerLowCount = (state.washerLowCount ?: 0) + 1
-    if (state.washerLowCount < stopReadings) return
 
-    if (!state.washerEndingSince) state.washerEndingSince = nowTs
+    // A power meter that only reports on change may never send a second low
+    // reading once it settles at idle - "N sequential readings" can then
+    // never be satisfied. Arm a quiet-timeout confirmation alongside the
+    // reading-count fast path, so the cycle still ends even if nothing else
+    // ever arrives.
+    if (!state.washerEndingSince) {
+        state.washerEndingSince = nowTs
+        Integer confirmMin = (washerStopConfirmMin ?: 0) as Integer
+        if (confirmMin > 0) runIn(confirmMin * 60, "washerStopConfirmFired", [overwrite: true])
+    }
+
+    if (state.washerLowCount < stopReadings) return
     if (stopMinutes > 0 && (nowTs - (state.washerEndingSince as Long)) < stopMinutes * 60000L) return
 
-    endWasherCycle("normal")
+    endWasherCycle("normal", state.washerEndingSince as Long)
 }
 
 private void startWasherCycle(Long ts, BigDecimal p) {
@@ -341,13 +369,14 @@ private void startWasherCycle(Long ts, BigDecimal p) {
     }
 }
 
-private void endWasherCycle(String reason) {
-    Long ts = now()
+private void endWasherCycle(String reason, Long endTs) {
+    Long ts = endTs ?: now()
     Long startTs = state.washerCycleStart as Long
     Integer durMin = startTs ? Math.round((ts - startTs) / 60000d) as Integer : 0
     logCycleEvent("washer", "end", ts, [durationMin: durMin, peakW: state.washerPeakW, reason: reason, concurrent: (state.dryerOn as boolean)])
     if (txtEnable) log.info "Washer done after ${durMin} min (peak ${state.washerPeakW}W, ${reason})"
     unschedule("washerDeadmanFired")
+    unschedule("washerStopConfirmFired")
     state.washerOn = false
     state.washerCycleEndTs = ts
     state.washerLowCount = 0
@@ -361,7 +390,13 @@ private void endWasherCycle(String reason) {
 def washerDeadmanFired() {
     if (!state.washerOn) return
     if (txtEnable) log.info "Washer deadman timer fired - forcing cycle end"
-    endWasherCycle("deadman")
+    endWasherCycle("deadman", now())
+}
+
+def washerStopConfirmFired() {
+    if (!state.washerOn || !state.washerEndingSince) return
+    if (txtEnable) log.info "Washer stop confirmed by quiet timeout (no reading above ${washerStopW}W in ${washerStopConfirmMin} min)"
+    endWasherCycle("normal", state.washerEndingSince as Long)
 }
 
 def washerReminderFired() {
@@ -432,11 +467,28 @@ def dryerAccelHandler(evt) {
 
     if (active) {
         state.dryerLowCount = 0
+        if (state.dryerEndingSince) {
+            unschedule("dryerStopConfirmFired")
+            state.remove("dryerEndingSince")
+        }
         return
     }
 
     state.dryerLowCount = (state.dryerLowCount ?: 0) + 1
-    if (state.dryerLowCount >= stopReadings) endDryerCycle("normal")
+
+    // Same edge-triggered-sensor problem as the washer, worse here: this
+    // sensor's real mid-cycle silences run 45-60+ minutes even while
+    // genuinely running, so "N sequential inactive reports" essentially
+    // never fires on its own. The quiet-timeout confirmation is a real
+    // trade-off here (see README) rather than a clean fix - default is
+    // deliberately conservative.
+    if (!state.dryerEndingSince) {
+        state.dryerEndingSince = nowTs
+        Integer confirmMin = (dryerStopConfirmMin ?: 0) as Integer
+        if (confirmMin > 0) runIn(confirmMin * 60, "dryerStopConfirmFired", [overwrite: true])
+    }
+
+    if (state.dryerLowCount >= stopReadings) endDryerCycle("normal", state.dryerEndingSince as Long)
 }
 
 private void startDryerCycle(Long ts) {
@@ -444,6 +496,7 @@ private void startDryerCycle(Long ts) {
     state.dryerOn = true
     state.dryerCycleStart = ts
     state.dryerLowCount = 0
+    state.remove("dryerEndingSince")
     logCycleEvent("dryer", "start", ts, [concurrent: concurrentWasher])
     if (txtEnable) log.info "Dryer started${concurrentWasher ? ' - washer is also running' : ''}"
     armDeadman("dryer", ts)
@@ -451,15 +504,17 @@ private void startDryerCycle(Long ts) {
     if (enableStartNotify) notify(dryerStartMessage ?: "Dryer started")
 }
 
-private void endDryerCycle(String reason) {
-    Long ts = now()
+private void endDryerCycle(String reason, Long endTs) {
+    Long ts = endTs ?: now()
     Long startTs = state.dryerCycleStart as Long
     Integer durMin = startTs ? Math.round((ts - startTs) / 60000d) as Integer : 0
     logCycleEvent("dryer", "end", ts, [durationMin: durMin, reason: reason, concurrent: (state.washerOn as boolean)])
     if (txtEnable) log.info "Dryer done after ${durMin} min (${reason})"
     unschedule("dryerDeadmanFired")
+    unschedule("dryerStopConfirmFired")
     state.dryerOn = false
     state.dryerLowCount = 0
+    state.remove("dryerEndingSince")
     if (switchList) switchList*.off()
     if (enableDoneNotify) notify(dryerDoneMessage ?: "Dryer is done")
 }
@@ -467,7 +522,13 @@ private void endDryerCycle(String reason) {
 def dryerDeadmanFired() {
     if (!state.dryerOn) return
     if (txtEnable) log.info "Dryer deadman timer fired - forcing cycle end"
-    endDryerCycle("deadman")
+    endDryerCycle("deadman", now())
+}
+
+def dryerStopConfirmFired() {
+    if (!state.dryerOn || !state.dryerEndingSince) return
+    if (txtEnable) log.info "Dryer stop confirmed by quiet timeout (no vibration in ${dryerStopConfirmMin} min)"
+    endDryerCycle("normal", state.dryerEndingSince as Long)
 }
 
 /* ---------------- shared helpers ---------------- */
