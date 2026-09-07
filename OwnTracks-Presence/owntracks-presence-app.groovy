@@ -30,7 +30,8 @@ definition(
     iconUrl: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience.png",
     iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
     iconX3Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
-    importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/claude/owntracks-presence-quickstart/OwnTracks-Presence/owntracks-presence-app.groovy",
+    importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/owntracks-presence-app.groovy",
+    version: "2.0.0",
     oauth: true)
 
 

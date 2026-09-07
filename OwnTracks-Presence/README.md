@@ -14,7 +14,7 @@ To get started you'll need:
 - An iBeacon (Optional; or you can use GPS in the OwnTracks App). 
 - Hubitat Hub
 	- [A Virtual Presence OwnTracks Device](https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/virtual-mobile-presence-owntracks.groovy)
-	- [My Hubitat app](https://raw.githubusercontent.com/bdwilson/hubitat/claude/owntracks-presence-quickstart/OwnTracks-Presence/owntracks-presence-app.groovy) assigned to your Virtual Presence Device(s) above
+	- [My Hubitat app](https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/owntracks-presence-app.groovy) assigned to your Virtual Presence Device(s) above
 
 ___NOTE: It's not my intention to duplicate what the OwnTracks MQTT server does with friend tracking, so if you have a requirement to use this, then you may need to look at other apps that can do different webhook URL's per region like [Geofency](https://github.com/bdwilson/hubitat/tree/master/Geofency-Presence) or use two apps to perform different tasks in your automations.___
 
@@ -24,7 +24,7 @@ Version 2.0 adds a **Quick Setup** button that creates and configures your virtu
 
 Installation
 --------------------
-1. Install via [HPM](https://community.hubitat.com/t/beta-hubitat-package-manager/38016) (or go to Drivers Code and Apps Code and install [virtual-mobile-presence-owntracks.groovy](https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/virtual-mobile-presence-owntracks.groovy) and [owntracks-presence-app.groovy](https://raw.githubusercontent.com/bdwilson/hubitat/claude/owntracks-presence-quickstart/OwnTracks-Presence/owntracks-presence-app.groovy) manually. <b>Click Oauth</b> after saving the app.)
+1. Install via [HPM](https://community.hubitat.com/t/beta-hubitat-package-manager/38016) (or go to Drivers Code and Apps Code and install [virtual-mobile-presence-owntracks.groovy](https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/virtual-mobile-presence-owntracks.groovy) and [owntracks-presence-app.groovy](https://raw.githubusercontent.com/bdwilson/hubitat/master/OwnTracks-Presence/owntracks-presence-app.groovy) manually. <b>Click Oauth</b> after saving the app.)
 2. Install the User App (Apps -> Add User App -> OwnTracks Presence)
 3. In **Step 1** of the app, enter a **Location/Region** and **User** (the same ones you'll use in OwnTracks) and click **Create Device** - this creates and configures the virtual presence device for you. It's usable by the app immediately - you don't need to select it anywhere. Repeat for each user/region pair you want to track. You can create as many as you like.
    * Prefer to do it yourself, or already have virtual presence devices from an older install? Go to _Devices -> Add Virtual Device_, create (or update an existing device to) type ___OwnTracks Virtual Mobile Presence Driver___, set its ___Location/Region___ and ___User___ preferences to match what you'll use in OwnTracks, then select it in **Step 2** ("Select Additional Virtual Presence Devices").
