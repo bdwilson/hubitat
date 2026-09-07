@@ -46,6 +46,7 @@ def setupScreen(){
     return dynamicPage(name: "setupScreen", uninstall: true, install: true){
    			section("<h1>Geofency Presence</h1>") {
             	paragraph ("Please read all the steps below in order to link your presence to a Geofency Location. This integration requires the <a href='https://www.geofency.com/'>Geofency</a> <b>iOS</b> app.")
+            	paragraph ("<i>Coming from a previous version of this app?</i> You can skip device creation in step 1 and instead select your pre-existing devices in step 2.")
 			}
 			section("<h2>1. Create a Geofency Virtual Presence Device</h2>") {
             	paragraph ("<b>Quick Setup:</b> enter the location and user you'll configure in Geofency below, then click <b>Create Device</b>. This creates a new <b>Geofency Virtual Mobile Presence Device</b> and configures it for you. Devices created this way are automatically usable by this app right away - you don't need to select them in step 2 below.")
@@ -57,7 +58,7 @@ def setupScreen(){
             	    state.remove("createMessage")
             	}
             	paragraph ("<i>Prefer to do it yourself, or already have a virtual presence device?</i> Go to <i>Devices -> Add Virtual Device</i> and create a new virtual device of type <b>Geofency Virtual Mobile Presence Device</b> corresponding to each user and location you wish to monitor within Geofency - or update your existing virtual presence devices to use this device type. You will then need to add device preference entries for each device to correspond to both the <b>user</b> and <b>location</b> that you will configure in Geofency. Devices created this way need to be selected in step 2 below.")
-            	paragraph ("<b>Upgrading from a previous version of this app?</b> If you already had virtual presence devices set up before Quick Setup existed, they are not created as child devices of this app, so make sure they're still selected in <b>step 2</b> below (\"Select Additional Virtual Presence Devices\") - check there if a device you were relying on before stops working after upgrading.")
+            	paragraph ("<b>Upgrading from a previous version of this app?</b> If you already had virtual presence devices set up before Quick Setup existed, you may skip creation above and instead select your pre-existing devices in <b>step 2</b> below (\"Select Additional Virtual Presence Devices\") - they are not created as child devices of this app, so make sure they're still selected there. Check there if a device you were relying on before stops working after upgrading.")
         	}
         section ("<h2>2. Select Additional Virtual Presence Devices</h2>") {
             paragraph ("Devices you created with <b>Quick Setup</b> in step 1 are already usable and don't need to be selected here. Use this only for devices you created yourself outside this app (or with a previous version of this app). If you select devices that are not <b>Geofency Virtual Mobile Presence Device</b> devices, they will not work - the instructions in step 3 below will tell you this.")
