@@ -57,16 +57,24 @@ def setupScreen(){
         	}
         section ("<h2>2. Select Virtual Presence Devices</h2>") {
             paragraph ("This will allow this App to control the devices you created above")
-    		input "presence", "capability.presenceSensor", multiple: true, required: true
+    		input "presence", "capability.presenceSensor", multiple: true, required: true, submitOnChange: true
     	}
         section("<h2>3. Setup URL in Geofency App</h2>"){
             paragraph("Use the following as the URL for Geofency but make sure that you add <b>your</b> user info after /location/ in the URL using the same <b>user</b> you configured in your virtual device in step 1: <a href='${extUri}'>${extUri}</a>. You will also need to create a location in Geofency that matches the location configured in your device.")
-            def configuredUsers = presence ? presence.collect { it.currentValue("user")?.trim() }.findAll { it }.unique() : []
-            if (configuredUsers) {
-                paragraph("<b>Your configured user(s) below - copy the exact URL for each into Geofency's Webhook URL field:</b>")
-                configuredUsers.each { u ->
-                    def perUserUri = extUri.replace("?access_token=", "${java.net.URLEncoder.encode(u, 'UTF-8')}?access_token=")
-                    paragraph("<b>${u}:</b> <a href='${perUserUri}'>${perUserUri}</a>")
+            if (presence) {
+                def configured = presence.findAll { it.currentValue("region")?.trim() && it.currentValue("user")?.trim() }
+                def unconfigured = presence.findAll { !(it.currentValue("region")?.trim() && it.currentValue("user")?.trim()) }
+                if (configured) {
+                    paragraph("<b>Your configured device(s) below - copy the exact URL for each into Geofency's Webhook URL field:</b>")
+                    configured.sort { it.currentValue("user") }.each { d ->
+                        def u = d.currentValue("user").trim()
+                        def loc = d.currentValue("region").trim()
+                        def perUserUri = extUri.replace("?access_token=", "${java.net.URLEncoder.encode(u, 'UTF-8')}?access_token=")
+                        paragraph("<b>Location: ${loc}, User: ${u}</b> (${d.displayName}): <a href='${perUserUri}'>${perUserUri}</a>")
+                    }
+                }
+                if (unconfigured) {
+                    paragraph("<b>${unconfigured.size() > 1 ? 'These selected devices do not' : 'This selected device does not'} have a Location and User set yet, so no URL is shown for ${unconfigured.size() > 1 ? 'them' : 'it'}:</b> ${unconfigured.collect { it.displayName }.join(', ')}. Either it is not a <b>Geofency Virtual Mobile Presence Device</b>, or its <b>Location to Track</b>/<b>User to Track</b> preferences have not been saved yet - open the device, set both, and click Save Preferences (or re-create it with Quick Setup in step 1).")
                 }
             }
             paragraph("Detailed installation instructions for Geofency can be found <a href='https://github.com/bdwilson/hubitat/tree/master/Geofency-Presence#Installation'>here</a>.")
