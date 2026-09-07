@@ -85,8 +85,10 @@ def mainPage() {
         }
 
         section("<b>Dryer - Vibration Thresholds</b>", hideable: true, hidden: false) {
-            input "dryerStartReports", "number", title: "Require this many 'active' vibration reports within the confirmation window before calling it a real start (filters spurious blips)", required: false, defaultValue: 3
-            input "dryerStartWindowMin", "number", title: "Start confirmation window (minutes)", required: false, defaultValue: 10
+            input "dryerStartReports", "number", title: "Require this many 'active' vibration reports within the confirmation window before treating it as a candidate burst (filters spurious blips)", required: false, defaultValue: 3
+            input "dryerStartWindowMin", "number", title: "Candidate burst window (minutes)", required: false, defaultValue: 10
+            input "dryerConfirmGapMin", "number", title: "Minutes of silence needed to count the next burst as a separate, later event rather than the same burst continuing", required: false, defaultValue: 3
+            input "dryerConfirmExpireMin", "number", title: "Confirm a real cycle only once a second, separate burst arrives within this many minutes of the first (filters handling/unloading - a door open + pull clothes + slam looks just like a real start in the first few minutes, but never repeats; see README)", required: false, defaultValue: 60
             input "dryerStopReadings", "number", title: "Stop after no vibration for this many sequential reportings (fast path; rarely satisfied by edge-triggered sensors - see README)", required: false, defaultValue: 2
             input "dryerStopConfirmMin", "number", title: "Also confirm stop after this many minutes with no further vibration, even without a second inactive reading (0 = off; see README before lowering much - this sensor shows real mid-cycle silences of 45-60+ min)", required: false, defaultValue: 30
             input "dryerDeadmanMin", "number", title: "Maximum cycle time in minutes (deadman timer, force-ends a stuck cycle)", required: false, defaultValue: 90
@@ -218,6 +220,18 @@ def initialize() {
     rescheduleDeadman("dryer")
     rescheduleStopConfirm("washer")
     rescheduleStopConfirm("dryer")
+
+    // Same for a dryer vibration burst that's mid-way through waiting for a
+    // second, confirming burst.
+    if (state.dryerProvisionalStart && !state.dryerOn) {
+        Integer confirmExpireMin = (dryerConfirmExpireMin ?: 0) as Integer
+        Long lastActive = state.dryerBurstLastActive as Long
+        if (confirmExpireMin && lastActive) {
+            Long remainMs = (confirmExpireMin * 60000L) - (now() - lastActive)
+            Integer delaySec = remainMs > 0 ? Math.max(1, (remainMs / 1000) as Integer) : 1
+            runIn(delaySec, "dryerConfirmExpireFired", [overwrite: true])
+        }
+    }
 }
 
 private void rescheduleDeadman(String which) {
@@ -267,6 +281,7 @@ def appButtonHandler(String btn) {
         case "resetDryerButton":
             if (state.dryerOn) endDryerCycle("manual reset", now())
             state.remove("dryerPendingActive")
+            clearDryerBurst()
             break
     }
 }
@@ -435,32 +450,59 @@ def dryerAccelHandler(evt) {
     }
 
     Integer stopReadings = (dryerStopReadings ?: 2) as Integer
-    Integer startReports = (dryerStartReports ?: 2) as Integer
-    Integer startWindowMin = (dryerStartWindowMin ?: 5) as Integer
-    if (debugEnable) log.debug "dryer vibration=${evt.value} on=${state.dryerOn}"
+    Integer startReports = (dryerStartReports ?: 3) as Integer
+    Integer startWindowMin = (dryerStartWindowMin ?: 10) as Integer
+    Integer confirmGapMin = (dryerConfirmGapMin ?: 3) as Integer
+    Integer confirmExpireMin = (dryerConfirmExpireMin ?: 60) as Integer
+    if (debugEnable) log.debug "dryer vibration=${evt.value} on=${state.dryerOn} provisional=${state.dryerProvisionalStart != null}"
 
-    // A vibration sensor can report a single isolated "active" blip (a bump,
-    // nearby HVAC/footsteps) that never repeats. Real cycles on this kind of
-    // sensor report in bursts of several active/inactive toggles right at
-    // the start, then go quiet for long stretches - so a lone blip with no
-    // follow-up burst is not distinguishable from noise and must not start a
-    // cycle (or fire a notification / log a fake 90-minute deadman cycle).
+    // A vibration sensor can't tell "the dryer is running" apart from
+    // "someone opened the door, pulled clothes out, and slammed it shut" -
+    // both look like a burst of several active/inactive toggles in the
+    // first few minutes. The one thing that reliably tells them apart: a
+    // real cycle keeps producing bursts throughout its whole runtime, while
+    // handling/unloading is a single burst that then goes permanently
+    // silent. So a cycle is only CONFIRMED (logged as a real start, deadman
+    // armed, notification sent) once a second, separate burst arrives after
+    // a genuine gap - a single burst that never repeats quietly expires as
+    // "unconfirmed" instead, with no notification.
     if (!state.dryerOn) {
         if (!active) return
-        if (startReports <= 1) {
-            startDryerCycle(nowTs)
+
+        if (state.dryerProvisionalStart == null) {
+            // Stage 1: still need enough reports to treat this as a
+            // candidate burst at all (filters a single spurious blip).
+            if (startReports <= 1) {
+                beginDryerBurst(nowTs, confirmExpireMin)
+                return
+            }
+            List pending = (state.dryerPendingActive instanceof List) ? state.dryerPendingActive : []
+            Long windowMs = startWindowMin * 60000L
+            pending = pending.findAll { (nowTs - (it as Long)) < windowMs }
+            pending << nowTs
+            if (pending.size() >= startReports) {
+                state.remove("dryerPendingActive")
+                beginDryerBurst(pending[0] as Long, confirmExpireMin)
+            } else {
+                state.dryerPendingActive = pending
+                if (debugEnable) log.debug "dryer vibration pending burst confirmation (${pending.size()}/${startReports} within ${startWindowMin}m)"
+            }
             return
         }
-        List pending = (state.dryerPendingActive instanceof List) ? state.dryerPendingActive : []
-        Long windowMs = startWindowMin * 60000L
-        pending = pending.findAll { (nowTs - (it as Long)) < windowMs }
-        pending << nowTs
-        if (pending.size() >= startReports) {
-            state.remove("dryerPendingActive")
-            startDryerCycle(pending[0] as Long)
-        } else {
-            state.dryerPendingActive = pending
-            if (debugEnable) log.debug "dryer vibration pending start confirmation (${pending.size()}/${startReports} within ${startWindowMin}m)"
+
+        // Stage 2: have a candidate burst - is this report a continuation
+        // of the same burst, or a genuinely separate later one?
+        Long lastActive = state.dryerBurstLastActive as Long
+        state.dryerBurstLastActive = nowTs
+        if (lastActive != null && (nowTs - lastActive) >= confirmGapMin * 60000L) {
+            state.dryerClusterCount = (state.dryerClusterCount ?: 1) + 1
+        }
+        if ((state.dryerClusterCount ?: 1) >= 2) {
+            Long confirmedStart = state.dryerProvisionalStart as Long
+            clearDryerBurst()
+            startDryerCycle(confirmedStart)
+        } else if (confirmExpireMin > 0) {
+            runIn(confirmExpireMin * 60, "dryerConfirmExpireFired", [overwrite: true])
         }
         return
     }
@@ -491,12 +533,38 @@ def dryerAccelHandler(evt) {
     if (state.dryerLowCount >= stopReadings) endDryerCycle("normal", state.dryerEndingSince as Long)
 }
 
+private void beginDryerBurst(Long startTs, Integer confirmExpireMin) {
+    state.dryerProvisionalStart = startTs
+    state.dryerBurstLastActive = startTs
+    state.dryerClusterCount = 1
+    if (debugEnable) log.debug "dryer vibration burst detected, waiting for a second separate burst before treating it as a real cycle"
+    if (confirmExpireMin > 0) runIn(confirmExpireMin * 60, "dryerConfirmExpireFired", [overwrite: true])
+}
+
+private void clearDryerBurst() {
+    state.remove("dryerProvisionalStart")
+    state.remove("dryerBurstLastActive")
+    state.remove("dryerClusterCount")
+    unschedule("dryerConfirmExpireFired")
+}
+
+def dryerConfirmExpireFired() {
+    if (state.dryerOn || !state.dryerProvisionalStart) return
+    Long startTs = state.dryerProvisionalStart as Long
+    Long lastActive = state.dryerBurstLastActive as Long
+    Integer burstMin = lastActive ? Math.round((lastActive - startTs) / 60000d) as Integer : 0
+    logCycleEvent("dryer", "unconfirmed", startTs, [durationMin: burstMin])
+    if (txtEnable) log.info "Dryer vibration burst (${burstMin} min) never repeated - treating as handling/noise, not a real cycle. No notification sent."
+    clearDryerBurst()
+}
+
 private void startDryerCycle(Long ts) {
     boolean concurrentWasher = state.washerOn as boolean
     state.dryerOn = true
     state.dryerCycleStart = ts
     state.dryerLowCount = 0
     state.remove("dryerEndingSince")
+    clearDryerBurst()
     logCycleEvent("dryer", "start", ts, [concurrent: concurrentWasher])
     if (txtEnable) log.info "Dryer started${concurrentWasher ? ' - washer is also running' : ''}"
     armDeadman("dryer", ts)
