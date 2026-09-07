@@ -220,10 +220,10 @@ def update (devices) {
             log.error "Geofency: device not found for '${deviceName}'. Make sure a device with type: Geofency Virtual Mobile Presence Device exists AND is configured with the proper location and user settings."
         } else {
             if (event == "0") {
-                log.info "Geofency: ${user} has exited ${location} - turning ${device} off"
+                log.debug "Geofency: ${user} has exited ${location} - turning ${device} off"
                 device.off()
             } else if (event == "1") {
-                log.info "Geofency: ${user} has entered ${location} - turning ${device} on"
+                log.debug "Geofency: ${user} has entered ${location} - turning ${device} on"
                 device.on()
             } else {
                 log.warn "Geofency: unexpected event value '${event}' received for ${deviceName}"
