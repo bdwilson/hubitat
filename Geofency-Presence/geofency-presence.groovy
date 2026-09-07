@@ -56,28 +56,39 @@ def setupScreen(){
             	paragraph ("<i>Prefer to do it yourself, or already have a virtual presence device?</i> Go to <i>Devices -> Add Virtual Device</i> and create a new virtual device of type <b>Geofency Virtual Mobile Presence Device</b> corresponding to each user and location you wish to monitor within Geofency - or update your existing virtual presence devices to use this device type. You will then need to add device preference entries for each device to correspond to both the <b>user</b> and <b>location</b> that you will configure in Geofency. Devices created this way need to be selected in step 2 below.")
         	}
         section ("<h2>2. Select Additional Virtual Presence Devices</h2>") {
-            paragraph ("Devices you created with <b>Quick Setup</b> in step 1 are already usable and don't need to be selected here. Use this only for devices you created yourself outside this app (Devices -> Add Virtual Device, or existing devices from before Quick Setup existed) - select them here to let this App control them too.")
+            paragraph ("Devices you created with <b>Quick Setup</b> in step 1 are already usable and don't need to be selected here. Use this only for devices you created yourself outside this app (or with a previous version of this app). If you select devices that are not <b>Geofency Virtual Mobile Presence Device</b> devices, they will not work - the instructions in step 3 below will tell you this.")
     		input "presence", "capability.presenceSensor", multiple: true, required: false, submitOnChange: true
     	}
         section("<h2>3. Setup URL in Geofency App</h2>"){
             paragraph("Use the following as the URL for Geofency but make sure that you add <b>your</b> user info after /location/ in the URL using the same <b>user</b> you configured in your virtual device in step 1: <a href='${extUri}'>${extUri}</a>. You will also need to create a location in Geofency that matches the location configured in your device.")
-            def allDevices = getAllPresenceDevices()
-            if (allDevices) {
-                def configured = allDevices.findAll { it.currentValue("region")?.trim() && it.currentValue("user")?.trim() }
-                def unconfigured = allDevices.findAll { !(it.currentValue("region")?.trim() && it.currentValue("user")?.trim()) }
-                if (configured) {
-                    paragraph("<b>Your configured device(s) below - copy the exact URL for each into Geofency's Webhook URL field:</b>")
-                    configured.sort { it.currentValue("user") }.each { d ->
-                        def u = d.currentValue("user").trim()
-                        def loc = d.currentValue("region").trim()
-                        def perUserUri = extUri.replace("?access_token=", "${java.net.URLEncoder.encode(u, 'UTF-8')}?access_token=")
-                        paragraph("<b>Location: ${loc}, User: ${u}</b> (${d.displayName}): <a href='${perUserUri}'>${perUserUri}</a>")
-                    }
-                }
-                if (unconfigured) {
-                    paragraph("<b>${unconfigured.size() > 1 ? 'These selected devices do not' : 'This selected device does not'} have a Location and User set yet, so no URL is shown for ${unconfigured.size() > 1 ? 'them' : 'it'}:</b> ${unconfigured.collect { it.displayName }.join(', ')}. Either it is not a <b>Geofency Virtual Mobile Presence Device</b>, or its <b>Location to Track</b>/<b>User to Track</b> preferences have not been saved yet - open the device, set both, and click Save Preferences (or re-create it with Quick Setup in step 1).")
+        }
+        def allDevices = getAllPresenceDevices()
+        if (allDevices) {
+            def configured = allDevices.findAll { it.currentValue("region")?.trim() && it.currentValue("user")?.trim() }.sort { it.currentValue("user") }
+            def unconfigured = allDevices.findAll { !(it.currentValue("region")?.trim() && it.currentValue("user")?.trim()) }
+            def entryNum = 0
+            configured.each { d ->
+                entryNum++
+                def u = d.currentValue("user").trim()
+                def loc = d.currentValue("region").trim()
+                def perUserUri = extUri.replace("?access_token=", "${java.net.URLEncoder.encode(u, 'UTF-8')}?access_token=")
+                section("Geofency Presence Entry ${entryNum}: ${loc} - ${u}", hideable: true, hidden: false) {
+                    paragraph("&bull; <b>Device:</b> ${d.displayName}<br>&bull; <b>Location:</b> ${loc}<br>&bull; <b>User:</b> ${u}<br>&bull; <b>URL:</b> <a href='${perUserUri}'>${perUserUri}</a>")
+                    paragraph("<b>In the Geofency app:</b><br>" +
+                        "&bull; Create a Geofency Location named <b>${loc}</b>.<br>" +
+                        "&bull; Go into Place Settings for Location <b>${loc}</b> -> Webhook. Under URL Settings -> Entry: paste the URL above and check <b>Send Webhook</b>. Under URL Settings -> Exit: paste the same URL and check <b>Send Webhook</b>.<br>" +
+                        "&bull; Set HTTP Method to <b>POST as JSON</b>.<br>" +
+                        "&bull; You may then use the <b>Test Enter</b> and <b>Test Exit</b> buttons. Watch the '${d.displayName}' device in Hubitat while doing so to confirm it works.")
                 }
             }
+            unconfigured.each { d ->
+                entryNum++
+                section("Geofency Presence Entry ${entryNum}: ${d.displayName} (NOT CONFIGURED)", hideable: true, hidden: false) {
+                    paragraph("<font color='red'><b>This selected device is not usable yet</b> - it has no Location and/or User set, so no webhook URL can be generated for it. Either it is not a <b>Geofency Virtual Mobile Presence Device</b>, or its <b>Location to Track</b>/<b>User to Track</b> preferences have not been saved yet. Open the device, set both, and click Save Preferences (or re-create it with Quick Setup in step 1, or de-select it in step 2 above if you don't intend to use it).</font>")
+                }
+            }
+        }
+        section(""){
             paragraph("Detailed installation instructions for Geofency can be found <a href='https://github.com/bdwilson/hubitat/tree/master/Geofency-Presence#Installation'>here</a>.")
             paragraph("If for some reason you want to use the Internal URL it would be <a href='${uri}'>${uri}</a>, however it's inaccessible from outside your home. ")
         }
