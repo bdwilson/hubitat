@@ -1,12 +1,12 @@
 {
   "packageName": "Geofency Presence",
   "author": "Brian Wilson",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Geofency-Presence",
   "communityLink": "https://community.hubitat.com/t/release-geofency-presence/22788",
-  "dateReleased": "2026-06-18",
-  "releaseNotes": "QoL: case-insensitive location/user matching, trim whitespace on inputs, unconditional log.info for presence changes, log.error for device-not-found, explicit event value validation, version fields added, dead code removed.",
+  "dateReleased": "2026-09-07",
+  "releaseNotes": "Adds Quick Setup: create and configure a virtual presence device directly from the app (no more manual Devices page trip), with per-device foldable entries in step 3 showing exact webhook URLs and Geofency setup steps, and a red warning for any selected device missing Location/User. Devices from versions before 2.0 keep working unchanged via the (now optional) manual device picker. Also fixes entry/exit events always logging at info level regardless of debug setting.",
   "drivers": [
     {
       "id": "526022be-bc79-4716-a34d-ef9e0eb7ba3a",
@@ -29,7 +29,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/geofency-presence.groovy",
       "required": true,
       "oauth": true,
-      "version": "1.2.0"
+      "version": "2.0.0"
     }
   ]
 }
