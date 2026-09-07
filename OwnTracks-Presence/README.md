@@ -33,9 +33,9 @@ Installation
 
 Configure OwnTracks
 --------------------
-1. Follow the steps in each entry from Step 3 above to configure that person's OwnTracks app - HTTP mode, Username, the webhook URL, and the matching Region/iBeacon.
+1. Follow the steps in each entry from Step 3 above to configure that person's OwnTracks app - create/select the matching Region, then set HTTP mode, Username, and the webhook URL from within it.
    ___Keep in mind, if you replace your hub and restore from a backup your Hubitat cloud URL will change! Make sure you adjust all your automations should you restore from a backup to a new hub.___
-2. Enable Debug Mode in the app (step 4), then in OwnTracks toggle between <b>significant</b> and <b>move</b> a couple of times. Don't be fooled by a successful-looking response in OwnTracks - check Hubitat's Logs and that device's events to confirm it actually updated.
+2. Enable Debug Mode in the app (step 4). OwnTracks has no dedicated test button - the most reliable check is <b>Send debug information</b> in the OwnTracks app, which pushes an update to the endpoint immediately; check Hubitat's Logs and that device's events to confirm it arrived. Toggling between <b>significant</b> and <b>move</b> a couple of times also works, but is less immediate. Either way, don't be fooled by a successful-looking response in OwnTracks itself - the log/device check is what actually confirms it.
 3. You should now have a virtual presence sensor that you can tie to Hubitat actions. You can create as many virtual presence sensors as you have iBeacons or GPS locations in OwnTracks. You can also use the attributes (if available) to do things based on battery percentage, charging status, etc.
 
 ### Manual setup / versions before 2.0 (still supported)
@@ -49,14 +49,14 @@ If you'd rather not use the **Create Device** button, or you're maintaining an i
 3. In the app's Step 2 ("Select Additional Virtual Presence Devices"), select the device(s) you just created.
 4. Copy the per-device URL shown in the app's Step 3 (or build it yourself: take the Endpoint URL and add your user's name after `/location/` and before `?access_token=`).
 5. (Optional sanity check) Paste the URL into your browser - you should get a response like: <code>["This is the right URL! Add it directly into the OwnTracks URL field and make sure your virtual presence device is configured with the the location/region and user (Brian) within the device preferences."]</code>
-6. In the OwnTracks app:
-   * Click the __(i)__ icon on the main OwnTracks screen, then __Settings__.
+6. In the OwnTracks app, go to __Regions__ and create (or select) a Region or iBeacon, adjusting the radius if needed, and name it to match the Location/Region set on your device in step 2.
+7. Within that Region:
+   * Tap the __(i)__ icon, then __Settings__.
    * Change the mode at the top to __HTTP__ - ___this will remove any regions/friends you've configured if you're using MQTT___.
    * If a UserID/Username field exists, set it to the same user configured in the URL - leaving it blank causes an error.
    * __Disable authentication__ (you'll authenticate using the access token in the Hubitat URL).
-   * In the URL field, paste the URL from above. ___Make sure the name of your User matches the user from installation step 2 (within the device preferences), is added after the /location/ part in the URL.___<br><img src="https://bdwilson.github.io/images/IMG_4809.jpg" width=300px>
-7. Still within the app, add your Regions or iBeacons, adjusting the radius if needed, and name them to match the Location/Region set on your device in step 2.
-8. To test, make sure debug mode is enabled in the Hubitat app, then go back and forth between <b>significant</b> and <b>move</b> a few times in OwnTracks and review your logs & virtual device events.
+   * In the URL field, enter the URL from above - you may need to tap __Continue__ for the URL change to take effect. ___Make sure the name of your User matches the user from installation step 2 (within the device preferences), is added after the /location/ part in the URL.___<br><img src="https://bdwilson.github.io/images/IMG_4809.jpg" width=300px>
+8. To test, make sure debug mode is enabled in the Hubitat app. OwnTracks has no dedicated test button - the most reliable check is __Send debug information__ in the OwnTracks app, which pushes an update to the endpoint immediately; review your logs & virtual device events to confirm it arrived. Toggling between <b>significant</b> and <b>move</b> a few times also works, but is less immediate.
 
 Bugs/Contact Info
 -----------------

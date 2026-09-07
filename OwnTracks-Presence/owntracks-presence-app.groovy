@@ -87,9 +87,9 @@ def setupScreen(){
                 section("OwnTracks Presence Entry ${entryNum}: ${loc} - ${u}", hideable: true, hidden: false) {
                     paragraph("&bull; <b>Device:</b> ${d.displayName}<br>&bull; <b>Region/Location:</b> ${loc}<br>&bull; <b>User:</b> ${u}<br>&bull; <b>URL:</b> <a href='${perUserUri}'>${perUserUri}</a>")
                     paragraph("<b>In the OwnTracks app (on ${u}'s phone):</b><br>" +
-                        "&bull; Tap the <b>(i)</b> icon -> Settings. Set mode to <b>HTTP</b> - this clears any regions/friends set up under MQTT. Set Username to <b>${u}</b>, disable authentication, and paste the URL above into the URL field.<br>" +
-                        "&bull; Add a Region (or iBeacon) named <b>${loc}</b> in the OwnTracks app, adjusting the radius if needed, to match this device.<br>" +
-                        "&bull; With Debug Mode enabled below, toggle between <b>significant</b> and <b>move</b> a couple of times in the OwnTracks app and watch the '${d.displayName}' device's events/logs in Hubitat to confirm it updates.")
+                        "&bull; Go to <b>Regions</b>. Create or select a Region named <b>${loc}</b> (or an iBeacon), adjusting the radius if needed, to match this device.<br>" +
+                        "&bull; Within that Region, tap <b>i</b> -> Settings. Set mode to <b>HTTP</b> - this clears any regions/friends set up under MQTT. Set Username to <b>${u}</b>, disable authentication, and enter the URL above into the URL field (you may need to tap <b>Continue</b> for the URL change to take effect).<br>" +
+                        "&bull; There's no dedicated test button in OwnTracks. With Debug Mode enabled below, the most reliable check is <b>Send debug information</b> in the OwnTracks app, which pushes an update to the endpoint immediately - watch Hubitat's Logs and the '${d.displayName}' device's events to confirm it arrived. Toggling between <b>significant</b> and <b>move</b> a couple of times works too, but is less immediate.")
                 }
             }
             unconfigured.each { d ->
