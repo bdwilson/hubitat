@@ -27,6 +27,10 @@ To get started you'll need:
 	- [A Virtual Presence Device](https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/virtual-mobile-presence.groovy)
 	- [My Hubitat app](https://raw.githubusercontent.com/bdwilson/hubitat/claude/geofency-presence-install-42ldx6/Geofency-Presence/geofency-presence.groovy) assigned to your Virtual Presence Device(s) above
 
+Upgrading to 2.0
+----------------
+Version 2.0 adds a **Quick Setup** button that creates and configures your virtual presence device for you - see Installation below. If you're upgrading from a version before 2.0, nothing changes for devices you already have configured: just confirm they're still selected in the app's **Step 2** ("Select Additional Virtual Presence Devices"), skip Quick Setup entirely, and carry on as before.
+
 Installation
 --------------------
 1. Install via [HPM](https://community.hubitat.com/t/beta-hubitat-package-manager/38016) - search for keyword "presence" (or go to Drivers Code and Apps Code and install [virtual-mobile-presence.groovy](https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/virtual-mobile-presence.groovy) and [geofency-presence.groovy](https://raw.githubusercontent.com/bdwilson/hubitat/claude/geofency-presence-install-42ldx6/Geofency-Presence/geofency-presence.groovy) manually. <b>Click Oauth</b> after saving the app.)
@@ -44,9 +48,9 @@ Configure Geofency
 3. Install the Geofency app and your iBeacon (optional). In the app, set up your location or iBeacons and name them with the same location you used above. Then click the 3 dots on the location and select "Webhook". Change the HTTP method to JSON via Post, and set the URL for entry and exit to the URL from Step 3. Use the Enter/Exit buttons to test the settings. Don't be fooled by a successful message in Geofency - make sure debug logging is enabled in the app so you can see if it really worked.
 4. You should now have a virtual presence sensor that you can tie to Hubitat actions. You can create as many virtual presence sensors as you have iBeacons or GPS locations in Geofency.
 
-### Manual/legacy setup (still supported)
+### Manual setup / versions before 2.0 (still supported)
 
-If you'd rather not use the **Create Device** button, or you're maintaining an existing install, the original manual flow still works unchanged:
+If you'd rather not use the **Create Device** button, or you're maintaining an install from a version before 2.0, the original manual flow still works unchanged:
 
 1. Go to Devices and create a new virtual device of type ___Geofency Virtual Mobile Presence Device___ for each user and location who you wish to track (or go to Drivers Code and create the device using [virtual-mobile-presence.groovy](https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/virtual-mobile-presence.groovy) first if it isn't installed yet).
 2. Set:
