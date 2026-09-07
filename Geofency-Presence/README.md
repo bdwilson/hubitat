@@ -1,9 +1,7 @@
 Geofency Multi-User Virtual Presence Updater for Hubitat
 =======
 <br>
-Geofency is an app for iOS (sorry Android users - perhaps
-[OwnTracks](https://github.com/bdwilson/hubitat/tree/master/OwnTracks-Presence)
-will work for you?) that uses either device GPS or Bluetooth LE iBeacons. This device driver and SmartApp will allow you to use
+Geofency is an app for iOS (sorry Android users - perhaps <a href="https://github.com/bdwilson/hubitat/tree/master/OwnTracks-Presence">OwnTracks</a> will work for you?) that uses either device GPS or Bluetooth LE iBeacons. This device driver and SmartApp will allow you to use
 Bluetooth iBeacons or GPS info on your mobile device to set presence in
 Hubitat. This means you can now get accurate presence with or without using GPS
 - depending on if you own an iBeacon or not - and without using a presence
@@ -44,9 +42,9 @@ Configure Geofency
 ------------------
 1. For each user's URL from Step 3 above, paste it into Geofency's webhook settings (Settings -> Webhook), with HTTP Method set to **POST (JSON)**.
    ___Keep in mind, if you replace your hub and restore from a backup your Hubitat cloud URL will change! Make sure you adjust all your automations should you restore from a backup to a new hub.___
-2. Paste the same URL into your browser and make sure you get a response like: <code>["Yep, this is the right URL, just put it into Geofency Web Hook, set to POST and do a test. Make sure your Geofency location name matches the device location and user (Brian) configured in the preferences"]</code>
-3. Install the Geofency app and your iBeacon (optional). In the app, set up your location or iBeacons and name them with the same location you used above. Then click the 3 dots on the location and select "Webhook". Change the HTTP method to JSON via Post, and set the URL for entry and exit to the URL from Step 3. Use the Enter/Exit buttons to test the settings. Don't be fooled by a successful message in Geofency - make sure debug logging is enabled in the app so you can see if it really worked.
-4. You should now have a virtual presence sensor that you can tie to Hubitat actions. You can create as many virtual presence sensors as you have iBeacons or GPS locations in Geofency.
+2. Install the Geofency app and your iBeacon (optional). In the app, set up your location or iBeacons and name them with the same location you used above. Then click the 3 dots on the location and select "Webhook". Change the HTTP method to JSON via Post, and set the URL for entry and exit to the URL from Step 3. Use the Enter/Exit buttons to test the settings.
+   ___Don't be fooled by a successful message in Geofency - that only means Geofency sent the request. Turn on Debug Mode in the app (step 4) and check Hubitat's Logs after each test to confirm the device actually changed state.___
+3. You should now have a virtual presence sensor that you can tie to Hubitat actions. You can create as many virtual presence sensors as you have iBeacons or GPS locations in Geofency.
 
 ### Manual setup / versions before 2.0 (still supported)
 
@@ -58,6 +56,7 @@ If you'd rather not use the **Create Device** button, or you're maintaining an i
   * ___User___ to be the name entered and saved in HE and added to the webhook.
 3. In the app's Step 2 ("Select Additional Virtual Presence Devices"), select the device(s) you just created.
 4. Copy the per-device URL shown in the app's Step 3 (or build it yourself: take the Endpoint URL and add your user's name after `/location/` and before `?access_token=`).
+5. (Optional sanity check) Paste the URL into your browser - you should get a response like: <code>["Yep, this is the right URL, just put it into Geofency Web Hook, set to POST and do a test. Make sure your Geofency location name matches the device location and user (Brian) configured in the preferences"]</code>
 
 Bugs/Contact Info
 -----------------
