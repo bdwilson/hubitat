@@ -147,6 +147,26 @@ running the first. This household does it constantly, and it's handled:
   is still running** (off by default, under Notifications) for a
   heads-up push/speech notification the moment that happens.
 
+Upgrading an existing install
+---
+Paste the new code over the old in **Apps Code**, then open the app and
+hit **Done** once. Pasting new code alone is not enough to move an
+existing install onto new defaults - Hubitat keeps settings whose input
+has been removed, and a changed `defaultValue` only ever applies to a
+setting that has never been set. So the app migrates its own settings on
+first run after an update, and logs exactly what it changed.
+
+The v2 migration (the dryer detection rewrite) retires the settings that
+drove the old report-counting logic, and moves two values that would
+otherwise silently work against you:
+
+| Change | Why |
+|---|---|
+| `dryerDeadmanMin` -> 120 (if lower) | It is only a safety net now. A real 65.8-minute cycle has been observed, so a cap near an hour truncates real cycles. |
+| `suppressCrossTalk` -> off | Cross-talk only ever produces short active spans, which the minimum run time already filters. Leaving it on only risks missing real dryer cycles that overlap a washer load. |
+
+These are one-time. Anything you set afterwards is respected.
+
 Data Log
 ---
 This is the main point of the app. Two logs are kept, both viewable and
@@ -169,6 +189,31 @@ exportable as CSV from **View / Export Data Log** on the main page:
 Both logs persist across hub reboots and app setting changes. Use **Clear
 Raw Log** / **Clear Cycle Log** to reset them (e.g. after you've exported
 and are starting a fresh tuning window).
+
+**Can the cycle log be rebuilt from the raw log?** Yes - for as long as
+the raw log still reaches back that far. Every cycle in the summary log is
+derived from the raw readings, so replaying the raw log reproduces
+starts, ends, durations and peak power exactly. (That is how the current
+detection logic was validated: the entire two-day dataset was replayed
+offline and checked against a written record of what actually ran.) Two
+caveats: a replay reflects your *current* settings, not the ones in force
+at the time, and it can only cover the window the raw log still holds.
+
+That window is the thing to watch, because the two logs are capped
+independently and the raw log fills far faster:
+
+| Log | Default cap | At ~250 readings/day | Approx. state size |
+|---|---|---|---|
+| Raw readings | 3000 | ~12 days | ~120 KB |
+| Cycle summaries | 300 | ~27 days | ~15 KB |
+
+So the cycle log currently outlives the raw log by more than double - past
+about 12 days the summaries are the *only* record, and can no longer be
+rebuilt. Raising the raw cap buys history at a real cost: app state is
+held in the hub's database and kept in memory, and a few hundred KB of it
+is enough to slow a hub down, so going much past the current 3000 is not
+free. If you want a long archive, the better move is to export the raw CSV
+periodically and keep it off-hub, rather than raising the cap.
 
 Manual reset
 ---

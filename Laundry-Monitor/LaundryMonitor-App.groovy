@@ -202,7 +202,64 @@ def uninstalled() {
     unschedule()
 }
 
+// Bump this when a new version has to change an existing install's stored
+// settings. Pasting new code into Hubitat does NOT do that on its own:
+// settings whose input is gone stay stored forever, and a changed
+// defaultValue only applies to a setting that has never been set. So
+// without this, an existing install keeps running on its old values and
+// silently ignores the new defaults.
+private static String settingsVersion() { return "2" }
+
+private void migrateSettings() {
+    if (state.settingsVersion == settingsVersion()) return
+    List changes = []
+
+    // v2: dryer detection was rewritten around how long the vibration
+    // sensor stays continuously active. These drove the old
+    // report-counting / burst-confirmation logic and now do nothing.
+    ["dryerStartReports", "dryerStartWindowMin", "dryerConfirmGapMin",
+     "dryerConfirmExpireMin", "dryerStopReadings", "dryerStopConfirmMin",
+     "crossTalkGraceMin"].each { String old ->
+        if (settings[old] != null) {
+            try {
+                app.removeSetting(old)
+                changes << "retired ${old}"
+            } catch (Exception ignored) {
+                // older platform without removeSetting - harmless, the
+                // value just sits there unused
+            }
+        }
+    }
+
+    if (dryerMinRunMin == null) {
+        app.updateSetting("dryerMinRunMin", [value: "3", type: "number"])
+        changes << "dryerMinRunMin=3"
+    }
+
+    // The deadman is only a safety net now (for a sensor that dies
+    // mid-cycle and never reports inactive), not part of normal detection.
+    // A real 65.8-minute cycle has been observed, so anything near an hour
+    // would truncate real cycles.
+    if ((dryerDeadmanMin ?: 0) < 120) {
+        app.updateSetting("dryerDeadmanMin", [value: "120", type: "number"])
+        changes << "dryerDeadmanMin=120"
+    }
+
+    // Cross-talk only ever produces short active spans, which the minimum
+    // run time already filters. Leaving this on only risks missing real
+    // dryer cycles that legitimately overlap a washer load.
+    if (suppressCrossTalk) {
+        app.updateSetting("suppressCrossTalk", [value: "false", type: "bool"])
+        changes << "suppressCrossTalk=off"
+    }
+
+    state.settingsVersion = settingsVersion()
+    if (changes) log.info "Laundry Monitor: applied v${settingsVersion()} settings (${changes.join(', ')})"
+}
+
 def initialize() {
+    migrateSettings()
+
     subscribe(washerPowerMeter, "power", washerPowerHandler)
     subscribe(dryerVibrationSensor, "acceleration", dryerAccelHandler)
 
@@ -215,8 +272,8 @@ def initialize() {
     rescheduleStopConfirm("washer")
     rescheduleStopConfirm("dryer")
 
-    // Same for a dryer vibration burst that's mid-way through waiting for a
-    // second, confirming burst.
+    // Same for a dryer vibration burst still building toward the minimum
+    // continuous run time.
     if (state.dryerActiveSince && !state.dryerOn) {
         Integer minRunMin = (dryerMinRunMin ?: 3) as Integer
         Long remainMs = (minRunMin * 60000L) - (now() - (state.dryerActiveSince as Long))
