@@ -8,9 +8,9 @@ thresholds can be re-tuned later from real data instead of guesswork.
 
 It's based on the community [Better Laundry
 Monitor](https://github.com/HubitatCommunity/Hubitat-BetterLaundryMonitor)
-app's detection logic (power thresholds with a wait-before-counting window,
-sequential/continuous-minutes end debounce, deadman timer; vibration with
-sequential-inactive-reading debounce), but trimmed down to exactly this one
+app's power-threshold detection logic (wait-before-counting window,
+sequential/continuous-minutes end debounce, deadman timer), but trimmed
+down to exactly this one
 washer + one dryer setup, with all optional notification "flows" off by
 default, and with its own persistent, exportable data log instead of the
 transient in-memory calibration stats the community app keeps.
@@ -65,25 +65,61 @@ Dryer vibration thresholds
 ---
 | Setting | Default | What it does |
 |---|---|---|
-| Require N 'active' reports within the candidate-burst window | 3 | How many `active` reports have to arrive within the window below before a vibration burst is even treated as a *candidate* (not yet confirmed) cycle. Filters spurious single/double blips (a bump, nearby footsteps/HVAC). Set to 1 to skip this stage entirely. |
-| Candidate burst window | 10 min | The window the above reports have to fall within. |
-| Silence needed to count a "separate" later burst | 3 min | How much quiet has to pass before the next report counts as a new, later burst rather than the candidate burst just continuing. |
-| Confirm only if a second burst arrives within | 60 min | A candidate burst only becomes a real, confirmed cycle (logged, deadman armed, notification sent) once a *second, separate* burst shows up within this window. One burst that never repeats quietly expires as "unconfirmed" instead - see below, this is the important one for avoiding false "Dryer started" alerts. |
-| Stop after N sequential inactive reports | 2 | Fast path, same idea as the washer's - but see the warning below: vibration sensors are typically edge-triggered (report only on active↔inactive transitions), so a second `inactive` report in a row essentially never arrives in practice. Don't rely on this alone. |
-| Quiet-timeout confirmation | 30 min | Backstop: also ends the cycle after this many minutes with no further vibration at all. **Read the warning below before changing this** - it's a real trade-off on this hardware, not a simple "shorter is better" dial. |
-| Deadman timer | 90 min | Same idea as the washer's - force-ends a cycle that's run this long without a confirmed stop. |
+| Minimum continuous active time | 3 min | The sensor has to stay continuously `active` this long before it counts as a real cycle. Anything shorter is treated as a bump/handling and ignored entirely - no notification, no cycle logged. |
+| Deadman timer | 120 min | Pure safety net, for a sensor that dies mid-cycle and never reports `inactive`. Not part of normal operation any more. |
 
-**Important trade-off - read before tuning the dryer's quiet-timeout:** unlike the washer, this vibration sensor has been observed going completely silent for **45-60+ minutes in the middle of a real, still-running cycle** - confirmed independently on two different days (a 48.7-minute gap in the original calibration log, a 47-minute gap and a 61-minute gap on a later day, all inside cycles later confirmed real). That means a short quiet-timeout will sometimes end a cycle that hasn't actually finished yet - it'll just look like two separate shorter cycles instead of one long one. The 30-minute default is a deliberate middle ground: short enough to meaningfully improve on waiting out the full deadman for cycles that really did just finish, but you should expect it to occasionally split a long real cycle in two. Watch the Data Log: if you see a dryer `end`/`start` pair a few minutes apart where you know it was actually one continuous run, raise this setting (or set it to 0 to disable it and rely purely on the deadman, which is what happened before this setting existed). If you mostly see fast, correctly-timed normal stops, leave it or lower it further. There's no vibration-only setting that eliminates this trade-off - the underlying limitation is the sensor, not the app (see "Known limitations" below).
+**How dryer detection works (and why it's this simple):** this sensor
+latches `active` for as long as it keeps feeling vibration, and only
+reports `inactive` once the shaking actually stops. So the length of a
+continuous active span is a near-perfect signal, and it separates
+*cleanly*. Measured across two days of real logged data - 71 active spans
+in total:
 
-Before this fix, every single dryer cycle observed ended via the deadman timer, none normally - not occasionally, but 100% of the time - because the fast path (2 sequential inactive reports) can basically never be satisfied by an edge-triggered sensor. Worse, because the washer's equivalent bug (above) kept `washerOn` stuck `true` for up to an hour past the real end of a wash, the dryer's washer-cross-talk suppression was blocking genuinely real dryer starts that happened to occur while the washer was (incorrectly) still considered running - a real ~30-minute dryer cycle went completely unlogged this way, with no start or end entry at all. Fixing the washer's stop detection removes that cascade too.
+| | count | span length |
+|---|---|---|
+| bumps, door slams, unloading, washer cross-talk | 66 | 10-68 **seconds** |
+| real dryer cycles | 5 | 28.7-65.8 **minutes** |
 
-**Why a start needs two separate bursts to confirm, not just enough reports in one burst:** a vibration sensor can't tell "the dryer is running" apart from "someone opened the door, pulled clothes out, and slammed it shut" - physically handling the dryer produces the exact same kind of active/inactive toggle burst as the drum starting up, sometimes even more of them. Report *count* alone can't fix this: one real false alarm on this hardware was a single 14-second blip; another was two 14-second blips ~2.5 minutes apart; but a later one was a full *5* active reports across 3.5 minutes - clearly someone unloading the dryer, immediately followed by total silence for over an hour. Raising the report count to filter that out would also risk delaying or missing real starts, since it's genuinely the same signature.
+There is nothing in between - a 25x gap. So "did the vibration last more
+than a few minutes?" answers the question outright, and the cycle end is
+exact (the `inactive` report *is* the moment the dryer stopped), with no
+debounce, quiet-timeout, or deadman guesswork involved. Replayed against
+that dataset, this catches 5 of 5 real cycles - each matching the
+household's own written record of when it started and finished, to within
+about a minute - and produces zero false positives from the 66 blips.
 
-What actually tells them apart: a real drying cycle keeps producing vibration bursts spread across its *entire* runtime (confirmed from a month of real logs - a burst at the start, then silence, then another burst 10-50 minutes later, and so on until the cycle ends), while handling the dryer is one burst that then goes *permanently* silent. So a candidate burst (enough reports close together to rule out a single spurious blip) is only promoted to a confirmed, real cycle once a **second, separate burst** shows up later - a genuine gap of quiet, then more vibration. If nothing shows up again within the confirmation window, it quietly logs as `unconfirmed` in the cycle log (with no `Started` entry, no deadman armed, and critically **no notification sent**) instead of alerting you that the dryer started when someone was really just unloading it.
+The only cost is that a start is reported a few minutes late (however
+long "minimum continuous active time" is set to), which is a small price
+for never being told the dryer started because somebody bumped it.
 
-The trade-off: a real cycle's *notification* won't fire until that second burst arrives, which (per the observed burst pattern) is usually within the first 10 minutes but can occasionally take up to the confirmation window if the cycle's first quiet gap happens to run long. Given the alternative is a wrong "Dryer started" push every time someone empties the dryer, that trade is worth it - accuracy over speed. The raw reading is still logged immediately either way, so nothing is ever lost, just held back from being called a "start" until it's actually confirmed.
+**A note on what this replaced,** since the earlier approach is a good
+cautionary tale. Before this, the app tried to identify cycles by
+*counting* vibration reports in a window and then requiring a second,
+separate burst to confirm - built on the assumption that report duration
+carried no information, because the first few false positives examined all
+happened to last exactly 14 seconds (read at the time as a fixed
+auto-revert timeout in the driver). That was backwards: 14 seconds is the
+*minimum* hold for a brief trigger, and sustained vibration keeps the
+sensor latched far longer. Counting reports could never work - handling
+the dryer produces just as many toggles as starting it, sometimes more -
+and that approach missed all 5 real cycles in the same dataset while
+confirming 2 false ones. Duration was the signal the whole time.
 
-Interesting side note if you ever look at the raw log closely: the very first false-positive blip found on this hardware lasted exactly 14 seconds before flipping back to `inactive`, and so did the next one, days apart. That's suspiciously exact for a random bump, and points at a fixed auto-revert timeout in the sensor/driver itself (some vibration sensor drivers force `inactive` a fixed N seconds after any trigger, regardless of whether the underlying vibration is still happening) rather than 14 seconds of real shaking each time. If your sensor's driver has a configurable "reset"/"auto-revert" delay, that's worth a look, but it doesn't change anything about how this app should behave.
+Washer/dryer cross-talk
+---
+Largely a solved problem now, and the dedicated setting defaults to
+**off**. Washer vibration bleeding into the dryer sensor only ever
+produced short active spans (68 seconds at the very worst) in real data,
+so the minimum-run-time check filters it as a side effect of how it
+works.
+
+This matters because the old suppression logic was actively harmful: this
+household routinely runs the dryer and washer at the same time (a load
+goes in the dryer, the next load goes in the washer), and suppressing
+dryer vibration whenever the washer was running caused real dryer cycles
+to be missed outright. The setting is still there if your sensor somehow
+latches `active` from washer vibration alone, but leave it off unless the
+Data Log shows you need it.
 
 These defaults came from reviewing about a month of real washer power
 readings and dryer vibration reports against the previous Node-RED-based
@@ -91,59 +127,16 @@ setup's actual behavior - not generic guesses. If you're starting from
 different hardware, they're still a reasonable starting point, but watch
 the Data Log for the first few weeks and adjust from there.
 
-Washer/dryer cross-talk suppression
----
-A vibration sensor mounted on or near a dryer will often also pick up a
-washer running nearby (shared wall, floor joist, or just proximity) and
-misreport it as a dryer cycle. In one month of logs from a real setup,
-roughly a third of the vibration-detected "dryer cycles" were entirely
-contained inside a concurrent washer power session - i.e., not the dryer
-running at all.
-
-With **Ignore dryer vibration while the washer is actively running**
-enabled (on by default), any vibration report that arrives while the
-washer is mid-cycle is logged (so you can still see it happened) but never
-**starts** a new dryer cycle. An optional grace period extends that
-suppression for a few minutes after the washer itself stops, since
-vibration can linger briefly.
-
-Crucially, this suppression only ever blocks a *brand new* dryer signal.
-It never interferes with anything already underway - neither a confirmed
-running cycle (see "Running both machines at once" below), nor a candidate
-burst that's still waiting for its confirming second burst. That second
-exemption matters more than it sounds: starting a washer load right after
-you start the dryer is an extremely common thing to do, and without it,
-every confirming burst for the whole washer run gets suppressed and the
-real dryer cycle silently expires as `unconfirmed`. That was observed
-twice in a single day of real data - two genuine dryer cycles that the
-app completely missed, both of which the user had started within a couple
-of minutes of a washer load.
-
-The trade-off of that exemption: once a candidate burst exists, washer
-bleed-through can in principle supply its confirming second burst, so a
-"someone handled the dryer, then started a washer load" sequence could
-occasionally confirm a cycle that never really ran. That's a rarer
-coincidence than the pattern it fixes, and it fails in the safer
-direction (a late/spurious "started" rather than a real cycle going
-completely unrecorded).
-
-This is a mitigation, not a fix - if your two machines share a wall you'll
-still see occasional real dryer loads *start* alongside an already-running
-washer load, which this can't and shouldn't try to filter (a single
-vibration sensor can't tell "washer bleed-through" from "the dryer really
-did just start" in that instant). If that's frequent enough to matter, the
-more reliable long-term fix is remounting the vibration sensor further from
-the washer, or moving the dryer to power monitoring too.
-
 Running both machines at once (second load in progress)
 ---
-A common real sequence: washer finishes → clothes go in the dryer → the
+A common real sequence: washer finishes -> clothes go in the dryer -> the
 washer gets started again for a second load while the dryer is still
-running the first. The app handles this explicitly:
+running the first. This household does it constantly, and it's handled:
 
-- Cross-talk suppression (above) never applies once the dryer has already
-  started, so a second washer load running at the same time cannot blind
-  the dryer's own stop detection or delay it until the deadman timer.
+- Dryer detection is based purely on how long its own sensor stays
+  vibrating, so a washer running at the same time is simply irrelevant to
+  it (and cross-talk suppression, which used to break exactly this case,
+  now defaults off).
 - Every cycle-start/end event in the Cycle Summary Log carries a
   `concurrent` column - true if the *other* machine was running at that
   moment. A washer-start row with `concurrent=1` means the dryer still had
@@ -185,35 +178,32 @@ threshold changes.
 
 Known limitations
 ---
-- Cross-talk suppression can only prevent a *false start* of the dryer
-  while the washer is running; it can't tell a real dryer start apart from
-  washer bleed-through in that same instant, so an occasional genuine dryer
-  start right as the washer is running will still be suppressed. Once a
-  dryer cycle is actually running, though, nothing about the washer can
-  block or delay its detection - see "Running both machines at once" above.
-- The deadman timer is a hard cap on cycle length. If you regularly run
-  loads longer than 90 minutes, raise it - otherwise a legitimately long
-  cycle will get force-ended and logged as `deadman` instead of `normal`.
-- There's no dryer power monitoring option in this app (this build assumes
-  vibration-only on the dryer); if you later add a power meter to the
-  dryer, use the washer's power-threshold settings as a model - it doesn't
-  have this problem, since power meters report their idle wattage far more
-  frequently than a vibration sensor reports "still not moving."
-- The dryer's vibration sensor genuinely goes silent for 45-60+ minutes in
-  the middle of confirmed real cycles (not a bug - just how sparse this
-  sensor's reporting is). That means there's a hard limit on how fast and
-  how reliably a stop can be detected from vibration alone; see the
-  quiet-timeout trade-off above. Dryer power monitoring is the only way to
-  fully remove this limitation.
-- A real dryer's *notification* is deliberately held back until a second
-  confirming burst arrives (see "Why a start needs two separate bursts"
-  above), so if you want a heads-up the instant the sensor first reports
-  anything, that's not what this app is optimized for - it's optimized to
-  never tell you the dryer started when someone was just unloading it.
-- This class of false positive (bumps, door handling) is specific to the
-  vibration-based dryer. The washer's power-based detection isn't
-  susceptible to it - physically bumping or knocking into a washer doesn't
-  move its power draw, so there's nothing analogous to filter there.
+- Dryer starts are reported a few minutes late by design - however long
+  "minimum continuous active time" is set to - because that wait is what
+  proves the vibration is a real cycle and not someone bumping the machine.
+  Ends are exact.
+- If your dryer sensor behaves differently from this one (i.e. it does
+  *not* latch `active` through sustained vibration, but instead
+  auto-reverts to `inactive` after a fixed few seconds regardless), this
+  duration-based approach won't work as-is and there is no setting that
+  rescues it. Check the raw log: if you never see an active span longer
+  than a minute even during a known dryer run, that's the tell.
+- The deadman timer is a hard cap on cycle length. Real cycles here have
+  run up to 66 minutes, so the 120-minute default leaves plenty of room -
+  but if you set it near your real cycle length it will truncate them.
+  (A previous 66-minute setting would have cut a real 65.8-minute cycle
+  short by seconds.)
+- There's no dryer power monitoring option in this app (it assumes
+  vibration-only on the dryer). It's no longer needed for reliability -
+  the vibration approach now matches the household's own record of every
+  cycle - but if you add a power meter later, use the washer's
+  power-threshold settings as a model.
+- A correction worth recording: an earlier version of this README claimed
+  this sensor "goes silent for 45-60+ minutes in the middle of real
+  cycles." That was a misreading of the same data. It wasn't silent - it
+  was *latched active* for those 45-60 minutes, which is exactly the
+  signal the current detection relies on. If you're re-tuning from the
+  raw log later, read active/inactive as spans, not as isolated events.
 
 Credits
 ---

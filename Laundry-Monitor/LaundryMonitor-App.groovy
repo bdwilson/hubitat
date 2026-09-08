@@ -85,21 +85,14 @@ def mainPage() {
         }
 
         section("<b>Dryer - Vibration Thresholds</b>", hideable: true, hidden: false) {
-            input "dryerStartReports", "number", title: "Require this many 'active' vibration reports within the confirmation window before treating it as a candidate burst (filters spurious blips)", required: false, defaultValue: 3
-            input "dryerStartWindowMin", "number", title: "Candidate burst window (minutes)", required: false, defaultValue: 10
-            input "dryerConfirmGapMin", "number", title: "Minutes of silence needed to count the next burst as a separate, later event rather than the same burst continuing", required: false, defaultValue: 3
-            input "dryerConfirmExpireMin", "number", title: "Confirm a real cycle only once a second, separate burst arrives within this many minutes of the first (filters handling/unloading - a door open + pull clothes + slam looks just like a real start in the first few minutes, but never repeats; see README)", required: false, defaultValue: 60
-            input "dryerStopReadings", "number", title: "Stop after no vibration for this many sequential reportings (fast path; rarely satisfied by edge-triggered sensors - see README)", required: false, defaultValue: 2
-            input "dryerStopConfirmMin", "number", title: "Also confirm stop after this many minutes with no further vibration, even without a second inactive reading (0 = off; see README before lowering much - this sensor shows real mid-cycle silences of 45-60+ min)", required: false, defaultValue: 30
-            input "dryerDeadmanMin", "number", title: "Maximum cycle time in minutes (deadman timer, force-ends a stuck cycle)", required: false, defaultValue: 90
+            paragraph "The sensor stays <i>active</i> for as long as it keeps feeling vibration, so how long it stays active is what separates a real cycle from a bump: in real data, handling/bumps/cross-talk topped out at 68 seconds while every real dryer cycle held active for 28+ minutes."
+            input "dryerMinRunMin", "number", title: "Vibration must stay continuously active this many minutes to count as a real cycle", required: false, defaultValue: 3
+            input "dryerDeadmanMin", "number", title: "Maximum cycle time in minutes (deadman timer - safety net for a sensor that dies mid-cycle and never reports inactive)", required: false, defaultValue: 120
         }
 
-        section("<b>Washer/Dryer Cross-talk</b>", hideable: true, hidden: false) {
-            paragraph "A vibration sensor near the washer can easily pick up the washer running and misreport it as a dryer cycle. This suppresses that."
-            input "suppressCrossTalk", "bool", title: "Ignore dryer vibration while the washer is actively running", required: false, defaultValue: true, submitOnChange: true
-            if (suppressCrossTalk) {
-                input "crossTalkGraceMin", "number", title: "Also suppress for this many minutes after the washer stops", required: false, defaultValue: 2
-            }
+        section("<b>Washer/Dryer Cross-talk</b>", hideable: true, hidden: true) {
+            paragraph "Mostly obsolete: washer vibration bleeding into the dryer sensor only ever produces <i>short</i> active spans, which the minimum-run-time check above already filters. Leaving this off avoids missing real dryer cycles that legitimately run at the same time as a washer load."
+            input "suppressCrossTalk", "bool", title: "Also refuse to start a dryer cycle while the washer is running", required: false, defaultValue: false, submitOnChange: true
         }
 
         boolean anyNotifyEnabled = (enableStartNotify || enableDoneNotify || enableReminder || enableConcurrentLoadNotify) as boolean
@@ -189,6 +182,7 @@ private String summaryText() {
     String newest = raw ? new Date(raw[-1].t as Long).format('yyyy-MM-dd h:mma') : "n/a"
     "Raw readings: ${raw.size()} (${oldest} - ${newest})<br>" +
     "Completed cycles logged: ${cyc.size()}<br>" +
+    "Short dryer vibration blips ignored (bumps/handling): ${state.dryerIgnoredBlips ?: 0}<br>" +
     "Cross-talk suppressions so far: ${state.totalSuppressedCount ?: 0}"
 }
 
@@ -223,14 +217,11 @@ def initialize() {
 
     // Same for a dryer vibration burst that's mid-way through waiting for a
     // second, confirming burst.
-    if (state.dryerProvisionalStart && !state.dryerOn) {
-        Integer confirmExpireMin = (dryerConfirmExpireMin ?: 0) as Integer
-        Long lastActive = state.dryerBurstLastActive as Long
-        if (confirmExpireMin && lastActive) {
-            Long remainMs = (confirmExpireMin * 60000L) - (now() - lastActive)
-            Integer delaySec = remainMs > 0 ? Math.max(1, (remainMs / 1000) as Integer) : 1
-            runIn(delaySec, "dryerConfirmExpireFired", [overwrite: true])
-        }
+    if (state.dryerActiveSince && !state.dryerOn) {
+        Integer minRunMin = (dryerMinRunMin ?: 3) as Integer
+        Long remainMs = (minRunMin * 60000L) - (now() - (state.dryerActiveSince as Long))
+        Integer delaySec = remainMs > 0 ? Math.max(1, (remainMs / 1000) as Integer) : 1
+        runIn(delaySec, "dryerMinRunFired", [overwrite: true])
     }
 }
 
@@ -243,11 +234,12 @@ private void rescheduleDeadman(String which) {
 }
 
 private void rescheduleStopConfirm(String which) {
-    Long endingSince = (which == "washer" ? state.washerEndingSince : state.dryerEndingSince) as Long
+    if (which != "washer") return
+    Long endingSince = state.washerEndingSince as Long
     if (!endingSince) return
-    Integer confirmMin = (which == "washer" ? washerStopConfirmMin : dryerStopConfirmMin) as Integer
+    Integer confirmMin = washerStopConfirmMin as Integer
     if (!confirmMin) return
-    String handler = which == "washer" ? "washerStopConfirmFired" : "dryerStopConfirmFired"
+    String handler = "washerStopConfirmFired"
     Long remainMs = (confirmMin * 60000L) - (now() - endingSince)
     Integer delaySec = remainMs > 0 ? Math.max(1, (remainMs / 1000) as Integer) : 1
     runIn(delaySec, handler, [overwrite: true])
@@ -280,8 +272,8 @@ def appButtonHandler(String btn) {
             break
         case "resetDryerButton":
             if (state.dryerOn) endDryerCycle("manual reset", now())
-            state.remove("dryerPendingActive")
-            clearDryerBurst()
+            state.remove("dryerActiveSince")
+            unschedule("dryerMinRunFired")
             break
     }
 }
@@ -423,153 +415,63 @@ def washerReminderFired() {
 def dryerAccelHandler(evt) {
     boolean active = (evt.value == "active")
     Long nowTs = now()
+    logRaw("dryer", evt.value, false)
 
-    // Cross-talk suppression only ever blocks a *brand new* dryer signal from
-    // being mistaken for washer vibration bleed-through. It must never
-    // interfere with something already underway:
-    //   - a confirmed running cycle (state.dryerOn), or a second washer load
-    //     starting mid-dryer-cycle would blind the dryer's stop detection;
-    //   - a candidate burst already being tracked (dryerProvisionalStart),
-    //     which needs a confirming second burst to become a real cycle. A
-    //     washer load started right after someone starts the dryer would
-    //     otherwise suppress every confirming burst for its whole run, and
-    //     the real dryer cycle would silently expire as "unconfirmed" -
-    //     observed twice in one day of real data.
-    boolean suppress = false
-    if (suppressCrossTalk && !state.dryerOn && !state.dryerProvisionalStart) {
-        if (state.washerOn) {
-            suppress = true
-        } else {
-            Long graceMs = ((crossTalkGraceMin ?: 0) as Integer) * 60000L
-            Long endTs = state.washerCycleEndTs as Long
-            if (endTs && graceMs > 0 && (nowTs - endTs) < graceMs) suppress = true
-        }
-    }
+    Integer minRunMin = (dryerMinRunMin ?: 3) as Integer
+    if (debugEnable) log.debug "dryer vibration=${evt.value} on=${state.dryerOn} activeSince=${state.dryerActiveSince}"
 
-    logRaw("dryer", evt.value, suppress)
-
-    if (suppress) {
-        state.totalSuppressedCount = (state.totalSuppressedCount ?: 0) + 1
-        if (debugEnable) log.debug "dryer vibration '${evt.value}' suppressed (washer cross-talk, dryer not yet running)"
-        return
-    }
-
-    Integer stopReadings = (dryerStopReadings ?: 2) as Integer
-    Integer startReports = (dryerStartReports ?: 3) as Integer
-    Integer startWindowMin = (dryerStartWindowMin ?: 10) as Integer
-    Integer confirmGapMin = (dryerConfirmGapMin ?: 3) as Integer
-    Integer confirmExpireMin = (dryerConfirmExpireMin ?: 60) as Integer
-    if (debugEnable) log.debug "dryer vibration=${evt.value} on=${state.dryerOn} provisional=${state.dryerProvisionalStart != null}"
-
-    // A vibration sensor can't tell "the dryer is running" apart from
-    // "someone opened the door, pulled clothes out, and slammed it shut" -
-    // both look like a burst of several active/inactive toggles in the
-    // first few minutes. The one thing that reliably tells them apart: a
-    // real cycle keeps producing bursts throughout its whole runtime, while
-    // handling/unloading is a single burst that then goes permanently
-    // silent. So a cycle is only CONFIRMED (logged as a real start, deadman
-    // armed, notification sent) once a second, separate burst arrives after
-    // a genuine gap - a single burst that never repeats quietly expires as
-    // "unconfirmed" instead, with no notification.
-    if (!state.dryerOn) {
-        if (!active) return
-
-        if (state.dryerProvisionalStart == null) {
-            // Stage 1: still need enough reports to treat this as a
-            // candidate burst at all (filters a single spurious blip).
-            if (startReports <= 1) {
-                beginDryerBurst(nowTs, confirmExpireMin)
-                return
-            }
-            List pending = (state.dryerPendingActive instanceof List) ? state.dryerPendingActive : []
-            Long windowMs = startWindowMin * 60000L
-            pending = pending.findAll { (nowTs - (it as Long)) < windowMs }
-            pending << nowTs
-            if (pending.size() >= startReports) {
-                state.remove("dryerPendingActive")
-                beginDryerBurst(pending[0] as Long, confirmExpireMin)
-            } else {
-                state.dryerPendingActive = pending
-                if (debugEnable) log.debug "dryer vibration pending burst confirmation (${pending.size()}/${startReports} within ${startWindowMin}m)"
-            }
-            return
-        }
-
-        // Stage 2: have a candidate burst - is this report a continuation
-        // of the same burst, or a genuinely separate later one?
-        Long lastActive = state.dryerBurstLastActive as Long
-        state.dryerBurstLastActive = nowTs
-        if (lastActive != null && (nowTs - lastActive) >= confirmGapMin * 60000L) {
-            state.dryerClusterCount = (state.dryerClusterCount ?: 1) + 1
-        }
-        if ((state.dryerClusterCount ?: 1) >= 2) {
-            Long confirmedStart = state.dryerProvisionalStart as Long
-            clearDryerBurst()
-            startDryerCycle(confirmedStart)
-        } else if (confirmExpireMin > 0) {
-            runIn(confirmExpireMin * 60, "dryerConfirmExpireFired", [overwrite: true])
-        }
-        return
-    }
-
+    // This sensor latches "active" for as long as it keeps feeling vibration
+    // and only reports "inactive" once the shaking actually stops. That makes
+    // the length of a continuous active span the signal that matters - and it
+    // separates cleanly: across two days of real data, every bump, door slam,
+    // unloading and bit of washer cross-talk produced an active span of 68
+    // seconds or less, while every real dryer cycle held active for 28-66
+    // minutes. So: stay active past the minimum run time and it's a real
+    // cycle; go inactive before that and it was just handling.
     if (active) {
-        state.dryerLowCount = 0
-        if (state.dryerEndingSince) {
-            unschedule("dryerStopConfirmFired")
-            state.remove("dryerEndingSince")
+        if (state.dryerOn) return
+        if (!state.dryerActiveSince) {
+            state.dryerActiveSince = nowTs
+            runIn(minRunMin * 60, "dryerMinRunFired", [overwrite: true])
+            if (debugEnable) log.debug "dryer vibration started, needs ${minRunMin} min continuous to count as a cycle"
         }
         return
     }
 
-    state.dryerLowCount = (state.dryerLowCount ?: 0) + 1
-
-    // Same edge-triggered-sensor problem as the washer, worse here: this
-    // sensor's real mid-cycle silences run 45-60+ minutes even while
-    // genuinely running, so "N sequential inactive reports" essentially
-    // never fires on its own. The quiet-timeout confirmation is a real
-    // trade-off here (see README) rather than a clean fix - default is
-    // deliberately conservative.
-    if (!state.dryerEndingSince) {
-        state.dryerEndingSince = nowTs
-        Integer confirmMin = (dryerStopConfirmMin ?: 0) as Integer
-        if (confirmMin > 0) runIn(confirmMin * 60, "dryerStopConfirmFired", [overwrite: true])
+    // inactive
+    if (state.dryerOn) {
+        // The sensor going quiet IS the end of the cycle - no debounce needed
+        // or wanted, and the timestamp is exact.
+        endDryerCycle("normal", nowTs)
+        return
     }
 
-    if (state.dryerLowCount >= stopReadings) endDryerCycle("normal", state.dryerEndingSince as Long)
+    if (state.dryerActiveSince) {
+        Integer secs = ((nowTs - (state.dryerActiveSince as Long)) / 1000L) as Integer
+        unschedule("dryerMinRunFired")
+        state.remove("dryerActiveSince")
+        state.dryerIgnoredBlips = (state.dryerIgnoredBlips ?: 0) + 1
+        if (debugEnable) log.debug "dryer vibration stopped after ${secs}s - too short to be a cycle, ignored"
+    }
 }
 
-private void beginDryerBurst(Long startTs, Integer confirmExpireMin) {
-    state.dryerProvisionalStart = startTs
-    state.dryerBurstLastActive = startTs
-    state.dryerClusterCount = 1
-    if (debugEnable) log.debug "dryer vibration burst detected, waiting for a second separate burst before treating it as a real cycle"
-    if (confirmExpireMin > 0) runIn(confirmExpireMin * 60, "dryerConfirmExpireFired", [overwrite: true])
-}
-
-private void clearDryerBurst() {
-    state.remove("dryerProvisionalStart")
-    state.remove("dryerBurstLastActive")
-    state.remove("dryerClusterCount")
-    unschedule("dryerConfirmExpireFired")
-}
-
-def dryerConfirmExpireFired() {
-    if (state.dryerOn || !state.dryerProvisionalStart) return
-    Long startTs = state.dryerProvisionalStart as Long
-    Long lastActive = state.dryerBurstLastActive as Long
-    Integer burstMin = lastActive ? Math.round((lastActive - startTs) / 60000d) as Integer : 0
-    logCycleEvent("dryer", "unconfirmed", startTs, [durationMin: burstMin])
-    if (txtEnable) log.info "Dryer vibration burst (${burstMin} min) never repeated - treating as handling/noise, not a real cycle. No notification sent."
-    clearDryerBurst()
+def dryerMinRunFired() {
+    if (state.dryerOn || !state.dryerActiveSince) return
+    if (suppressCrossTalk && state.washerOn) {
+        state.totalSuppressedCount = (state.totalSuppressedCount ?: 0) + 1
+        state.remove("dryerActiveSince")
+        if (txtEnable) log.info "Dryer vibration sustained but washer is running - suppressed as cross-talk"
+        return
+    }
+    startDryerCycle(state.dryerActiveSince as Long)
 }
 
 private void startDryerCycle(Long ts) {
     boolean concurrentWasher = state.washerOn as boolean
     state.dryerOn = true
     state.dryerCycleStart = ts
-    state.dryerLowCount = 0
-    state.remove("dryerEndingSince")
-    clearDryerBurst()
+    state.remove("dryerActiveSince")
+    unschedule("dryerMinRunFired")
     logCycleEvent("dryer", "start", ts, [concurrent: concurrentWasher])
     if (txtEnable) log.info "Dryer started${concurrentWasher ? ' - washer is also running' : ''}"
     armDeadman("dryer", ts)
@@ -584,10 +486,9 @@ private void endDryerCycle(String reason, Long endTs) {
     logCycleEvent("dryer", "end", ts, [durationMin: durMin, reason: reason, concurrent: (state.washerOn as boolean)])
     if (txtEnable) log.info "Dryer done after ${durMin} min (${reason})"
     unschedule("dryerDeadmanFired")
-    unschedule("dryerStopConfirmFired")
+    unschedule("dryerMinRunFired")
     state.dryerOn = false
-    state.dryerLowCount = 0
-    state.remove("dryerEndingSince")
+    state.remove("dryerActiveSince")
     if (switchList) switchList*.off()
     if (enableDoneNotify) notify(dryerDoneMessage ?: "Dryer is done")
 }
@@ -598,11 +499,6 @@ def dryerDeadmanFired() {
     endDryerCycle("deadman", now())
 }
 
-def dryerStopConfirmFired() {
-    if (!state.dryerOn || !state.dryerEndingSince) return
-    if (txtEnable) log.info "Dryer stop confirmed by quiet timeout (no vibration in ${dryerStopConfirmMin} min)"
-    endDryerCycle("normal", state.dryerEndingSince as Long)
-}
 
 /* ---------------- shared helpers ---------------- */
 
