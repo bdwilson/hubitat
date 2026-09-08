@@ -107,9 +107,25 @@ washer is mid-cycle is logged (so you can still see it happened) but never
 suppression for a few minutes after the washer itself stops, since
 vibration can linger briefly.
 
-Crucially, this suppression only ever blocks a dryer cycle from *starting*.
-Once the dryer is genuinely running, it is never blocked by washer
-activity - see "Running both machines at once" below for why that matters.
+Crucially, this suppression only ever blocks a *brand new* dryer signal.
+It never interferes with anything already underway - neither a confirmed
+running cycle (see "Running both machines at once" below), nor a candidate
+burst that's still waiting for its confirming second burst. That second
+exemption matters more than it sounds: starting a washer load right after
+you start the dryer is an extremely common thing to do, and without it,
+every confirming burst for the whole washer run gets suppressed and the
+real dryer cycle silently expires as `unconfirmed`. That was observed
+twice in a single day of real data - two genuine dryer cycles that the
+app completely missed, both of which the user had started within a couple
+of minutes of a washer load.
+
+The trade-off of that exemption: once a candidate burst exists, washer
+bleed-through can in principle supply its confirming second burst, so a
+"someone handled the dryer, then started a washer load" sequence could
+occasionally confirm a cycle that never really ran. That's a rarer
+coincidence than the pattern it fixes, and it fails in the safer
+direction (a late/spurious "started" rather than a real cycle going
+completely unrecorded).
 
 This is a mitigation, not a fix - if your two machines share a wall you'll
 still see occasional real dryer loads *start* alongside an already-running

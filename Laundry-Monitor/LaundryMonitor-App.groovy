@@ -424,14 +424,19 @@ def dryerAccelHandler(evt) {
     boolean active = (evt.value == "active")
     Long nowTs = now()
 
-    // Cross-talk suppression only ever blocks a *new* dryer cycle from being
-    // mistaken for washer vibration bleed-through. Once the dryer is
-    // genuinely running (state.dryerOn), later washer activity - including a
-    // second washer load starting mid-dryer-cycle - must never blind the
-    // dryer's own stop detection, or a real finish would sit undetected
-    // until the deadman timer force-ends it.
+    // Cross-talk suppression only ever blocks a *brand new* dryer signal from
+    // being mistaken for washer vibration bleed-through. It must never
+    // interfere with something already underway:
+    //   - a confirmed running cycle (state.dryerOn), or a second washer load
+    //     starting mid-dryer-cycle would blind the dryer's stop detection;
+    //   - a candidate burst already being tracked (dryerProvisionalStart),
+    //     which needs a confirming second burst to become a real cycle. A
+    //     washer load started right after someone starts the dryer would
+    //     otherwise suppress every confirming burst for its whole run, and
+    //     the real dryer cycle would silently expire as "unconfirmed" -
+    //     observed twice in one day of real data.
     boolean suppress = false
-    if (suppressCrossTalk && !state.dryerOn) {
+    if (suppressCrossTalk && !state.dryerOn && !state.dryerProvisionalStart) {
         if (state.washerOn) {
             suppress = true
         } else {
