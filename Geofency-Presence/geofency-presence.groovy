@@ -23,7 +23,7 @@ definition(
     iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
     iconX3Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
 	importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/geofency-presence.groovy",
-    version: "2.0.0",
+    version: "2.0.1",
     oauth: true)
 
 
@@ -221,10 +221,10 @@ def update (devices) {
             log.error "Geofency: device not found for '${deviceName}'. Make sure a device with type: Geofency Virtual Mobile Presence Device exists AND is configured with the proper location and user settings."
         } else {
             if (event == "0") {
-                log.debug "Geofency: ${user} has exited ${location} - turning ${device} off"
+                ifDebug("${user} has exited ${location} - turning ${device} off")
                 device.off()
             } else if (event == "1") {
-                log.debug "Geofency: ${user} has entered ${location} - turning ${device} on"
+                ifDebug("${user} has entered ${location} - turning ${device} on")
                 device.on()
             } else {
                 log.warn "Geofency: unexpected event value '${event}' received for ${deviceName}"
