@@ -23,7 +23,7 @@ To get started you'll need:
 - An iBeacon (Optional; or you can use GPS in the Geofency App). 
 - Hubitat Hub
 	- [A Virtual Presence Device](https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/virtual-mobile-presence.groovy)
-	- [My Hubitat app](https://raw.githubusercontent.com/bdwilson/hubitat/claude/geofency-debug-log-fix/Geofency-Presence/geofency-presence.groovy) assigned to your Virtual Presence Device(s) above
+	- [My Hubitat app](https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/geofency-presence.groovy) assigned to your Virtual Presence Device(s) above
 
 Upgrading to 2.0
 ----------------
@@ -31,7 +31,7 @@ Version 2.0 adds a **Quick Setup** button that creates and configures your virtu
 
 Installation
 --------------------
-1. Install via [HPM](https://community.hubitat.com/t/beta-hubitat-package-manager/38016) - search for keyword "presence" (or go to Drivers Code and Apps Code and install [virtual-mobile-presence.groovy](https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/virtual-mobile-presence.groovy) and [geofency-presence.groovy](https://raw.githubusercontent.com/bdwilson/hubitat/claude/geofency-debug-log-fix/Geofency-Presence/geofency-presence.groovy) manually. <b>Click Oauth</b> after saving the app.)
+1. Install via [HPM](https://community.hubitat.com/t/beta-hubitat-package-manager/38016) - search for keyword "presence" (or go to Drivers Code and Apps Code and install [virtual-mobile-presence.groovy](https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/virtual-mobile-presence.groovy) and [geofency-presence.groovy](https://raw.githubusercontent.com/bdwilson/hubitat/master/Geofency-Presence/geofency-presence.groovy) manually. <b>Click Oauth</b> after saving the app.)
 2. Install the User App (Apps -> Add User App -> Geofency Multi-User API Presence App)
 3. In **Step 1** of the app, enter a **Location** and **User** (the same ones you'll use in Geofency) and click **Create Device** - this creates and configures the virtual presence device for you. It's usable by the app immediately - you don't need to select it anywhere. Repeat for each user/location pair you want to track. You can create as many as you like.
    * Prefer to do it yourself, or already have virtual presence devices from an older install? Go to _Devices -> Add Virtual Device_, create (or update an existing device to) type ___Geofency Virtual Mobile Presence Device___, set its ___Location___ and ___User___ preferences to match what you'll use in Geofency, then select it in **Step 2** ("Select Additional Virtual Presence Devices").
