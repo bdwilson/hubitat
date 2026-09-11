@@ -2,6 +2,48 @@
 
 Not yet implemented. Tracked here so they survive across sessions.
 
+## ~~27. Runs started outside Hubitat reported as "whole house"; mode-11 resume announced as a new run~~ — DONE (1.26.0)
+
+User started a 2-zone clean from the Wyze app and got a push saying
+"started cleaning: whole house" -- pleasantly surprised the integration
+noticed at all (start/finish detection is purely status-transition driven,
+so it picks up *any* run regardless of who started it), but the message
+itself was wrong.
+
+**Wrong label:** the start notification used
+`activeRoomIds ? roomNames : "whole house"` -- so "whole house" really meant
+"this app didn't dispatch this, so I don't know," conflating an app-issued
+whole-house `start()` with a run started from the Wyze app / the vacuum's
+schedule / its button. Wyze's API doesn't report which rooms or zones an
+externally-started run picked, so the honest answer is that it's unknown.
+`startVacuum()` now stamps `state.appWholeHouseStartAt[mac]`, consumed by
+the next poll that observes Cleaning (10-minute validity, matching the
+existing stale-dispatch window), so "whole house" is claimed only when this
+app's own start() command actually caused the run; anything else says it
+started outside Hubitat with rooms unreported.
+
+**Duplicate start notification on auto-resume:** same log showed the job
+pausing at 8:05pm (mode 11, battery 6%), charging for ~2 hours, then
+resuming at 10:00pm -- and since that's a non-Cleaning -> Cleaning
+transition, it fired a *second* "started cleaning" notification as if a new
+run had begun. 1.24.0 suppressed the symmetric case (the premature "finished
+cleaning" on a mode-11 exit) but not this side. `handleCleaningSessionEnd()`
+now records `state.pausedForResumeAt[mac]` on any mode-11 exit -- tracked
+separately from `state.activeCleanRun`, since an externally started run has
+no active-run record but resumes identically -- and the next Cleaning
+transition consumes it and reports a resume instead of a start. Expires
+after 3 hours (matching `checkStaleActiveCleanRun`'s give-up window) and is
+cleared by an explicit `start()`/`dock()`, so a genuinely new run later
+isn't mislabeled. Verified via simulation against the exact 9/10 timeline
+plus app-start, room-dispatch, stale-marker, and dock-cancels-resume cases.
+
+**Not changed, deliberately:** polling stays on the idle interval during a
+mode-11 charge pause for an externally started run (no `activeCleanRun` to
+hold it fast), so a resume can go unnoticed for up to one idle interval --
+15 minutes in the 9/10 log. Keeping fast polling engaged across a ~2-hour
+charge cycle would mean ~120 needless polls to save a few minutes of
+latency, which isn't worth the hub load.
+
 ## ~~26. nextRoomDueAt/lastRefresh firing twice per poll~~ — DONE (1.25.1)
 
 User noticed `nextRoomDueAt` (and its siblings `roomsPendingThisCycle`,

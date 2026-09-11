@@ -246,10 +246,27 @@ Optional, change-driven — polling by itself never triggers a notification. Con
 | Setting | Description |
 |---|---|
 | Send notifications to | Any `capability.notification` device(s) — e.g. a virtual notification device wired to your phone/Alexa/etc. |
-| Notify when cleaning starts | Fires the first time a poll observes `status` becoming `Cleaning`. For a room-scoped run, names the room(s) being cleaned; for a whole-house `start()`, says "whole house" |
+| Notify when cleaning starts | Fires the first time a poll observes `status` becoming `Cleaning`. For a room-scoped run, names the room(s) being cleaned; for a whole-house `start()`, says "whole house"; for a run started outside Hubitat, says so explicitly (see below) |
 | Notify when cleaning finishes | Fires when `status` leaves `Cleaning`, including the run's elapsed minutes. For a room-scoped run, breaks it down by room: which ones are confirmed cleaned vs. which weren't completed (and will be retried, per the under-crediting rules above) |
 | Notify when the vacuum reports a fault | Fires once per new fault (won't repeat every poll while the same fault persists) |
 | Fault codes to treat as normal (comma-separated) | Codes here never set `fault` or notify — some `fault_code` values appear to just mean things like "charging"/"fully charged," not a real problem. Defaults to `2102,2103,2105` — `2103`/`2105` based on an unconfirmed community lead, `2102` confirmed live twice (both times firing right as the vacuum was returning to charge after a room finished, no visible problem either time). Adjust freely as you confirm/refute codes yourself. Every nonzero fault code is still logged (`log.info`, tagged `(ignored)` when suppressed) regardless of this list, so there's a record to check codes against later. `2100` and `2101` are deliberately *not* on this list — both were observed correlating with a genuine critical-low-battery recharge-and-resume cycle (`2100` right at the lowest point, `2101` throughout the climb back up), which is real, useful information rather than noise, unlike the other three. |
+
+### Cleans you start outside Hubitat
+
+Nothing here is command-driven — start/finish detection works purely off polled `status` transitions, so a clean you start **from the Wyze app**, from the vacuum's own schedule, or by pressing its button is picked up and reported exactly like one triggered from Hubitat. You'll get the same start/finish notifications, the run's time still counts toward the bin-empty reminder, and `status`/`battery`/`cleanTime` track it live. Nothing needs to be configured for this — it's a side effect of how status detection works.
+
+Two things it *can't* do for such a run, both because Wyze's API simply doesn't report them:
+
+- **It doesn't know which rooms or zones you picked.** Earlier versions called any run without an app-dispatched room list "whole house," which was wrong — confirmed live with a 2-zone clean started from the Wyze app that got announced as "whole house." As of 1.26.0 the notification says plainly that the run started outside Hubitat and that the rooms aren't reported; "whole house" is now claimed only when this app's own `start()` command is what actually kicked it off.
+- **It can't credit those rooms toward rotation.** Since the room list is unknown, the rotation still considers them due, and may re-clean them sooner than you'd expect. If you know what it cleaned, `markRoomsCleaned("Kitchen, Living Room")` (driver command, or the app page's **Mark Rooms as Cleaned** section) sets their "last cleaned" timestamps without dispatching anything — see [Correcting rotation history manually](#correcting-rotation-history-manually).
+
+### Battery-forced pauses and auto-resume
+
+When the battery gets critically low mid-job, the vacuum docks itself, charges, and then resumes the same job on its own — reporting `mode` 11 ("docked, cleaning will resume") the whole time it's charging, which is what distinguishes it from a genuine finish (`mode` 10). Confirmed live: a run paused at 6% battery, charged for roughly two hours, then picked itself back up and finished.
+
+This is handled as one job, not two: the finish notification is held until it *actually* finishes (1.24.0 — otherwise you'd be told it finished while it was really just topping up), room-completion credit carries elapsed time across both segments rather than crediting the first one short, and the resume itself reports as **resuming** rather than firing a second "started cleaning" notification (1.26.0 — before that, a resume hours later looked like a brand-new run). If a paused job never actually resumes, a 3-hour timeout gives up on it and credits whatever was measured, so nothing stays pending forever.
+
+Note that this is the vacuum's own behavior, separate from the Hubitat-side [Low battery protection](#low-battery-protection) threshold below, which docks it proactively at a percentage you choose.
 
 ### Bin-empty reminder
 
