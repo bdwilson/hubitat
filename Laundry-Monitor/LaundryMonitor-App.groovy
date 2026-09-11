@@ -73,7 +73,7 @@ def mainPage() {
 
         section("<b>Washer - Power Thresholds</b>", hideable: true, hidden: false) {
             paragraph "Defaults below come from a calibration pass against ~30 days of real usage. See the README before changing them."
-            input "washerStartWaitMin", "number", title: "Time (minutes) to wait before counting the power threshold (helps with brief startup blips)", required: false, defaultValue: 2
+            input "washerStartWaitMin", "number", title: "Time (minutes) to wait before counting the power threshold (helps with brief startup blips)", required: false, defaultValue: 4
             input "washerStartW", "decimal", title: "Start cycle when power (W) rises above", required: false, defaultValue: 5
             input "washerMinEndMin", "number", title: "Minimum minutes after start before end detection begins", required: false, defaultValue: 10
             input "washerStopW", "decimal", title: "Stop cycle when power (W) drops below", required: false, defaultValue: 3
@@ -208,7 +208,7 @@ def uninstalled() {
 // defaultValue only applies to a setting that has never been set. So
 // without this, an existing install keeps running on its old values and
 // silently ignores the new defaults.
-private static String settingsVersion() { return "2" }
+private static String settingsVersion() { return "3" }
 
 private void migrateSettings() {
     if (state.settingsVersion == settingsVersion()) return
@@ -251,6 +251,21 @@ private void migrateSettings() {
     if (suppressCrossTalk) {
         app.updateSetting("suppressCrossTalk", [value: "false", type: "bool"])
         changes << "suppressCrossTalk=off"
+    }
+
+    // v3: a real overnight false start was traced to two-and-a-bit minutes
+    // of coincidental idle-noise blips (three consecutive readings above
+    // the start threshold, ~90 seconds apart, with no intervening dip) -
+    // the 2-minute wait happened to land exactly on the boundary. Measured
+    // against every noise run across several nights of real data, the
+    // worst case tops out at 3.0 minutes and everything else at 1.5 - so
+    // 4 minutes clears all of them with better than 2x margin, at the cost
+    // of a slightly later start notification for real cycles (the logged
+    // start time is unaffected either way; it's always the first
+    // qualifying reading, not the confirmation time).
+    if ((washerStartWaitMin ?: 0) < 4) {
+        app.updateSetting("washerStartWaitMin", [value: "4", type: "number"])
+        changes << "washerStartWaitMin=4"
     }
 
     state.settingsVersion = settingsVersion()

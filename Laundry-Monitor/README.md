@@ -49,7 +49,7 @@ Washer power thresholds
 ---
 | Setting | Default | What it does |
 |---|---|---|
-| Wait before counting the power threshold | 2 min | How long power has to stay above the start threshold before a cycle is confirmed started. Set higher if your washer has a pre-wash soak that dips back to idle power for a few minutes. |
+| Wait before counting the power threshold | 4 min | How long power has to stay above the start threshold before a cycle is confirmed started. Set higher if your washer has a pre-wash soak that dips back to idle power for a few minutes. |
 | Start threshold | 5W | Power level a reading has to reach to be considered "the washer turned on." |
 | Minimum minutes before end detection | 10 min | Ignore drops below the stop threshold until the cycle has been running at least this long (covers fill/pause dips early in a cycle). |
 | Stop threshold | 3W | Power level a reading has to drop below to be considered "the washer might be done." |
@@ -58,6 +58,8 @@ Washer power thresholds
 | Quiet-timeout confirmation | 10 min | Backstop: also ends the cycle after this many minutes with no reading back above the stop threshold, even if a second low reading never arrives. See below - this is the important one. |
 | Ignore readings above (spike filter) | 1500W | A single reading this high or higher is treated as sensor noise and never starts a new cycle. |
 | Deadman timer | 90 min | Hard cap - force-ends a cycle that's been "on" this long, in case a real stop never gets detected. |
+
+**Why the start wait is 4 minutes, not 2:** idle standby draw isn't perfectly flat - it bounces up to 8-14W in brief, isolated blips fairly often overnight, and the start threshold is only 5W. A real overnight false alarm traced back to exactly this: three such blips landed back-to-back with no dip between them, spanning almost precisely 2 minutes by coincidence, and the wash "started" while nobody was home. Measured across several nights of real data, that was the single worst overnight noise streak found (3.0 minutes); everything else topped out at 1.5. Four minutes clears all of it with better than 2x margin. The cost is a real start notification landing a couple of minutes later - the logged start time itself is unaffected, since it's always taken from the first qualifying reading, not from whenever confirmation happens.
 
 **Why there are two ways to detect a stop:** a lot of power meters only report a new value when it *changes*. Once your washer settles at a genuinely stable idle wattage, it may never send another event at all - which means "stop after 2 sequential low readings" can silently wait forever for a second reading that's never coming, and the cycle only ever ends via the 90-minute deadman timer, 40+ minutes after the wash actually finished. Confirmed on real data: a wash that visibly finished at 10:36am (last high reading, then one 2W reading, then total silence for the next 2h45m) sat "on" until the deadman forced it closed at 11:20am. The quiet-timeout setting fixes this: once the *first* low reading arrives, it schedules its own check independent of whether anything else ever reports, and ends the cycle using that first low reading's timestamp as the true end time (so the logged duration reflects when the wash actually stopped, not when the timeout happened to fire). The two mechanisms race - whichever confirms first wins - so a chatty meter still gets the fast 2-reading path, and a quiet one still gets a correct, reasonably prompt stop instead of a 90-minute wait.
 
@@ -156,16 +158,16 @@ has been removed, and a changed `defaultValue` only ever applies to a
 setting that has never been set. So the app migrates its own settings on
 first run after an update, and logs exactly what it changed.
 
-The v2 migration (the dryer detection rewrite) retires the settings that
-drove the old report-counting logic, and moves two values that would
-otherwise silently work against you:
+Each version bump below is one-time and cumulative - updating from any
+older version applies every change up through the current one. Anything
+you set afterwards is respected.
 
-| Change | Why |
-|---|---|
-| `dryerDeadmanMin` -> 120 (if lower) | It is only a safety net now. A real 65.8-minute cycle has been observed, so a cap near an hour truncates real cycles. |
-| `suppressCrossTalk` -> off | Cross-talk only ever produces short active spans, which the minimum run time already filters. Leaving it on only risks missing real dryer cycles that overlap a washer load. |
-
-These are one-time. Anything you set afterwards is respected.
+| Version | Change | Why |
+|---|---|---|
+| v2 | retires the six settings that drove the old dryer report-counting logic | Replaced by duration-based detection - see "Dryer vibration thresholds" above. |
+| v2 | `dryerDeadmanMin` -> 120 (if lower) | It is only a safety net now. A real 65.8-minute cycle has been observed, so a cap near an hour truncates real cycles. |
+| v2 | `suppressCrossTalk` -> off | Cross-talk only ever produces short active spans, which the minimum run time already filters. Leaving it on only risks missing real dryer cycles that overlap a washer load. |
+| v3 | `washerStartWaitMin` -> 4 (if lower) | A real overnight false start traced to idle noise landing almost exactly on the old 2-minute boundary - see "Why the start wait is 4 minutes" above. |
 
 Data Log
 ---
