@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.25.1 - Brian Wilson / bubba@bubba.org
+ * 1.26.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -745,12 +745,14 @@ def handleVacuumStatusResponse(resp, data) {
     d.sendEvent(name: "switch", value: newStatus == "Cleaning" ? "on" : "off")
 
     if (prevStatus != "Cleaning" && newStatus == "Cleaning") {
+        // Checked (and cleared) before the message is built -- a vacuum
+        // coming back from a mode-11 "will resume" pause is continuing the
+        // job it already started, not beginning a new one.
+        boolean isResume = consumePausedForResume(mac)
         state.cleaningSessionStart = state.cleaningSessionStart ?: [:]
         state.cleaningSessionStart[mac] = now()
         if (settings.notifyCleaningStarted) {
-            def activeRoomIds = state.activeCleanRun?.getAt(mac)?.roomIds
-            def roomDesc = activeRoomIds ? roomNamesFor(mac, activeRoomIds).join(", ") : "whole house"
-            sendVacuumNotification("${d.displayName} started cleaning: ${roomDesc}.")
+            sendVacuumNotification(cleaningStartedMessage(mac, d, isResume))
         }
     } else if (prevStatus == "Cleaning" && newStatus != "Cleaning") {
         handleCleaningSessionEnd(mac, d.currentValue("cleanTime"), d, newStatus, modeCode)
@@ -1095,6 +1097,57 @@ private List<String> roomNamesFor(String mac, List ids) {
     return (ids ?: []).collect { id -> known.find { it.id == id }?.name ?: "Room ${id}" }
 }
 
+// Builds the "started cleaning" notification text. Cleaning is detected
+// purely from polled status transitions, so this fires for *any* run --
+// including ones this app never dispatched (started from the Wyze app, the
+// vacuum's own schedule, or its physical button).
+//
+// Earlier versions said "whole house" whenever there was no app-dispatched
+// room list, which conflated two very different situations. Confirmed live:
+// a 2-zone clean started from the Wyze app was announced as "whole house",
+// which was simply untrue -- Wyze's API doesn't report which rooms/zones an
+// externally-started run picked, so the honest answer is that we don't know.
+// "whole house" is now claimed only when this app's own start() command is
+// what actually kicked the run off.
+private String cleaningStartedMessage(String mac, def d, boolean isResume) {
+    def name = d?.displayName ?: mac
+    if (isResume) return "${name} resumed cleaning after charging (same job, not a new one)."
+
+    def activeRoomIds = state.activeCleanRun?.getAt(mac)?.roomIds
+    if (activeRoomIds) return "${name} started cleaning: ${roomNamesFor(mac, activeRoomIds).join(', ')}."
+
+    if (consumeAppWholeHouseStart(mac)) return "${name} started cleaning: whole house."
+
+    return "${name} started cleaning (started outside Hubitat — rooms unknown)."
+}
+
+// startVacuum() leaves a timestamp behind so the *next* poll that observes
+// Cleaning can tell an app-issued whole-house start from an externally
+// started run. Consumed on first use; ignored if stale, since a whole-house
+// start that took effect is always confirmed within a poll or two (the same
+// window checkStaleActiveCleanRun uses to give up on a room dispatch).
+private boolean consumeAppWholeHouseStart(String mac) {
+    def startedAt = state.appWholeHouseStartAt?.getAt(mac)
+    if (!startedAt) return false
+    state.appWholeHouseStartAt.remove(mac)
+    return (now() - (startedAt as Long)) <= 10 * 60 * 1000L
+}
+
+// Set when a cleaning session exits via mode 11 ("docked, cleaning will
+// resume"), so the resume that follows is recognized as a continuation
+// rather than announced as a brand-new run. Tracked independently of
+// state.activeCleanRun, since an externally started run has no active-run
+// record at all but resumes exactly the same way -- confirmed live: a run
+// paused at 6% battery, charged for ~2 hours, then resumed on its own.
+// Expires after 3 hours, matching checkStaleActiveCleanRun's give-up window,
+// so a genuinely new run much later isn't mislabeled as a resume.
+private boolean consumePausedForResume(String mac) {
+    def pausedAt = state.pausedForResumeAt?.getAt(mac)
+    if (!pausedAt) return false
+    state.pausedForResumeAt.remove(mac)
+    return (now() - (pausedAt as Long)) <= 3 * 60 * 60 * 1000L
+}
+
 // Fires once per Cleaning -> non-Cleaning transition, regardless of whether the
 // clean finished naturally, was paused, or was interrupted by a dock/stop.
 //
@@ -1115,6 +1168,15 @@ private void handleCleaningSessionEnd(String mac, def reportedCleanTimeMinutes, 
     def run = state.activeCleanRun?.getAt(mac)
     Map finishResult = null
     boolean willResume = modeSignalsResume(modeCode)
+
+    // Remembered independently of the active-run record below, so the
+    // eventual resume is recognized as a continuation even for a run this
+    // app never dispatched (see consumePausedForResume).
+    if (willResume) {
+        state.pausedForResumeAt = state.pausedForResumeAt ?: [:]
+        state.pausedForResumeAt[mac] = now()
+    }
+
     if (run?.learning) {
         handleLearningRoomEnd(mac, run, elapsedMin, newStatus)
     } else if (run) {
@@ -1312,6 +1374,11 @@ def startVacuum(String mac) {
     state.rotationSweepActive?.put(mac, false) // whole-house start is a different mode than room rotation
     state.rotationSweepPending?.put(mac, false)
     state.rotationSweepStartedAt?.remove(mac)
+    state.pausedForResumeAt?.remove(mac) // an explicit start is a new run, not a resume of the old one
+    // Lets the poll that later observes Cleaning report this honestly as a
+    // whole-house run we started, vs. one started outside Hubitat.
+    state.appWholeHouseStartAt = state.appWholeHouseStartAt ?: [:]
+    state.appWholeHouseStartAt[mac] = now()
     venusControl(mac, 0, 1) // GLOBAL_SWEEPING / START
     pollVacuum(mac)
 }
@@ -1321,6 +1388,7 @@ def pauseVacuum(String mac) {
     state.rotationSweepActive?.put(mac, false) // explicit stop -- don't auto-continue to the next room
     state.rotationSweepPending?.put(mac, false)
     state.rotationSweepStartedAt?.remove(mac)
+    state.appWholeHouseStartAt?.remove(mac)
     venusControl(mac, 0, 2) // GLOBAL_SWEEPING / PAUSE
     pollVacuum(mac)
 }
@@ -1330,6 +1398,10 @@ def dockVacuum(String mac) {
     state.rotationSweepActive?.put(mac, false) // explicit stop -- don't auto-continue to the next room
     state.rotationSweepPending?.put(mac, false)
     state.rotationSweepStartedAt?.remove(mac)
+    state.appWholeHouseStartAt?.remove(mac)
+    // Docking on purpose ends the job -- whatever the vacuum intended to
+    // resume isn't coming back, so a later run is genuinely a new one.
+    state.pausedForResumeAt?.remove(mac)
     venusControl(mac, 3, 1) // RETURN_TO_CHARGING / START
     pollVacuum(mac)
 }
