@@ -1111,14 +1111,14 @@ private List<String> roomNamesFor(String mac, List ids) {
 // what actually kicked the run off.
 private String cleaningStartedMessage(String mac, def d, boolean isResume) {
     def name = d?.displayName ?: mac
-    if (isResume) return "${name} resumed cleaning after charging — continuing the same job it paused earlier, not a new one."
+    if (isResume) return "${name} resumed cleaning after charging (same job, not a new one)."
 
     def activeRoomIds = state.activeCleanRun?.getAt(mac)?.roomIds
     if (activeRoomIds) return "${name} started cleaning: ${roomNamesFor(mac, activeRoomIds).join(', ')}."
 
     if (consumeAppWholeHouseStart(mac)) return "${name} started cleaning: whole house."
 
-    return "${name} started cleaning — started outside Hubitat (Wyze app, the vacuum's own schedule, or its button), so which rooms it's doing isn't reported."
+    return "${name} started cleaning (started outside Hubitat — rooms unknown)."
 }
 
 // startVacuum() leaves a timestamp behind so the *next* poll that observes
