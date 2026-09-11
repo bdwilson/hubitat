@@ -247,9 +247,19 @@ Optional, change-driven — polling by itself never triggers a notification. Con
 |---|---|
 | Send notifications to | Any `capability.notification` device(s) — e.g. a virtual notification device wired to your phone/Alexa/etc. |
 | Notify when cleaning starts | Fires the first time a poll observes `status` becoming `Cleaning`. For a room-scoped run, names the room(s) being cleaned; for a whole-house `start()`, says "whole house"; for a run started outside Hubitat, says so explicitly (see below) |
-| Notify when cleaning finishes | Fires when `status` leaves `Cleaning`, including the run's elapsed minutes. For a room-scoped run, breaks it down by room: which ones are confirmed cleaned vs. which weren't completed (and will be retried, per the under-crediting rules above) |
+| Notify when cleaning finishes | Fires when `status` leaves `Cleaning`, including the run's elapsed minutes. For a room-scoped run, breaks it down by room: which ones are confirmed cleaned vs. which weren't completed (and will be retried, per the under-crediting rules above). If a `dock()`/`pause()`/`off()` is what ended the run, it says that instead of claiming it finished — see [Interrupted runs](#interrupted-runs) |
 | Notify when the vacuum reports a fault | Fires once per new fault (won't repeat every poll while the same fault persists) |
 | Fault codes to treat as normal (comma-separated) | Codes here never set `fault` or notify — some `fault_code` values appear to just mean things like "charging"/"fully charged," not a real problem. Defaults to `2102,2103,2105` — `2103`/`2105` based on an unconfirmed community lead, `2102` confirmed live twice (both times firing right as the vacuum was returning to charge after a room finished, no visible problem either time). Adjust freely as you confirm/refute codes yourself. Every nonzero fault code is still logged (`log.info`, tagged `(ignored)` when suppressed) regardless of this list, so there's a record to check codes against later. `2100` and `2101` are deliberately *not* on this list — both were observed correlating with a genuine critical-low-battery recharge-and-resume cycle (`2100` right at the lowest point, `2101` throughout the climb back up), which is real, useful information rather than noise, unlike the other three. |
+
+### Interrupted runs
+
+If a room clean is cut short by `dock()`, `pause()`, or `off()` — most often an automation firing on something like "someone came home" — you get a notification saying what stopped it and how far in, rather than one claiming it finished:
+
+> First Floor Vacuum was docked 3 min into cleaning -- not completed (will retry): Living Room.
+
+**This was a real bug, fixed in 1.27.0.** A commanded stop looks *identical* to a natural finish in the vacuum's own reported status — both just show it returning to the dock — so an interrupted room used to be treated as genuinely complete. Two things went wrong as a result: the room was credited as cleaned and dropped out of rotation for a full cycle despite barely being touched, and (for a single-room run, which is treated as ground truth for timing) its learned clean time was overwritten with the truncated value, skewing every future time-budget run. Since the app knows when *it* sent the stop command, a commanded stop is now never counted as a finish — the room stays due and keeps its learned time.
+
+Multi-room batches still credit whichever rooms got their full estimated time in before the interruption; only the room actually in progress loses credit. And the usual caveat applies: this only covers stops issued through Hubitat. Docking it from the Wyze app mid-run is indistinguishable from a natural finish, so that still counts as a finish.
 
 ### Cleans you start outside Hubitat
 

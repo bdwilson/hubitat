@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.26.0 - Brian Wilson / bubba@bubba.org
+ * 1.27.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -749,6 +749,7 @@ def handleVacuumStatusResponse(resp, data) {
         // coming back from a mode-11 "will resume" pause is continuing the
         // job it already started, not beginning a new one.
         boolean isResume = consumePausedForResume(mac)
+        state.commandInterrupt?.remove(mac) // cleaning again -- nothing left to describe as interrupted
         state.cleaningSessionStart = state.cleaningSessionStart ?: [:]
         state.cleaningSessionStart[mac] = now()
         if (settings.notifyCleaningStarted) {
@@ -1148,6 +1149,29 @@ private boolean consumePausedForResume(String mac) {
     return (now() - (pausedAt as Long)) <= 3 * 60 * 60 * 1000L
 }
 
+// Records that dock()/pause()/start() was commanded from this side, so the
+// Cleaning -> non-Cleaning transition that follows can be recognized as an
+// interruption rather than a finish. Set on every such command (cheap, and
+// cleared again the moment a new run starts) -- the vacuum's own status
+// gives no way to tell "returned to charge because it finished" apart from
+// "returned to charge because something told it to," and getting that wrong
+// silently drops a room out of rotation for a full cycle.
+private void markCommandInterrupt(String mac, String how) {
+    state.commandInterrupt = state.commandInterrupt ?: [:]
+    state.commandInterrupt[mac] = [at: now(), how: how]
+}
+
+// Consumed at the end of a cleaning session. The window only needs to cover
+// command -> next poll observing the vacuum actually reacting (seconds to a
+// couple of minutes, since these commands poll immediately), but is generous
+// since a stale marker is cleared outright whenever a new run starts.
+private Map consumeCommandInterrupt(String mac) {
+    def rec = state.commandInterrupt?.getAt(mac)
+    if (!rec) return null
+    state.commandInterrupt.remove(mac)
+    return (now() - (rec.at as Long)) <= 10 * 60 * 1000L ? rec : null
+}
+
 // Fires once per Cleaning -> non-Cleaning transition, regardless of whether the
 // clean finished naturally, was paused, or was interrupted by a dock/stop.
 //
@@ -1177,10 +1201,14 @@ private void handleCleaningSessionEnd(String mac, def reportedCleanTimeMinutes, 
         state.pausedForResumeAt[mac] = now()
     }
 
+    // Left alone on a mode-11 exit so it survives to the run's real end --
+    // a battery pause isn't the transition this describes.
+    Map interrupt = willResume ? null : consumeCommandInterrupt(mac)
+
     if (run?.learning) {
         handleLearningRoomEnd(mac, run, elapsedMin, newStatus)
     } else if (run) {
-        finishResult = finishActiveCleanRun(mac, elapsedMin, newStatus, modeCode)
+        finishResult = finishActiveCleanRun(mac, elapsedMin, newStatus, modeCode, interrupt != null)
         // Not a real finish -- don't push the sweep into a new room while
         // this one is still expected to resume on its own.
         if (!willResume) continueSweepIfNeeded(mac, newStatus)
@@ -1192,21 +1220,28 @@ private void handleCleaningSessionEnd(String mac, def reportedCleanTimeMinutes, 
     // just pausing to resume the same job; the eventual genuine finish
     // fires its own correct notification once totalElapsed is known.
     if (!willResume && settings.notifyCleaningFinished && elapsedMin > 0) {
-        def completedNames = finishResult?.completedNames
-        def incompleteNames = finishResult?.incompleteNames
-        String msg
-        if (completedNames || incompleteNames) {
-            def parts = []
-            if (completedNames) parts << "cleaned: ${completedNames.join(', ')}"
-            if (incompleteNames) parts << "not completed (will retry): ${incompleteNames.join(', ')}"
-            msg = "${d?.displayName ?: mac} finished cleaning after ${elapsedMin} min -- ${parts.join('; ')}."
-        } else {
-            msg = "${d?.displayName ?: mac} finished cleaning after ${elapsedMin} min."
-        }
-        sendVacuumNotification(msg)
+        sendVacuumNotification(cleaningEndedMessage(mac, d, elapsedMin, finishResult, interrupt))
     }
 
     state.cleaningSessionStart?.remove(mac)
+}
+
+// One message for every way a cleaning session can end, so an interrupted
+// run doesn't get announced as a finish. Confirmed live as a real gap: an
+// automation docking the vacuum partway through a room (e.g. "someone came
+// home") produced "finished cleaning after N min -- cleaned: <room>", which
+// was wrong twice over -- it didn't finish, and the room shouldn't have been
+// credited (see finishActiveCleanRun's `interrupted` handling).
+private String cleaningEndedMessage(String mac, def d, Integer elapsedMin, Map finishResult, Map interrupt) {
+    def name = d?.displayName ?: mac
+
+    def parts = []
+    if (finishResult?.completedNames) parts << "cleaned: ${finishResult.completedNames.join(', ')}"
+    if (finishResult?.incompleteNames) parts << "not completed (will retry): ${finishResult.incompleteNames.join(', ')}"
+    def detail = parts ? " -- ${parts.join('; ')}" : ""
+
+    if (interrupt) return "${name} was ${interrupt.how} ${elapsedMin} min into cleaning${detail}."
+    return "${name} finished cleaning after ${elapsedMin} min${detail}."
 }
 
 // Continues a rotation sweep (see cleanNextRooms) once a room-clean run
@@ -1379,6 +1414,7 @@ def startVacuum(String mac) {
     // whole-house run we started, vs. one started outside Hubitat.
     state.appWholeHouseStartAt = state.appWholeHouseStartAt ?: [:]
     state.appWholeHouseStartAt[mac] = now()
+    markCommandInterrupt(mac, "switched to a whole-house clean")
     venusControl(mac, 0, 1) // GLOBAL_SWEEPING / START
     pollVacuum(mac)
 }
@@ -1389,6 +1425,7 @@ def pauseVacuum(String mac) {
     state.rotationSweepPending?.put(mac, false)
     state.rotationSweepStartedAt?.remove(mac)
     state.appWholeHouseStartAt?.remove(mac)
+    markCommandInterrupt(mac, "paused")
     venusControl(mac, 0, 2) // GLOBAL_SWEEPING / PAUSE
     pollVacuum(mac)
 }
@@ -1402,6 +1439,7 @@ def dockVacuum(String mac) {
     // Docking on purpose ends the job -- whatever the vacuum intended to
     // resume isn't coming back, so a later run is genuinely a new one.
     state.pausedForResumeAt?.remove(mac)
+    markCommandInterrupt(mac, "docked")
     venusControl(mac, 3, 1) // RETURN_TO_CHARGING / START
     pollVacuum(mac)
 }
@@ -1599,6 +1637,7 @@ private void dispatchRoomClean(String mac, List rooms) {
 
     state.activeCleanRun = state.activeCleanRun ?: [:]
     state.activeCleanRun[mac] = [roomIds: ids, startedAt: now()]
+    state.commandInterrupt?.remove(mac) // a new dispatch supersedes any earlier stop
     rescheduleDynamicPoll() // switch to fast polling immediately, don't wait on a poll to confirm "Cleaning" first
 
     venusControl(mac, 0, 1, ids) // GLOBAL_SWEEPING / START, scoped to rooms
@@ -1649,7 +1688,7 @@ def markRoomsCleanedByName(String mac, String roomNamesCsv) {
 // over-credits, and whatever didn't get done stays eligible next time. The
 // time-estimate average is only refined when the whole batch completed
 // cleanly, so a partial run doesn't skew future time-budget estimates.
-private Map finishActiveCleanRun(String mac, Integer elapsedMin, String newStatus, def modeCode = null) {
+private Map finishActiveCleanRun(String mac, Integer elapsedMin, String newStatus, def modeCode = null, boolean interrupted = false) {
     def run = state.activeCleanRun?.getAt(mac)
     if (!run) return [:]
     def rooms = run.roomIds ?: []
@@ -1693,7 +1732,16 @@ private Map finishActiveCleanRun(String mac, Integer elapsedMin, String newStatu
         // so there's no need to guess against an estimate. Paused/Error is
         // the only genuinely ambiguous exit (could still resume); anything
         // else (Docked/Returning/Standby) means this room's pass is over.
-        boolean genuinelyFinished = !(newStatus == "Paused" || newStatus == "Error") && totalElapsed > 0
+        //
+        // ...unless this side is what ended it. A dock()/pause() command --
+        // most often an automation firing on "someone came home" -- looks
+        // exactly like a natural finish in the vacuum's own status, so
+        // without the `interrupted` flag a room cut short at minute 3 of 35
+        // got fully credited (dropping it from rotation for a whole cycle)
+        // *and* had its learned time overwritten with the truncated value,
+        // skewing every future time-budget run. A commanded stop is never a
+        // finish, however long it ran.
+        boolean genuinelyFinished = !(newStatus == "Paused" || newStatus == "Error") && !interrupted && totalElapsed > 0
         completed = genuinelyFinished ? rooms : []
         incomplete = genuinelyFinished ? [] : rooms
         if (genuinelyFinished) {

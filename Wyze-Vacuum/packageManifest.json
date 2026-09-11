@@ -5,8 +5,8 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Wyze-Vacuum",
   "communityLink": "https://community.hubitat.com/t/release-wyze-vacuum-integration-cloud/165866",
   "dateReleased": "2026-09-11",
-  "releaseNotes": "1.26.0 — Better handling of cleans started outside Hubitat (from the Wyze app, the vacuum's own schedule, or its button), which this app detects and reports on like any other run. Two fixes from a live 2-zone Wyze-app clean: (1) such a run used to be announced as \"started cleaning: whole house\", which was untrue -- Wyze doesn't report which rooms/zones an externally-started run picked, so it now says so plainly, and \"whole house\" is claimed only when this app's own start() command kicked the run off. (2) When a job pauses at critically low battery and auto-resumes hours later (mode 11), the resume used to fire a second \"started cleaning\" notification as if it were a brand-new run -- it now reports it as resuming the same job, matching the finish-notification suppression added in 1.24.0.",
-  "version": "1.26.0",
+  "releaseNotes": "1.27.0 — Interrupting a room clean (dock()/pause()/off(), e.g. an automation firing when someone comes home) now sends its own notification saying what stopped it and how far in -- previously it reported as \"finished cleaning,\" which was wrong twice over: a room cut short at minute 3 of 35 was fully credited as cleaned (dropping it from rotation for a whole cycle) and had its learned clean time overwritten with the truncated value, skewing future time-budget runs. A commanded stop is no longer treated as a finish. Multi-room batches still credit whichever rooms got their full time before the interruption. 1.26.0 — Better handling of cleans started outside Hubitat (from the Wyze app, the vacuum's own schedule, or its button), which this app detects and reports on like any other run. Two fixes from a live 2-zone Wyze-app clean: (1) such a run used to be announced as \"started cleaning: whole house\", which was untrue -- Wyze doesn't report which rooms/zones an externally-started run picked, so it now says so plainly, and \"whole house\" is claimed only when this app's own start() command kicked the run off. (2) When a job pauses at critically low battery and auto-resumes hours later (mode 11), the resume used to fire a second \"started cleaning\" notification as if it were a brand-new run -- it now reports it as resuming the same job, matching the finish-notification suppression added in 1.24.0.",
+  "version": "1.27.0",
   "drivers": [
     {
       "id": "92bcd42d-f7a4-4a7c-bf68-7d07486ef6e8",
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Wyze-Vacuum/Wyze-Vacuum-App.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.26.0"
+      "version": "1.27.0"
     }
   ]
 }
