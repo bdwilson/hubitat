@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.28.0 - Brian Wilson / bubba@bubba.org
+ * 1.29.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -749,7 +749,15 @@ def handleVacuumStatusResponse(resp, data) {
     // Keep the Switch capability's "switch" attribute honest against real
     // vacuum state, not just the last on()/off() the user tapped -- it flips
     // to "off" on its own once a clean actually finishes, gets docked, etc.
-    d.sendEvent(name: "switch", value: newStatus == "Cleaning" ? "on" : "off")
+    // Deliberately NOT just "is it cleaning right now." A job that ran the
+    // battery down is still a job in progress -- the vacuum is sitting on the
+    // dock charging and fully intends to pick it back up. Reporting the switch
+    // as off during that window breaks the common wiring of on = clean next
+    // rooms / off = dock: the switch is already off when someone gets home, so
+    // their "turn it off" automation has nothing to turn off, and the pending
+    // job later resumes anyway. Staying on for as long as work is outstanding
+    // keeps off() meaningful -- it's what actually cancels the rest of the job.
+    d.sendEvent(name: "switch", value: (newStatus == "Cleaning" || hasWorkPending(mac)) ? "on" : "off")
 
     if (prevStatus != "Cleaning" && newStatus == "Cleaning") {
         // Checked (and cleared) before the message is built -- a vacuum
@@ -770,7 +778,15 @@ def handleVacuumStatusResponse(resp, data) {
         // vacuum's own call, which is why a presence-triggered rule has nothing
         // to catch (it fired hours earlier, on arrival, with the vacuum already
         // parked and charging).
-        boolean cancellingResume = isResume && (settings["cancelAutoResume_${mac}"] ?: false)
+        //
+        // Two things cancel such a restart: the always-on option below, or an
+        // explicit stop issued while the job was paused (switch off / dock /
+        // pause). The second one isn't optional -- someone who turned it off
+        // has already said they don't want it, and the vacuum ignores a dock
+        // command it's already obeying, so squashing the restart here is the
+        // only place that intent can actually be enforced.
+        boolean cancelledByUser = consumeResumeCancelled(mac)
+        boolean cancellingResume = cancelledByUser || (isResume && (settings["cancelAutoResume_${mac}"] ?: false))
         if (cancellingResume) {
             // Deferred rather than docking inline: this is an async poll
             // callback, and venusControl posts synchronously -- the same
@@ -1183,6 +1199,54 @@ private boolean consumePausedForResume(String mac) {
 // gives no way to tell "returned to charge because it finished" apart from
 // "returned to charge because something told it to," and getting that wrong
 // silently drops a room out of rotation for a full cycle.
+// "Is there cleaning still outstanding," independent of whether the vacuum
+// happens to be moving this second. Drives the switch attribute (see
+// handleVacuumStatusResponse) so a job paused for charging still reads as on.
+// Every condition here is self-limiting -- a pause expires after 3 hours, a
+// dispatch that never starts is cleared within 10 minutes, and a sweep clears
+// itself once nothing is due -- so the switch can't latch on indefinitely.
+private boolean hasWorkPending(String mac) {
+    def pausedAt = state.pausedForResumeAt?.getAt(mac)
+    if (pausedAt && (now() - (pausedAt as Long)) <= 3 * 60 * 60 * 1000L) return true
+    if (state.activeCleanRun?.containsKey(mac)) return true
+    if (state.rotationSweepActive?.getAt(mac) || state.rotationSweepPending?.getAt(mac)) return true
+    return false
+}
+
+// Stopping on purpose (dock/pause, usually the switch being turned off when
+// someone gets home) has to end the *job*, not just whatever the vacuum is
+// doing at that instant. During a battery pause the vacuum is already docked,
+// so there's no Cleaning -> non-Cleaning transition coming to close the run
+// out -- without this it would stay open until its 3-hour timeout, keeping the
+// switch on, and the firmware would resume the job later regardless.
+private void cancelPendingWork(String mac) {
+    boolean hadPausedJob = state.pausedForResumeAt?.getAt(mac) != null
+    boolean hadRun = state.activeCleanRun?.containsKey(mac)
+    if (!hadPausedJob && !hadRun) return
+
+    // Rooms are deliberately left uncredited -- the job was cancelled, not
+    // finished, so they stay due and come up again next rotation.
+    if (state.lastKnownStatus?.getAt(mac) != "Cleaning") state.activeCleanRun?.remove(mac)
+
+    if (hadPausedJob) {
+        state.pausedForResumeAt.remove(mac)
+        // There's no API to tell the vacuum to forget a pending resume, so
+        // remember the cancellation instead: if it starts up again on its own,
+        // it gets sent straight back (see the resume handling on the Cleaning
+        // transition). Same 3-hour horizon as the pause itself.
+        state.resumeCancelled = state.resumeCancelled ?: [:]
+        state.resumeCancelled[mac] = now()
+        ifDebug("cancelPendingWork(${mac}): cancelled a job that was paused for charging")
+    }
+}
+
+private boolean consumeResumeCancelled(String mac) {
+    def at = state.resumeCancelled?.getAt(mac)
+    if (!at) return false
+    state.resumeCancelled.remove(mac)
+    return (now() - (at as Long)) <= 3 * 60 * 60 * 1000L
+}
+
 private void markCommandInterrupt(String mac, String how, boolean silent = false) {
     state.commandInterrupt = state.commandInterrupt ?: [:]
     state.commandInterrupt[mac] = [at: now(), how: how, silent: silent]
@@ -1461,6 +1525,7 @@ def startVacuum(String mac) {
     state.rotationSweepPending?.put(mac, false)
     state.rotationSweepStartedAt?.remove(mac)
     state.pausedForResumeAt?.remove(mac) // an explicit start is a new run, not a resume of the old one
+    state.resumeCancelled?.remove(mac)   // and a deliberate start overrides an earlier cancellation
     // Lets the poll that later observes Cleaning report this honestly as a
     // whole-house run we started, vs. one started outside Hubitat.
     state.appWholeHouseStartAt = state.appWholeHouseStartAt ?: [:]
@@ -1477,6 +1542,7 @@ def pauseVacuum(String mac) {
     state.rotationSweepStartedAt?.remove(mac)
     state.appWholeHouseStartAt?.remove(mac)
     markCommandInterrupt(mac, "paused")
+    cancelPendingWork(mac)
     venusControl(mac, 0, 2) // GLOBAL_SWEEPING / PAUSE
     pollVacuum(mac)
 }
@@ -1487,10 +1553,11 @@ def dockVacuum(String mac) {
     state.rotationSweepPending?.put(mac, false)
     state.rotationSweepStartedAt?.remove(mac)
     state.appWholeHouseStartAt?.remove(mac)
-    // Docking on purpose ends the job -- whatever the vacuum intended to
-    // resume isn't coming back, so a later run is genuinely a new one.
-    state.pausedForResumeAt?.remove(mac)
     markCommandInterrupt(mac, "docked")
+    // Ends the job outright, including one that's only paused for charging --
+    // see cancelPendingWork. Docking an already-docked vacuum is a no-op at
+    // the device, so the cancellation has to be tracked on this side.
+    cancelPendingWork(mac)
     venusControl(mac, 3, 1) // RETURN_TO_CHARGING / START
     pollVacuum(mac)
 }
@@ -1689,6 +1756,7 @@ private void dispatchRoomClean(String mac, List rooms) {
     state.activeCleanRun = state.activeCleanRun ?: [:]
     state.activeCleanRun[mac] = [roomIds: ids, startedAt: now()]
     state.commandInterrupt?.remove(mac) // a new dispatch supersedes any earlier stop
+    state.resumeCancelled?.remove(mac)  // ...as does it supersede an earlier cancellation
     rescheduleDynamicPoll() // switch to fast polling immediately, don't wait on a poll to confirm "Cleaning" first
 
     venusControl(mac, 0, 1, ids) // GLOBAL_SWEEPING / START, scoped to rooms
