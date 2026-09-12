@@ -7,16 +7,22 @@ Not yet implemented. Tracked here so they survive across sessions.
 User: "the vacuum just started up again... we have been home for over an
 hour. Why did this kick off if the automation should have docked this."
 
-Diagnosis from the 9/11 log: nothing on the Hubitat side started it. The
-rotation sweep dispatched Kitchen at 6:44pm, the battery was already down to
-15% (Living Room had just finished at 19%), and it died 6 minutes later at
+Diagnosis from the 9/11 log. The session *was* Hubitat's: leaving the house
+triggered `cleanNextRooms()`, which dispatched Living Room at 5:57pm; it
+finished at 6:34pm with the battery at 19%, and the sweep auto-advanced to
+Kitchen at 6:44pm on a **15%** battery. Kitchen ran itself flat by 6:51pm at
 6% -> `mode=11`, docked, charging. It then charged 6% -> 60% and the
-*firmware* restarted the job on its own at ~8:35pm. Their "dock when someone
-gets home" automation had nothing to act on: it triggers on arrival, and at
-arrival the vacuum was already parked on its dock charging. Confirmed no
-dock/pause was issued in that window -- every poll from 6:51 to 8:35 sits
-exactly on the 1-minute cadence with no off-schedule command poll (compare
-6:44:05 and 5:57:45, which are dispatch-triggered).
+*firmware* restarted that job on its own at ~8:35pm, by which point everyone
+was home.
+
+The distinction that matters: the job was app-dispatched, but the 8:35pm
+restart was the vacuum's own decision, not a new dispatch. That's why their
+"dock when someone gets home" automation caught nothing -- it triggers on
+arrival, fired hours earlier with the vacuum already parked and charging,
+and nothing re-triggers it when the firmware picks the job back up.
+Confirmed no dock/pause was issued in that window: every poll from 6:51 to
+8:35 sits exactly on the 1-minute cadence with no off-schedule command poll
+(compare 6:44:05 and 5:57:45, which are dispatch-triggered).
 
 Added `cancelAutoResume_${mac}` (bool, default off, under Low Battery
 Protection). The resume is already detected as of 1.26.0

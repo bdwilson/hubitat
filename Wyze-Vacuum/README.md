@@ -286,7 +286,9 @@ Note that this is the vacuum's own behavior, separate from the Hubitat-side [Low
 
 #### Stopping it from auto-resuming
 
-The catch with the vacuum's own resume is that **it picks the moment, not you** — whenever charging happens to finish, which can be hours after the job started and at a time nobody wants a vacuum running. Confirmed live: a room that died at 6% at 6:51pm restarted itself at 8:35pm, long after everyone was home. Nothing on the Hubitat side asked for it, so there was nothing for a "dock when someone gets home" automation to catch — that automation fires on arrival, and by then the vacuum was already sitting on its dock charging.
+The catch with the vacuum's own resume is that **it picks the moment, not you** — whenever charging happens to finish, which can be hours after the job started and at a time nobody wants a vacuum running.
+
+Confirmed live, and worth walking through because the interaction with presence automations is easy to misread. An "everyone left" rule fired `cleanNextRooms()` at 5:57pm; that room finished at 6:34pm leaving the battery at 19%; the sweep advanced to the next room at 6:44pm on a **15%** battery; that room ran itself flat by 6:51pm at 6% and the vacuum parked to charge. At 8:35pm, charged back to 60%, it restarted that room on its own — with everyone home again. The job was one this app dispatched, but the *restart* was the vacuum's own decision, which is why a "dock when someone gets home" rule catches nothing: it fired hours earlier on arrival, when the vacuum was already sitting on its dock charging, and nothing re-triggers it when the firmware picks the job back up.
 
 Turn on **"Don't let it auto-resume"** under `<vacuum> — Low Battery Protection` (added in 1.28.0, off by default) and a self-restarted job gets sent straight back to the dock instead:
 

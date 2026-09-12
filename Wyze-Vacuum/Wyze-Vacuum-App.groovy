@@ -288,7 +288,8 @@ def mainPage() {
                             defaultValue: 0, required: false
 
                         paragraph "When the battery runs out mid-job, the vacuum docks itself, charges, and then restarts that job on its own — often " +
-                                  "hours later, at whatever time it finishes charging, with nothing on the Hubitat side having asked for it."
+                                  "hours later, at whatever time it finishes charging. The job is one this app dispatched, but the restart isn't: the " +
+                                  "vacuum decides when, so it can come back long after whatever triggered the original run stopped applying."
                         input "cancelAutoResume_${mac}", "bool",
                             title: "Don't let it auto-resume — send it back to the dock if it restarts an unfinished job on its own (the room stays pending for the next rotation)",
                             defaultValue: false, required: false
@@ -761,10 +762,14 @@ def handleVacuumStatusResponse(resp, data) {
 
         // The firmware picks its own moment to restart a battery-paused job --
         // whenever charging happens to finish, which can be hours later and at
-        // a genuinely unwanted time (confirmed live: a job paused at 6% at
-        // 6:51pm restarted itself at 8:35pm, long after everyone was home).
-        // Nothing on this side asked for it, so there's nothing for a normal
-        // "dock when someone gets home" automation to have caught.
+        // a genuinely unwanted time. Confirmed live: an "everyone left" trigger
+        // ran cleanNextRooms() at 5:57pm, the sweep advanced to the next room
+        // at 6:44pm on a 15% battery, that room died at 6% by 6:51pm, and the
+        // vacuum restarted it itself at 8:35pm -- by which point everyone was
+        // home again. The job is one this app dispatched; the *restart* is the
+        // vacuum's own call, which is why a presence-triggered rule has nothing
+        // to catch (it fired hours earlier, on arrival, with the vacuum already
+        // parked and charging).
         boolean cancellingResume = isResume && (settings["cancelAutoResume_${mac}"] ?: false)
         if (cancellingResume) {
             // Deferred rather than docking inline: this is an async poll
