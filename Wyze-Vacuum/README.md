@@ -284,6 +284,16 @@ This is handled as one job, not two: the finish notification is held until it *a
 
 Note that this is the vacuum's own behavior, separate from the Hubitat-side [Low battery protection](#low-battery-protection) threshold below, which docks it proactively at a percentage you choose.
 
+#### Stopping it from auto-resuming
+
+The catch with the vacuum's own resume is that **it picks the moment, not you** — whenever charging happens to finish, which can be hours after the job started and at a time nobody wants a vacuum running. Confirmed live: a room that died at 6% at 6:51pm restarted itself at 8:35pm, long after everyone was home. Nothing on the Hubitat side asked for it, so there was nothing for a "dock when someone gets home" automation to catch — that automation fires on arrival, and by then the vacuum was already sitting on its dock charging.
+
+Turn on **"Don't let it auto-resume"** under `<vacuum> — Low Battery Protection` (added in 1.28.0, off by default) and a self-restarted job gets sent straight back to the dock instead:
+
+> First Floor Vacuum restarted an unfinished clean on its own after charging — sending it back to the dock. It'll come up again next rotation.
+
+The room isn't credited and keeps its learned clean time, so it simply comes up again on the next normal rotation trigger. Leave the option off if you'd rather the vacuum finish what it started unattended.
+
 ### Bin-empty reminder
 
 Per vacuum, under **`<vacuum> — Bin Reminder`**: set **"Notify to empty the bin after this many cumulative cleaning hours"** (0 disables it). This tracks total active cleaning time — summed across every cleaning session, room-scoped or whole-house — since the counter was last reset. When it crosses the threshold, you get one notification and the counter resets automatically. You can also reset it manually anytime with the **"I emptied it"** button on the app page, or the driver's `resetBinTimer()` command (handy to wire into whatever automation you use when you actually empty it). If the running total looks wrong for any reason (e.g. it missed time accumulated before upgrading to 1.15.0's polling fix — see Troubleshooting), correct it directly with the **"Set cumulative hours to"** field + **Set Hours** button, rather than only being able to reset it to zero.

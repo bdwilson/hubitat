@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.27.0 - Brian Wilson / bubba@bubba.org
+ * 1.28.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -286,6 +286,12 @@ def mainPage() {
                         input "lowBatteryDockPercent_${mac}", "number",
                             title: "Dock if battery drops below this % while cleaning (0 = disabled, rely on the vacuum's own behavior)",
                             defaultValue: 0, required: false
+
+                        paragraph "When the battery runs out mid-job, the vacuum docks itself, charges, and then restarts that job on its own — often " +
+                                  "hours later, at whatever time it finishes charging, with nothing on the Hubitat side having asked for it."
+                        input "cancelAutoResume_${mac}", "bool",
+                            title: "Don't let it auto-resume — send it back to the dock if it restarts an unfinished job on its own (the room stays pending for the next rotation)",
+                            defaultValue: false, required: false
                     }
 
                     section("<b>${vacLabel} — Bin Reminder</b>") {
@@ -752,8 +758,23 @@ def handleVacuumStatusResponse(resp, data) {
         state.commandInterrupt?.remove(mac) // cleaning again -- nothing left to describe as interrupted
         state.cleaningSessionStart = state.cleaningSessionStart ?: [:]
         state.cleaningSessionStart[mac] = now()
+
+        // The firmware picks its own moment to restart a battery-paused job --
+        // whenever charging happens to finish, which can be hours later and at
+        // a genuinely unwanted time (confirmed live: a job paused at 6% at
+        // 6:51pm restarted itself at 8:35pm, long after everyone was home).
+        // Nothing on this side asked for it, so there's nothing for a normal
+        // "dock when someone gets home" automation to have caught.
+        boolean cancellingResume = isResume && (settings["cancelAutoResume_${mac}"] ?: false)
+        if (cancellingResume) {
+            // Deferred rather than docking inline: this is an async poll
+            // callback, and venusControl posts synchronously -- the same
+            // shape that tripped Hubitat's hub-load guardrail in 1.5.1.
+            runIn(2, "cancelAutoResumeDock", [data: [mac: mac]])
+        }
+
         if (settings.notifyCleaningStarted) {
-            sendVacuumNotification(cleaningStartedMessage(mac, d, isResume))
+            sendVacuumNotification(cleaningStartedMessage(mac, d, isResume, cancellingResume))
         }
     } else if (prevStatus == "Cleaning" && newStatus != "Cleaning") {
         handleCleaningSessionEnd(mac, d.currentValue("cleanTime"), d, newStatus, modeCode)
@@ -1110,8 +1131,9 @@ private List<String> roomNamesFor(String mac, List ids) {
 // externally-started run picked, so the honest answer is that we don't know.
 // "whole house" is now claimed only when this app's own start() command is
 // what actually kicked the run off.
-private String cleaningStartedMessage(String mac, def d, boolean isResume) {
+private String cleaningStartedMessage(String mac, def d, boolean isResume, boolean cancellingResume = false) {
     def name = d?.displayName ?: mac
+    if (cancellingResume) return "${name} restarted an unfinished clean on its own after charging — sending it back to the dock. It'll come up again next rotation."
     if (isResume) return "${name} resumed cleaning after charging (same job, not a new one)."
 
     def activeRoomIds = state.activeCleanRun?.getAt(mac)?.roomIds
@@ -1156,9 +1178,30 @@ private boolean consumePausedForResume(String mac) {
 // gives no way to tell "returned to charge because it finished" apart from
 // "returned to charge because something told it to," and getting that wrong
 // silently drops a room out of rotation for a full cycle.
-private void markCommandInterrupt(String mac, String how) {
+private void markCommandInterrupt(String mac, String how, boolean silent = false) {
     state.commandInterrupt = state.commandInterrupt ?: [:]
-    state.commandInterrupt[mac] = [at: now(), how: how]
+    state.commandInterrupt[mac] = [at: now(), how: how, silent: silent]
+}
+
+// Sends a self-restarted job back to the dock, for vacuums with
+// "Don't let it auto-resume" turned on. Runs a couple of seconds after the
+// poll that spotted the restart, to keep the synchronous control call out of
+// the async callback. Re-checks state first: if it stopped on its own in the
+// meantime there's nothing to cancel.
+def cancelAutoResumeDock(data) {
+    def mac = data?.mac
+    if (!mac) return
+    if (state.lastKnownStatus?.getAt(mac) != "Cleaning") {
+        ifDebug("cancelAutoResumeDock(${mac}): no longer cleaning, nothing to cancel")
+        return
+    }
+    log.info "Wyze Vacuum ${mac}: vacuum restarted an unfinished job on its own -- docking it (auto-resume is turned off for this vacuum)"
+    dockVacuum(mac)
+    // Marked silent so the run's end doesn't also announce "was docked N min
+    // into cleaning" -- the start-side notification already explained this.
+    // Still counts as an interruption, so the room keeps its pending status
+    // and its learned clean time (see finishActiveCleanRun).
+    markCommandInterrupt(mac, "docked", true)
 }
 
 // Consumed at the end of a cleaning session. The window only needs to cover
@@ -1219,7 +1262,10 @@ private void handleCleaningSessionEnd(String mac, def reportedCleanTimeMinutes, 
     // Same reasoning -- don't tell the user it "finished" when it's really
     // just pausing to resume the same job; the eventual genuine finish
     // fires its own correct notification once totalElapsed is known.
-    if (!willResume && settings.notifyCleaningFinished && elapsedMin > 0) {
+    // interrupt.silent covers a stop this app issued *and* already announced
+    // at the time (cancelled auto-resume) -- the run still counts as
+    // interrupted for crediting, it just doesn't get a second notification.
+    if (!willResume && settings.notifyCleaningFinished && elapsedMin > 0 && !interrupt?.silent) {
         sendVacuumNotification(cleaningEndedMessage(mac, d, elapsedMin, finishResult, interrupt))
     }
 
