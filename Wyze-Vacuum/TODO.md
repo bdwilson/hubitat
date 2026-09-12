@@ -2,6 +2,44 @@
 
 Not yet implemented. Tracked here so they survive across sessions.
 
+## ~~30. Switch went off mid-job, breaking the on/off presence wiring~~ — DONE (1.29.0)
+
+Follow-on from #29, reported from the same episode. User's wiring is the
+common one: switch on (= `cleanNextRooms`) when everyone leaves, switch off
+(= `dock`) when someone gets home. When the battery died mid-job the vacuum
+parked to charge, and `switch` -- computed as exactly
+`newStatus == "Cleaning"` -- flipped to off while the job was still very much
+outstanding. So by the time anyone got home the switch was *already* off,
+their "turn it off" automation had nothing to turn off, and the firmware
+resumed the job later anyway.
+
+Two halves:
+
+1. `switch` now reports on whenever work is outstanding, via
+   `hasWorkPending()`: actively cleaning, a job paused for charging
+   (`pausedForResumeAt` inside its 3-hour horizon), an `activeCleanRun` that
+   hasn't finished, or a sweep active/pending. Every one of those is
+   self-limiting, so the switch can't latch on forever.
+2. `dockVacuum`/`pauseVacuum` now call `cancelPendingWork()`, which actually
+   ends a job that's only paused for charging. Previously there was no
+   Cleaning -> non-Cleaning transition left to close the run out (the vacuum
+   was already docked), so the run hung around until its 3-hour timeout and
+   the switch stayed on. Rooms are deliberately left uncredited -- cancelled,
+   not finished, so they stay due.
+
+Since there's no API to clear the vacuum's pending-resume intent, the
+cancellation is remembered as `state.resumeCancelled[mac]` and consumed on
+the next Cleaning transition, which sends it straight back to the dock. That
+path is deliberately *not* gated on the #29 `cancelAutoResume` setting: an
+explicit stop already expresses the intent, and this is the only place it can
+be enforced. Cleared by a deliberate `start()` or a new dispatch.
+
+Verified via simulation of the 9/11 timeline with the option off: switch
+reads on through the pause and while docked/charging, goes off the moment
+`off()` lands, the run is closed out with the room still due, and the
+firmware's later restart is squashed with exactly one dock. Control case
+(nobody intervenes) still resumes normally with no dock.
+
 ## ~~29. Option to stop the vacuum auto-resuming at an unwanted time~~ — DONE (1.28.0)
 
 User: "the vacuum just started up again... we have been home for over an

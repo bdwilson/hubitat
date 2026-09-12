@@ -106,7 +106,22 @@ What `on()`/`off()` actually do is configurable per device, under the driver's o
 | Switch "on" action | Clean Next Rooms (rotation) / Start (whole house) | **Clean Next Rooms** |
 | Switch "off" action | Dock / Pause | **Dock** |
 
-The `switch` attribute isn't just a dumb toggle — it's kept in sync with the vacuum's real state on every poll (`on` while `status` is `Cleaning`, `off` otherwise), so it correctly flips to `off` on its own once a clean finishes, gets docked, errors out, etc., not only when you explicitly call `off()`.
+The `switch` attribute isn't just a dumb toggle — it's kept in sync with the vacuum's real state on every poll, so it correctly flips to `off` on its own once a clean finishes, gets docked, errors out, etc., not only when you explicitly call `off()`.
+
+### What "on" means — outstanding work, not just movement
+
+**Changed in 1.29.0.** `switch` used to be exactly `status == "Cleaning"`. That's wrong for the most common wiring of this device — *on = clean next rooms* when everyone leaves, *off = dock* when someone gets home — because of what happens when a job runs the battery down: the vacuum parks itself to charge, fully intending to finish later, and the switch would flip to `off` while the job was still very much outstanding. Two things went wrong from there:
+
+- By the time someone got home, the switch was **already off**, so the "turn it off" automation had nothing to turn off.
+- The vacuum then resumed the job on its own once charged — often hours later, at whatever time charging happened to finish.
+
+So `switch` now reports `on` for as long as there's cleaning still outstanding: actively cleaning, a job paused for charging that the vacuum means to resume, a dispatch that hasn't started yet, or a rotation sweep mid-way between rooms. Each of those is self-limiting (a pause expires after 3 hours, an unstarted dispatch clears within 10 minutes, a sweep ends when nothing's due), so the switch can't latch on indefinitely.
+
+### Turning it off cancels the rest of the job
+
+The other half of the same fix: `off()` — and `dock()`/`pause()` directly — now genuinely ends a job that's paused for charging, rather than just telling an already-docked vacuum to dock. The run is closed out, and its rooms stay **due** rather than being credited, so they come up again on the next normal rotation trigger.
+
+There's no API to tell the vacuum to forget a pending resume, so if it starts up again on its own afterwards, it gets sent straight back to the dock. That happens regardless of the ["Don't let it auto-resume"](#stopping-it-from-auto-resuming) setting — an explicit stop already said what you wanted, and this is the only point at which that intent can actually be enforced.
 
 ---
 
