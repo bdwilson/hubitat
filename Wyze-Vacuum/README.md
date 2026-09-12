@@ -284,6 +284,18 @@ This is handled as one job, not two: the finish notification is held until it *a
 
 Note that this is the vacuum's own behavior, separate from the Hubitat-side [Low battery protection](#low-battery-protection) threshold below, which docks it proactively at a percentage you choose.
 
+#### Stopping it from auto-resuming
+
+The catch with the vacuum's own resume is that **it picks the moment, not you** — whenever charging happens to finish, which can be hours after the job started and at a time nobody wants a vacuum running.
+
+Confirmed live, and worth walking through because the interaction with presence automations is easy to misread. An "everyone left" rule fired `cleanNextRooms()` at 5:57pm; that room finished at 6:34pm leaving the battery at 19%; the sweep advanced to the next room at 6:44pm on a **15%** battery; that room ran itself flat by 6:51pm at 6% and the vacuum parked to charge. At 8:35pm, charged back to 60%, it restarted that room on its own — with everyone home again. The job was one this app dispatched, but the *restart* was the vacuum's own decision, which is why a "dock when someone gets home" rule catches nothing: it fired hours earlier on arrival, when the vacuum was already sitting on its dock charging, and nothing re-triggers it when the firmware picks the job back up.
+
+Turn on **"Don't let it auto-resume"** under `<vacuum> — Low Battery Protection` (added in 1.28.0, off by default) and a self-restarted job gets sent straight back to the dock instead:
+
+> First Floor Vacuum restarted an unfinished clean on its own after charging — sending it back to the dock. It'll come up again next rotation.
+
+The room isn't credited and keeps its learned clean time, so it simply comes up again on the next normal rotation trigger. Leave the option off if you'd rather the vacuum finish what it started unattended.
+
 ### Bin-empty reminder
 
 Per vacuum, under **`<vacuum> — Bin Reminder`**: set **"Notify to empty the bin after this many cumulative cleaning hours"** (0 disables it). This tracks total active cleaning time — summed across every cleaning session, room-scoped or whole-house — since the counter was last reset. When it crosses the threshold, you get one notification and the counter resets automatically. You can also reset it manually anytime with the **"I emptied it"** button on the app page, or the driver's `resetBinTimer()` command (handy to wire into whatever automation you use when you actually empty it). If the running total looks wrong for any reason (e.g. it missed time accumulated before upgrading to 1.15.0's polling fix — see Troubleshooting), correct it directly with the **"Set cumulative hours to"** field + **Set Hours** button, rather than only being able to reset it to zero.

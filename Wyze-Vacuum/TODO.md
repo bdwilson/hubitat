@@ -2,6 +2,51 @@
 
 Not yet implemented. Tracked here so they survive across sessions.
 
+## ~~29. Option to stop the vacuum auto-resuming at an unwanted time~~ — DONE (1.28.0)
+
+User: "the vacuum just started up again... we have been home for over an
+hour. Why did this kick off if the automation should have docked this."
+
+Diagnosis from the 9/11 log. The session *was* Hubitat's: leaving the house
+triggered `cleanNextRooms()`, which dispatched Living Room at 5:57pm; it
+finished at 6:34pm with the battery at 19%, and the sweep auto-advanced to
+Kitchen at 6:44pm on a **15%** battery. Kitchen ran itself flat by 6:51pm at
+6% -> `mode=11`, docked, charging. It then charged 6% -> 60% and the
+*firmware* restarted that job on its own at ~8:35pm, by which point everyone
+was home.
+
+The distinction that matters: the job was app-dispatched, but the 8:35pm
+restart was the vacuum's own decision, not a new dispatch. That's why their
+"dock when someone gets home" automation caught nothing -- it triggers on
+arrival, fired hours earlier with the vacuum already parked and charging,
+and nothing re-triggers it when the firmware picks the job back up.
+Confirmed no dock/pause was issued in that window: every poll from 6:51 to
+8:35 sits exactly on the 1-minute cadence with no off-schedule command poll
+(compare 6:44:05 and 5:57:45, which are dispatch-triggered).
+
+Added `cancelAutoResume_${mac}` (bool, default off, under Low Battery
+Protection). The resume is already detected as of 1.26.0
+(`consumePausedForResume`); when the option is on, the poll that spots it
+schedules `cancelAutoResumeDock` via `runIn(2, ...)` -- deferred rather than
+docking inline because this is an async poll callback and `venusControl`
+posts synchronously, the same shape that tripped Hubitat's hub-load
+guardrail in 1.5.1. That handler re-checks the vacuum is still cleaning,
+docks it, and marks the interrupt `silent` so the run's end doesn't fire a
+second "was docked N min into cleaning" message on top of the start-side
+explanation. Still counts as an interruption for crediting (1.27.0), so the
+room stays pending and keeps its learned time. Verified via simulation of
+the exact 9/11 timeline: exactly one dock, exactly two notifications, room
+not credited, learned time untouched -- and with the option off, the resume
+proceeds unchanged.
+
+**Offered but not taken (user declined for now):** refusing to dispatch a
+sweep room below a battery threshold, which is the actual root cause here --
+dispatching Kitchen at 15% was never going to finish. Worth revisiting; the
+whole cascade starts there. Also offered: backing polling off to the idle
+interval during a charge pause (this episode polled every minute for 1h45m,
+~105 polls, because `state.activeCleanRun` stays populated through a
+mode-11 pause and `rescheduleDynamicPoll` keys off that).
+
 ## ~~28. Interrupted room clean reported (and credited) as a finish~~ — DONE (1.27.0)
 
 User asked for a notification when a room clean gets interrupted by
