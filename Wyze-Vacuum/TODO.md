@@ -2,6 +2,48 @@
 
 Not yet implemented. Tracked here so they survive across sessions.
 
+## ~~28. Interrupted room clean reported (and credited) as a finish~~ — DONE (1.27.0)
+
+User asked for a notification when a room clean gets interrupted by
+`dock()` being called -- their real case being an automation that docks the
+vacuum when someone comes home. Digging into the existing behavior turned
+up a bigger problem than the missing message.
+
+A commanded stop is indistinguishable from a natural finish in the vacuum's
+own status -- both just show it returning to the dock -- and
+`finishActiveCleanRun()` treated any non-Paused/Error exit of a single-room
+run as genuine (`genuinelyFinished = !(newStatus == "Paused" || newStatus
+== "Error") && totalElapsed > 0`). So docking 3 minutes into a 35-minute
+room did two wrong things at once: `markRoomsCleaned()` credited it, taking
+that room out of rotation for a whole cycle after barely being touched, and
+-- because a single-room dispatch is treated as ground truth and overwrites
+outright rather than blending -- its learned clean time was replaced with
+the truncated 3 minutes, skewing every later time-budget run. The user also
+got "finished cleaning after 3 min -- cleaned: <room>", which was simply
+untrue.
+
+The app does know when *it* sent the stop, which is the unambiguous signal
+the vacuum's status can't provide. `markCommandInterrupt()` records it in
+`dockVacuum`/`pauseVacuum`/`startVacuum`; `handleCleaningSessionEnd()`
+consumes it (10-minute window covering command -> next poll, cleared
+outright by a new dispatch or a new Cleaning transition, and deliberately
+left alone on a mode-11 exit so it survives a battery pause to the run's
+real end) and passes it into `finishActiveCleanRun()`, where an interrupted
+single-room run is no longer counted as finished. Multi-room batches keep
+the existing estimate-based split, since rooms that got their full time
+before the interruption really did finish. New `cleaningEndedMessage()`
+covers every way a session can end, so the notification matches reality.
+Verified via simulation: interrupted run not credited and learned time
+preserved, genuine finish still credited and still updates timing, paused
+run unchanged, externally-started run docked from Hubitat worded correctly,
+stale marker past its window ignored, and a new dispatch clearing a pending
+marker.
+
+**Known limit, unchanged:** docking from the Wyze app mid-run leaves no
+app-side marker and still looks exactly like a finish. Same root cause as
+the unknowable room list for externally-started runs (#27) -- Wyze's API
+doesn't report it.
+
 ## ~~27. Runs started outside Hubitat reported as "whole house"; mode-11 resume announced as a new run~~ — DONE (1.26.0)
 
 User started a 2-zone clean from the Wyze app and got a push saying
