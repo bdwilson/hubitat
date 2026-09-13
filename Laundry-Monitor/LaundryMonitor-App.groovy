@@ -479,7 +479,13 @@ def washerStopConfirmFired() {
 }
 
 def washerReminderFired() {
-    if (!state.washerOn) notify(washerReminderMessage ?: "Reminder: the washer is still waiting to be moved to the dryer")
+    // Don't nag about moving a load that's already confirmed in the dryer -
+    // this fired even when the dryer had been running for several minutes,
+    // because it only checked whether the washer had restarted, never
+    // whether the dryer already had.
+    if (!state.washerOn && !state.dryerOn) {
+        notify(washerReminderMessage ?: "Reminder: the washer is still waiting to be moved to the dryer")
+    }
 }
 
 /* ---------------- dryer (vibration) ---------------- */
@@ -549,6 +555,17 @@ private void startDryerCycle(Long ts) {
     armDeadman("dryer", ts)
     if (switchList) switchList*.on()
     if (enableStartNotify) notify(dryerStartMessage ?: "Dryer started")
+
+    // The washer's quiet-timeout can take up to washerStopConfirmMin to
+    // confirm a real stop when only one low reading ever arrives (no
+    // second reading to satisfy the fast path). A dryer cycle actually
+    // starting for real is strong independent evidence that whatever it's
+    // drying just finished washing, so resolve a pending washer end now
+    // instead of leaving "Washer is done" to arrive stale - sometimes
+    // minutes after the load is already confirmed moved.
+    if (concurrentWasher && state.washerEndingSince) {
+        endWasherCycle("normal", state.washerEndingSince as Long)
+    }
 }
 
 private void endDryerCycle(String reason, Long endTs) {
