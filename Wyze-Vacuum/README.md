@@ -177,6 +177,29 @@ Under the hood, room picking isn't a hard-gated "queue A always drains before qu
 
 This is a soft pacing heuristic, not an exact schedule — actual frequency depends on how often `cleanNextRooms()` is triggered and how many rooms fit in a batch (rooms-per-run / time-budget setting), same as the rest of rotation.
 
+### Not starting a room the battery can't cover
+
+Added in 1.30.0, on by default, with a per-vacuum opt-out under `<vacuum> — Room Rotation`.
+
+**This is not a second opinion on Wyze's own ~8% return-to-dock threshold.** That threshold answers *"when do I need to head home?"* mid-run, and this integration leaves it completely alone — it has no way to change it and never tries. This answers a different question at a different moment: *"is it worth setting out at all?"* — which the firmware never asks, because by the time it's running it's already committed.
+
+The case for asking it, confirmed live: a rotation sweep finished a 37-minute room that took the battery from 100% down to 8%, then immediately dispatched the next room — at 8%. The vacuum **never acted on that command**, not on the first attempt and not on the automatic retry either. It cost a dispatch, a retry, a spurious "a room-clean command was sent but the vacuum never started — worth checking it's not stuck or offline" alert, and left the room looking untouched in the logs. The firmware had already decided the job was pointless; the app was just the last one to know.
+
+So before dispatching, rotation now checks whether the charge covers the job:
+
+```
+needed % = (that room's learned clean time) × (measured % drain per minute) + 10% reserve
+```
+
+- **The drain rate is measured, not assumed** — learned from real runs exactly the way per-room clean times are, blended with an exponential average. It starts from 2.3%/min (what this vacuum actually showed across two full-battery runs) and is replaced by real numbers within a few cleans. Samples that can't be meaningful are discarded rather than averaged in: runs under 5 minutes, runs where the battery went *up* (a mode-11 charge pause partway through), and anything implausible outside 0.5–10%/min.
+- **The 10% reserve sits above Wyze's own threshold**, so the vacuum isn't being asked to finish right at the edge of it.
+- **A skipped room isn't lost.** It stays due, nothing is credited, and the next trigger picks it up normally. The skip is an `log.info` line naming the room, what it needed, and what the battery actually was — no push notification, since this is working as intended rather than a fault.
+- **A multi-room batch is trimmed, not skipped.** Rooms are dropped from the end (least overdue first) until what's left fits, so a partial run still happens when it can.
+
+This only gates **rotation** (`cleanNextRooms()` and its sweep). `cleanRooms("Kitchen")`, the room buttons, and Learning Mode always dispatch regardless — those are explicit requests for a specific room, and silently refusing them would be worse than letting them run short.
+
+The app page shows the current drain rate, whether it's measured or still the starting estimate, and what the next queued room would need against the current battery.
+
 ### Correcting rotation history manually
 
 If a room was cleaned but the rotation doesn't know it — cleaned by hand, or a run whose completion never got recorded for some reason — it'll keep getting picked first, ahead of rooms that are actually more overdue. Fix this directly with `markRoomsCleaned("Kitchen, Living Room")` (driver command, or under `<vacuum> — Mark Rooms as Cleaned` in the app) — it sets those rooms' "last cleaned" timestamp to now **without dispatching any actual cleaning**, so the rotation immediately reflects reality. The app page's room picker clears itself after you click **Mark as Cleaned**, so it doesn't sit there looking selected — nothing re-applies just because it's still showing checked boxes; only an actual button click does anything.
