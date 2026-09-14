@@ -117,6 +117,8 @@ The `switch` attribute isn't just a dumb toggle — it's kept in sync with the v
 
 So `switch` now reports `on` for as long as there's cleaning still outstanding: actively cleaning, a job paused for charging that the vacuum means to resume, a dispatch that hasn't started yet, or a rotation sweep mid-way between rooms. Each of those is self-limiting (a pause expires after 3 hours, an unstarted dispatch clears within 10 minutes, a sweep ends when nothing's due), so the switch can't latch on indefinitely.
 
+**1.29.0 had a bug here, fixed in 1.29.1.** "The sweep ends when nothing's due" wasn't true of every path: a sweep only ever advances off the back of a run *finishing*, so when a dispatched room was given up on for never starting (see [Troubleshooting](#troubleshooting)), the run was cleared but the sweep flag was left set — and nothing would ever clear it. Reading that flag as outstanding work then held the switch on indefinitely. Confirmed live: a dispatch at 8% battery was never acted on, given up on 11 minutes later, and the switch was still on two hours after that with the vacuum idle on its dock. Every path that ends a sweep now clears all of its state through one helper, and a safety net clears a sweep flag found set with nothing running, queued, or cleaning.
+
 ### Turning it off cancels the rest of the job
 
 The other half of the same fix: `off()` — and `dock()`/`pause()` directly — now genuinely ends a job that's paused for charging, rather than just telling an already-docked vacuum to dock. The run is closed out, and its rooms stay **due** rather than being credited, so they come up again on the next normal rotation trigger.

@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.29.0 - Brian Wilson / bubba@bubba.org
+ * 1.29.1 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -842,6 +842,8 @@ def handleVacuumStatusResponse(resp, data) {
 // Only applies to a run that never confirmed Cleaning even once -- a
 // legitimately long-running clean is left alone and resolves normally.
 private void checkStaleActiveCleanRun(String mac) {
+    checkOrphanedSweep(mac)
+
     def run = state.activeCleanRun?.getAt(mac)
     if (!run || run.learning) return
 
@@ -857,6 +859,7 @@ private void checkStaleActiveCleanRun(String mac) {
             log.warn "Wyze Vacuum ${mac}: room-clean run has been waiting to resume for ${String.format('%.1f', hoursSincePause)}h with no sign of it -- finishing it as-is with what was measured so far."
             sendVacuumNotification("${getChildDevice(mac)?.displayName ?: mac}: expected to resume cleaning after charging, but hasn't after ${String.format('%.1f', hoursSincePause)} hours -- worth checking on it.")
             finishActiveCleanRun(mac, 0, "Docked", null)
+            endRotationSweep(mac) // nothing left driving it -- see the give-up below
         }
         return
     }
@@ -885,6 +888,52 @@ private void checkStaleActiveCleanRun(String mac) {
         log.warn "Wyze Vacuum ${mac}: room-clean dispatched ${Math.round(minutesSinceDispatch)} min ago never actually started cleaning, even after a retry -- clearing it so its room(s) aren't excluded from rotation indefinitely."
         sendVacuumNotification("${getChildDevice(mac)?.displayName ?: mac}: a room-clean command was sent but the vacuum never started -- worth checking it's not stuck or offline.")
         state.activeCleanRun.remove(mac)
+        // The sweep has to end here too. It only ever advances off the back of
+        // a run actually finishing, so once the run is abandoned nothing will
+        // ever clear the flag -- and since 1.29.0 reads it as "work
+        // outstanding" for the switch attribute, leaving it set latched the
+        // switch on indefinitely. Confirmed live: a dispatch at 8% battery was
+        // never acted on, was given up on here, and the switch stayed on for
+        // hours afterwards with the vacuum sitting idle on its dock.
+        endRotationSweep(mac)
+    }
+}
+
+// Every place a sweep stops needs to clear all three pieces of its state --
+// missing one is what caused the latched-switch bug above.
+private void endRotationSweep(String mac) {
+    state.rotationSweepActive?.put(mac, false)
+    state.rotationSweepPending?.put(mac, false)
+    state.rotationSweepStartedAt?.remove(mac)
+}
+
+// Safety net for any path that abandons work without going through
+// endRotationSweep. A sweep flag set while nothing is cleaning, no dispatch is
+// outstanding and nothing is queued to dispatch means the sweep can never
+// advance again -- so it isn't "work outstanding," it's leftover state. The
+// grace period covers the few seconds between a room finishing and
+// continueSweepDispatch firing, so a healthy sweep is never cut short.
+private void checkOrphanedSweep(String mac) {
+    state.sweepIdleSince = state.sweepIdleSince ?: [:]
+
+    boolean sweeping = state.rotationSweepActive?.getAt(mac)
+    boolean busy = state.activeCleanRun?.containsKey(mac) ||
+                   state.rotationSweepPending?.getAt(mac) ||
+                   state.lastKnownStatus?.getAt(mac) == "Cleaning"
+    if (!sweeping || busy) {
+        state.sweepIdleSince.remove(mac)
+        return
+    }
+
+    def idleSince = state.sweepIdleSince[mac]
+    if (!idleSince) {
+        state.sweepIdleSince[mac] = now()
+        return
+    }
+    if ((now() - (idleSince as Long)) / 60000.0 >= 2.0) {
+        ifDebug("checkOrphanedSweep(${mac}): sweep flag set with nothing running or queued -- clearing it")
+        endRotationSweep(mac)
+        state.sweepIdleSince.remove(mac)
     }
 }
 
@@ -1370,9 +1419,7 @@ private void continueSweepIfNeeded(String mac, String newStatus) {
         // Landed in an ambiguous/problem state -- don't guess at whether to
         // push forward into a new room. Treat it the same as an explicit stop.
         ifDebug("continueSweepIfNeeded(${mac}): ended as ${newStatus}, not continuing the sweep")
-        state.rotationSweepActive[mac] = false
-        state.rotationSweepPending?.put(mac, false)
-        state.rotationSweepStartedAt?.remove(mac)
+        endRotationSweep(mac)
         return
     }
 
@@ -1397,9 +1444,7 @@ private void continueSweepIfNeeded(String mac, String newStatus) {
             long elapsedMin = (now() - startedAt) / 60000
             if (elapsedMin >= maxMinutes) {
                 ifDebug("continueSweepIfNeeded(${mac}): continuous sweep hit its ${maxMinutes}-minute limit (${elapsedMin} min elapsed), docking")
-                state.rotationSweepActive[mac] = false
-                state.rotationSweepPending?.put(mac, false)
-                state.rotationSweepStartedAt?.remove(mac)
+                endRotationSweep(mac)
                 dockVacuum(mac)
                 return
             }
@@ -1409,9 +1454,7 @@ private void continueSweepIfNeeded(String mac, String newStatus) {
     boolean somethingToDispatch = continuous ? !previewNextRooms(mac).isEmpty() : pendingRoomCount(mac) > 0
     if (!somethingToDispatch) {
         ifDebug("continueSweepIfNeeded(${mac}): ${continuous ? 'nothing left to clean' : 'nothing else due'}, sweep finished")
-        state.rotationSweepActive[mac] = false
-        state.rotationSweepPending?.put(mac, false)
-        state.rotationSweepStartedAt?.remove(mac)
+        endRotationSweep(mac)
         return
     }
 
@@ -1521,9 +1564,7 @@ private boolean modeSignalsResume(def modeCode) {
 
 def startVacuum(String mac) {
     ifDebug("startVacuum: ${mac}")
-    state.rotationSweepActive?.put(mac, false) // whole-house start is a different mode than room rotation
-    state.rotationSweepPending?.put(mac, false)
-    state.rotationSweepStartedAt?.remove(mac)
+    endRotationSweep(mac) // whole-house start is a different mode than room rotation
     state.pausedForResumeAt?.remove(mac) // an explicit start is a new run, not a resume of the old one
     state.resumeCancelled?.remove(mac)   // and a deliberate start overrides an earlier cancellation
     // Lets the poll that later observes Cleaning report this honestly as a
@@ -1537,9 +1578,7 @@ def startVacuum(String mac) {
 
 def pauseVacuum(String mac) {
     ifDebug("pauseVacuum: ${mac}")
-    state.rotationSweepActive?.put(mac, false) // explicit stop -- don't auto-continue to the next room
-    state.rotationSweepPending?.put(mac, false)
-    state.rotationSweepStartedAt?.remove(mac)
+    endRotationSweep(mac) // explicit stop -- don't auto-continue to the next room
     state.appWholeHouseStartAt?.remove(mac)
     markCommandInterrupt(mac, "paused")
     cancelPendingWork(mac)
@@ -1549,9 +1588,7 @@ def pauseVacuum(String mac) {
 
 def dockVacuum(String mac) {
     ifDebug("dockVacuum: ${mac}")
-    state.rotationSweepActive?.put(mac, false) // explicit stop -- don't auto-continue to the next room
-    state.rotationSweepPending?.put(mac, false)
-    state.rotationSweepStartedAt?.remove(mac)
+    endRotationSweep(mac) // explicit stop -- don't auto-continue to the next room
     state.appWholeHouseStartAt?.remove(mac)
     markCommandInterrupt(mac, "docked")
     // Ends the job outright, including one that's only paused for charging --
