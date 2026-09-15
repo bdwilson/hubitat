@@ -2,6 +2,79 @@
 
 Not yet implemented. Tracked here so they survive across sessions.
 
+## ~~32. Don't dispatch a rotation room the battery can't cover~~ — DONE (1.30.0)
+
+The root cause behind #29 and #31, offered twice and declined, then asked
+about directly: "what is your proposed fix on the minimum battery piece?
+Wyze has built in recharging at 8% so it has time to get back to charge. are
+you suggesting we usurp that setting?"
+
+No -- and the distinction is the whole point. Wyze's ~8% answers "when do I
+need to head home," mid-run, and is untouched (there's no way to change it
+from here and no reason to). This answers "is it worth setting out at all,"
+which the firmware never asks because by then it's already committed. The
+9/14 log is the argument: the sweep dispatched a room at 8% and the vacuum
+never acted on the command, not on the first try nor the automatic retry.
+The firmware had already decided the job was pointless; the app was just the
+last to know.
+
+User picked the learned-time variant over a flat threshold, and log-only
+over a push. `roomsBatteryCanCover()` gates `cleanNextRooms()` only:
+`needed = roomMinutes * drainPerMin + 10` reserve, the reserve deliberately
+above Wyze's threshold so the vacuum isn't finishing at the edge of it.
+`learnBatteryDrain()` measures the rate from real runs with the same EMA the
+room times use, defaulting to 2.3%/min (this vacuum's own observed figure:
+100->10 in 37 min, 100->19 in 36 min). Bad samples are dropped rather than
+averaged in -- under 5 minutes, battery went up (a mode-11 charge pause), or
+outside 0.5-10%/min. A skipped room stays due; a multi-room batch is trimmed
+from the end until it fits rather than skipped whole. Explicit commands
+(`cleanRooms()`, room buttons, Learning Mode) are deliberately never gated.
+
+Skipping also calls `endRotationSweep()` -- without it the sweep flag would
+stay set with nothing running, which is exactly the #31 latched-switch bug.
+
+**Caught by the simulation, worth remembering:** the first cut wrote the
+opt-out as `settings[...] ?: true`, which is broken for a bool -- Groovy
+Truth treats `false` as falsy, so the elvis hands back the `true` default and
+the toggle does nothing. Same trap as the `mode: 0` bug fixed in 1.18.1. Now
+an explicit `== false` check, with all three setting states (unset, true,
+false) covered by the simulation.
+
+## ~~31. Switch latched ON after a given-up dispatch~~ — DONE (1.29.1)
+
+Regression from #30, reported the next day: "someone left at 9am and came
+back at 11. It looks like the switch is still on."
+
+9/14 log: the 9am trigger cleaned Living Room (9:01-9:40, 37 min, credited
+fine, battery 100% -> 8%). The sweep then advanced and dispatched the next
+room at 9:46:05 **at 8% battery**; the vacuum never acted on it, the retry at
+9:49 did nothing either, and `checkStaleActiveCleanRun` gave up at 9:57 and
+cleared `activeCleanRun`. But it did *not* clear `rotationSweepActive` --
+and a sweep only ever advances off the back of a run finishing, so with the
+run gone nothing would ever clear that flag again. #30's `hasWorkPending()`
+reads it as outstanding work, so the switch stayed on: still on at 12:00,
+two hours later, with the vacuum idle on its dock at 81%. (Confirmed no
+`off()` reached the app either -- every poll from 10:00 to 12:00 is exactly
+on the 15-minute idle cadence, no command-triggered off-schedule poll.)
+
+So #30's claim that "every condition is self-limiting" was wrong for this
+one. Fixed by funnelling every sweep exit through a single
+`endRotationSweep()` (the command handlers, all of `continueSweepIfNeeded`'s
+exits, the continuous-mode time limit, and both `checkStaleActiveCleanRun`
+give-up branches, which previously cleared nothing), plus
+`checkOrphanedSweep()` as a safety net: a sweep flag set while nothing is
+cleaning, dispatched, or queued to dispatch gets cleared after a 2-minute
+grace period. The grace covers the few seconds between a room finishing and
+`continueSweepDispatch` firing, so a healthy sweep is never cut short.
+Verified via simulation of the exact 9/14 timeline (on through the retry
+window, off from the give-up onward) plus an orphaned-flag case and a
+control where a sweep queued to dispatch correctly stays on.
+
+**Third sighting of the same root cause:** dispatching a room at 8% battery.
+See #29 -- a minimum-battery-to-dispatch check has been offered twice and
+declined; this episode cost a dispatch, a retry, a give-up notification and
+a stuck switch.
+
 ## ~~30. Switch went off mid-job, breaking the on/off presence wiring~~ — DONE (1.29.0)
 
 Follow-on from #29, reported from the same episode. User's wiring is the

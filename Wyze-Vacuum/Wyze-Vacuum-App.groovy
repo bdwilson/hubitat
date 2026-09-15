@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.29.0 - Brian Wilson / bubba@bubba.org
+ * 1.30.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -209,6 +209,25 @@ def mainPage() {
                                             title: "Stop continuous sweeping and dock after this many minutes (counted from when the sweep started)",
                                             defaultValue: 60, required: true
                                     }
+                                }
+
+                                input "requireBatteryForRoom_${mac}", "bool",
+                                    title: "Don't start a rotation room unless the battery can cover it — skipped rooms stay due and get picked up on the next trigger",
+                                    defaultValue: true, required: false, submitOnChange: true
+
+                                if (settings["requireBatteryForRoom_${mac}"] != false) {
+                                    def nextUp = previewNextRooms(mac)
+                                    def drain = batteryDrainPerMin(mac)
+                                    def learned = state.batteryDrainPerMin?.getAt(mac) != null
+                                    def detail = nextUp
+                                        ? "Next up is ${nextUp.collect { it.name }.join(', ')}, needing about ${batteryNeededFor(mac, nextUp.collect { it.id as Integer })}% " +
+                                          "(battery is currently ${getChildDevice(mac)?.currentValue('battery') ?: '?'}%)."
+                                        : "Nothing is queued right now."
+                                    paragraph "Uses ${String.format('%.1f', drain)}% of battery per minute of cleaning" +
+                                              (learned ? ", measured from this vacuum's own runs" : " (starting estimate — replaced once a few real runs are recorded)") +
+                                              ", plus a 10% reserve so it isn't finishing right at Wyze's own return-to-dock threshold. ${detail} " +
+                                              "This only decides whether to <i>start</i> a rotation room — it never overrides the vacuum's own low-battery return, and " +
+                                              "cleanRooms()/room buttons/Learning Mode always run regardless."
                                 }
 
                                 def pending = pendingRoomCount(mac)
@@ -767,6 +786,17 @@ def handleVacuumStatusResponse(resp, data) {
         state.commandInterrupt?.remove(mac) // cleaning again -- nothing left to describe as interrupted
         state.cleaningSessionStart = state.cleaningSessionStart ?: [:]
         state.cleaningSessionStart[mac] = now()
+        // Paired with the reading at the end of the run to measure how fast
+        // this vacuum actually drains while cleaning (see learnBatteryDrain).
+        // Deliberately not recorded for a resumed job: the vacuum charged
+        // partway through, so the battery delta and the elapsed time being
+        // compared no longer cover the same stretch of cleaning.
+        state.cleaningStartBattery = state.cleaningStartBattery ?: [:]
+        if (isResume) {
+            state.cleaningStartBattery.remove(mac)
+        } else {
+            state.cleaningStartBattery[mac] = toInt(d?.currentValue("battery"))
+        }
 
         // The firmware picks its own moment to restart a battery-paused job --
         // whenever charging happens to finish, which can be hours later and at
@@ -842,6 +872,8 @@ def handleVacuumStatusResponse(resp, data) {
 // Only applies to a run that never confirmed Cleaning even once -- a
 // legitimately long-running clean is left alone and resolves normally.
 private void checkStaleActiveCleanRun(String mac) {
+    checkOrphanedSweep(mac)
+
     def run = state.activeCleanRun?.getAt(mac)
     if (!run || run.learning) return
 
@@ -857,6 +889,7 @@ private void checkStaleActiveCleanRun(String mac) {
             log.warn "Wyze Vacuum ${mac}: room-clean run has been waiting to resume for ${String.format('%.1f', hoursSincePause)}h with no sign of it -- finishing it as-is with what was measured so far."
             sendVacuumNotification("${getChildDevice(mac)?.displayName ?: mac}: expected to resume cleaning after charging, but hasn't after ${String.format('%.1f', hoursSincePause)} hours -- worth checking on it.")
             finishActiveCleanRun(mac, 0, "Docked", null)
+            endRotationSweep(mac) // nothing left driving it -- see the give-up below
         }
         return
     }
@@ -885,6 +918,52 @@ private void checkStaleActiveCleanRun(String mac) {
         log.warn "Wyze Vacuum ${mac}: room-clean dispatched ${Math.round(minutesSinceDispatch)} min ago never actually started cleaning, even after a retry -- clearing it so its room(s) aren't excluded from rotation indefinitely."
         sendVacuumNotification("${getChildDevice(mac)?.displayName ?: mac}: a room-clean command was sent but the vacuum never started -- worth checking it's not stuck or offline.")
         state.activeCleanRun.remove(mac)
+        // The sweep has to end here too. It only ever advances off the back of
+        // a run actually finishing, so once the run is abandoned nothing will
+        // ever clear the flag -- and since 1.29.0 reads it as "work
+        // outstanding" for the switch attribute, leaving it set latched the
+        // switch on indefinitely. Confirmed live: a dispatch at 8% battery was
+        // never acted on, was given up on here, and the switch stayed on for
+        // hours afterwards with the vacuum sitting idle on its dock.
+        endRotationSweep(mac)
+    }
+}
+
+// Every place a sweep stops needs to clear all three pieces of its state --
+// missing one is what caused the latched-switch bug above.
+private void endRotationSweep(String mac) {
+    state.rotationSweepActive?.put(mac, false)
+    state.rotationSweepPending?.put(mac, false)
+    state.rotationSweepStartedAt?.remove(mac)
+}
+
+// Safety net for any path that abandons work without going through
+// endRotationSweep. A sweep flag set while nothing is cleaning, no dispatch is
+// outstanding and nothing is queued to dispatch means the sweep can never
+// advance again -- so it isn't "work outstanding," it's leftover state. The
+// grace period covers the few seconds between a room finishing and
+// continueSweepDispatch firing, so a healthy sweep is never cut short.
+private void checkOrphanedSweep(String mac) {
+    state.sweepIdleSince = state.sweepIdleSince ?: [:]
+
+    boolean sweeping = state.rotationSweepActive?.getAt(mac)
+    boolean busy = state.activeCleanRun?.containsKey(mac) ||
+                   state.rotationSweepPending?.getAt(mac) ||
+                   state.lastKnownStatus?.getAt(mac) == "Cleaning"
+    if (!sweeping || busy) {
+        state.sweepIdleSince.remove(mac)
+        return
+    }
+
+    def idleSince = state.sweepIdleSince[mac]
+    if (!idleSince) {
+        state.sweepIdleSince[mac] = now()
+        return
+    }
+    if ((now() - (idleSince as Long)) / 60000.0 >= 2.0) {
+        ifDebug("checkOrphanedSweep(${mac}): sweep flag set with nothing running or queued -- clearing it")
+        endRotationSweep(mac)
+        state.sweepIdleSince.remove(mac)
     }
 }
 
@@ -1327,6 +1406,7 @@ private void handleCleaningSessionEnd(String mac, def reportedCleanTimeMinutes, 
     }
 
     accumulateBinHours(mac, elapsedMin)
+    if (!willResume) learnBatteryDrain(mac, elapsedMin, d)
 
     // Same reasoning -- don't tell the user it "finished" when it's really
     // just pausing to resume the same job; the eventual genuine finish
@@ -1339,6 +1419,7 @@ private void handleCleaningSessionEnd(String mac, def reportedCleanTimeMinutes, 
     }
 
     state.cleaningSessionStart?.remove(mac)
+    if (!willResume) state.cleaningStartBattery?.remove(mac)
 }
 
 // One message for every way a cleaning session can end, so an interrupted
@@ -1370,9 +1451,7 @@ private void continueSweepIfNeeded(String mac, String newStatus) {
         // Landed in an ambiguous/problem state -- don't guess at whether to
         // push forward into a new room. Treat it the same as an explicit stop.
         ifDebug("continueSweepIfNeeded(${mac}): ended as ${newStatus}, not continuing the sweep")
-        state.rotationSweepActive[mac] = false
-        state.rotationSweepPending?.put(mac, false)
-        state.rotationSweepStartedAt?.remove(mac)
+        endRotationSweep(mac)
         return
     }
 
@@ -1397,9 +1476,7 @@ private void continueSweepIfNeeded(String mac, String newStatus) {
             long elapsedMin = (now() - startedAt) / 60000
             if (elapsedMin >= maxMinutes) {
                 ifDebug("continueSweepIfNeeded(${mac}): continuous sweep hit its ${maxMinutes}-minute limit (${elapsedMin} min elapsed), docking")
-                state.rotationSweepActive[mac] = false
-                state.rotationSweepPending?.put(mac, false)
-                state.rotationSweepStartedAt?.remove(mac)
+                endRotationSweep(mac)
                 dockVacuum(mac)
                 return
             }
@@ -1409,9 +1486,7 @@ private void continueSweepIfNeeded(String mac, String newStatus) {
     boolean somethingToDispatch = continuous ? !previewNextRooms(mac).isEmpty() : pendingRoomCount(mac) > 0
     if (!somethingToDispatch) {
         ifDebug("continueSweepIfNeeded(${mac}): ${continuous ? 'nothing left to clean' : 'nothing else due'}, sweep finished")
-        state.rotationSweepActive[mac] = false
-        state.rotationSweepPending?.put(mac, false)
-        state.rotationSweepStartedAt?.remove(mac)
+        endRotationSweep(mac)
         return
     }
 
@@ -1521,9 +1596,7 @@ private boolean modeSignalsResume(def modeCode) {
 
 def startVacuum(String mac) {
     ifDebug("startVacuum: ${mac}")
-    state.rotationSweepActive?.put(mac, false) // whole-house start is a different mode than room rotation
-    state.rotationSweepPending?.put(mac, false)
-    state.rotationSweepStartedAt?.remove(mac)
+    endRotationSweep(mac) // whole-house start is a different mode than room rotation
     state.pausedForResumeAt?.remove(mac) // an explicit start is a new run, not a resume of the old one
     state.resumeCancelled?.remove(mac)   // and a deliberate start overrides an earlier cancellation
     // Lets the poll that later observes Cleaning report this honestly as a
@@ -1537,9 +1610,7 @@ def startVacuum(String mac) {
 
 def pauseVacuum(String mac) {
     ifDebug("pauseVacuum: ${mac}")
-    state.rotationSweepActive?.put(mac, false) // explicit stop -- don't auto-continue to the next room
-    state.rotationSweepPending?.put(mac, false)
-    state.rotationSweepStartedAt?.remove(mac)
+    endRotationSweep(mac) // explicit stop -- don't auto-continue to the next room
     state.appWholeHouseStartAt?.remove(mac)
     markCommandInterrupt(mac, "paused")
     cancelPendingWork(mac)
@@ -1549,9 +1620,7 @@ def pauseVacuum(String mac) {
 
 def dockVacuum(String mac) {
     ifDebug("dockVacuum: ${mac}")
-    state.rotationSweepActive?.put(mac, false) // explicit stop -- don't auto-continue to the next room
-    state.rotationSweepPending?.put(mac, false)
-    state.rotationSweepStartedAt?.remove(mac)
+    endRotationSweep(mac) // explicit stop -- don't auto-continue to the next room
     state.appWholeHouseStartAt?.remove(mac)
     markCommandInterrupt(mac, "docked")
     // Ends the job outright, including one that's only paused for charging --
@@ -1632,7 +1701,102 @@ def cleanNextRooms(String mac) {
 
     def chosen = previewNextRooms(mac)
     if (!chosen) { ifDebug("cleanNextRooms(${mac}): nothing to clean"); return }
+
+    chosen = roomsBatteryCanCover(mac, chosen)
+    if (!chosen) {
+        // Nothing here is worth dispatching on the charge available. Ending
+        // the sweep rather than leaving it set matters -- an active sweep flag
+        // reads as outstanding work (see hasWorkPending), and the rooms stay
+        // due regardless, so the next trigger picks them up normally.
+        endRotationSweep(mac)
+        return
+    }
+
     dispatchRoomClean(mac, chosen)
+}
+
+// Whether there's enough charge to be worth starting these rooms at all, and
+// if not, how much of the batch is worth starting.
+//
+// This is NOT a second opinion on Wyze's own ~8% return-to-dock threshold --
+// that answers "when do I need to head home," mid-run, and is left entirely
+// alone. This answers a question the firmware never asks: "is it worth setting
+// out in the first place?" Confirmed live (9/14): the sweep dispatched a room
+// at 8% battery, and the vacuum simply never acted on the command -- not on
+// the first try, and not on the automatic retry either. It cost a dispatch, a
+// retry, a spurious "never started, worth checking it's not stuck" alert, and
+// left the room looking untouched. The firmware had already decided the job
+// was pointless; this just stops asking.
+//
+// Rooms are dropped from the end of the batch (least overdue first) until what
+// remains fits, so a partial run still happens when it can.
+private List roomsBatteryCanCover(String mac, List rooms) {
+    // Deliberately an explicit false check, not `?: true` -- Groovy Truth
+    // treats false as falsy, so the elvis would hand back the `true` default
+    // for a setting the user had explicitly turned off, making the opt-out do
+    // nothing. Same trap as the mode:0 bug fixed in 1.18.1.
+    if (settings["requireBatteryForRoom_${mac}"] == false) return rooms
+
+    def d = getChildDevice(mac)
+    def battery = toInt(d?.currentValue("battery"))
+    if (battery == null) return rooms // no reading to judge by -- don't block on a guess
+
+    def candidates = new ArrayList(rooms)
+    while (candidates) {
+        def needed = batteryNeededFor(mac, candidates.collect { it.id as Integer })
+        if (battery >= needed) {
+            if (candidates.size() < rooms.size()) {
+                def dropped = rooms.findAll { !(it in candidates) }.collect { it.name }
+                log.info "Wyze Vacuum ${mac}: battery ${battery}% covers ${candidates.collect { it.name }} but not ${dropped} -- those stay due for next time"
+            }
+            return candidates
+        }
+        candidates.remove(candidates.size() - 1)
+    }
+
+    def first = rooms[0]
+    def needed = batteryNeededFor(mac, [first.id as Integer])
+    log.info "Wyze Vacuum ${mac}: battery ${battery}% won't cover '${first.name}' (needs about ${needed}% for its ${Math.round(roomEstimateMinutes(mac, first.id as Integer))} min) -- not starting it, it stays due for the next trigger"
+    return []
+}
+
+// Charge needed to run these rooms and still have something left on arrival at
+// the dock. The reserve sits above Wyze's own ~8% return threshold so the
+// vacuum isn't asked to finish right at the edge of it.
+private Integer batteryNeededFor(String mac, List roomIds) {
+    double minutes = (roomIds ?: []).sum { id -> roomEstimateMinutes(mac, id as Integer) } ?: 0.0
+    return Math.ceil(minutes * batteryDrainPerMin(mac) + 10) as Integer
+}
+
+private double roomEstimateMinutes(String mac, Integer roomId) {
+    def avgMap = state.roomAvgMinutes?.getAt(mac) ?: [:]
+    return (avgMap[roomId.toString()] ?: 15.0) as Double
+}
+
+// Battery used per minute of cleaning, measured from real runs the same way
+// room times are. The default is what this vacuum actually showed across two
+// full-battery runs (100% -> 10% in 37 min, 100% -> 19% in 36 min); a few real
+// runs replace it with whatever a given vacuum and suction setting really do.
+private double batteryDrainPerMin(String mac) {
+    return (state.batteryDrainPerMin?.getAt(mac) ?: 2.3) as Double
+}
+
+private void learnBatteryDrain(String mac, Integer elapsedMin, def d) {
+    if (!elapsedMin || elapsedMin < 5) return // too short to measure anything real
+    def startPct = state.cleaningStartBattery?.getAt(mac)
+    def endPct = toInt(d?.currentValue("battery"))
+    if (startPct == null || endPct == null) return
+
+    double used = (startPct as Integer) - endPct
+    if (used <= 0) return // charged partway through (a mode-11 pause) -- not a clean sample
+    double rate = used / (elapsedMin as Double)
+    if (rate < 0.5 || rate > 10.0) return // implausible; ignore rather than poison the average
+
+    state.batteryDrainPerMin = state.batteryDrainPerMin ?: [:]
+    def prev = state.batteryDrainPerMin[mac] as Double
+    // Same exponential blend the room-time estimates use.
+    state.batteryDrainPerMin[mac] = prev ? (prev * 0.7 + rate * 0.3) : rate
+    ifDebug("learnBatteryDrain(${mac}): ${String.format('%.2f', rate)}%/min this run -> ${String.format('%.2f', state.batteryDrainPerMin[mac])}%/min average")
 }
 
 // Computes what cleanNextRooms(mac) would pick right now, without dispatching
