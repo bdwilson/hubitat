@@ -196,9 +196,39 @@ needed % = (that room's learned clean time) × (measured % drain per minute) + 1
 - **A skipped room isn't lost.** It stays due, nothing is credited, and the next trigger picks it up normally. The skip is an `log.info` line naming the room, what it needed, and what the battery actually was — no push notification, since this is working as intended rather than a fault.
 - **A multi-room batch is trimmed, not skipped.** Rooms are dropped from the end (least overdue first) until what's left fits, so a partial run still happens when it can.
 
+**A room too big for one charge still gets cleaned, as of 1.31.0.** If a room's estimate exceeds 100% — which is possible for a large room once the learned drain rate creeps up — it could never satisfy the check, so it would have dropped out of rotation permanently and silently, sitting on "already due" forever with nothing but a log line. Instead, a single room needing more than a full charge is started once the battery reaches 95%, and the vacuum's own charge-and-resume finishes it. That firmware behavior exists for exactly this case. The app page names any such room, since it's the clearest sign the room is worth splitting into smaller zones in the Wyze app.
+
+Trimming only ever drops rooms from the *end* of the batch, never the front. The list is ordered most-overdue-first, so the neediest room keeps its place and the sweep waits for charge rather than spending it on a lesser room — that's what stops a big room being starved by small ones that keep fitting.
+
 This only gates **rotation** (`cleanNextRooms()` and its sweep). `cleanRooms("Kitchen")`, the room buttons, and Learning Mode always dispatch regardless — those are explicit requests for a specific room, and silently refusing them would be worse than letting them run short.
 
 The app page shows the current drain rate, whether it's measured or still the starting estimate, and what the next queued room would need against the current battery.
+
+### Re-cleaning after a recharge while you're away
+
+A skipped room waits for the **next trigger** — it is never re-queued automatically. That's deliberate: "the battery recovered, so start again" has no idea whether anyone is home, and it's exactly how a vacuum ends up starting itself at 8:35pm with everyone in the living room.
+
+The cost is a wasted window. Confirmed live: away 10:07→12:21, the vacuum cleaned, docked at 10:56 on 48%, declined Living Room, and then sat **fully charged and idle for the last 85 minutes** of an empty house with the most overdue room untouched.
+
+Hubitat knows what the app doesn't — whether anyone is home — so the retry belongs in a rule:
+
+> **Trigger:** `battery` **becomes greater than** 95
+> **Conditions:** everyone away **AND** `switch` is off **AND** `roomsPendingThisCycle` > 0 **AND** time is between 09:00 and 17:00 **AND** `hoursSinceEmptied` < your bin threshold
+> **Action:** turn the vacuum switch **on**
+
+Why each piece:
+
+- **Trigger on the threshold crossing**, not on every battery change — otherwise it fires ~50 times per charge cycle. 95% also reserves a full charge for whatever is most overdue, which is the room most likely to be starved.
+- **It only fires on the crossing**, so it complements your "everyone left" trigger rather than replacing it. If the vacuum is already at 100% when you leave, this rule never fires — the departure trigger covers that.
+- **`switch` is off** matters more than it looks: a job paused mid-clean for charging leaves the switch *on*, and the battery will sail past 95% while the vacuum fully intends to resume by itself. You don't want to start a new run into that.
+- **`roomsPendingThisCycle` > 0** is what stops it running forever. Without it the rule would re-fire after every recharge indefinitely; with it, the vacuum works through whatever is due, then goes quiet until the cycle window rolls around again.
+
+**On "what if nobody comes home for a week?"** — it won't clean all week. Each room takes roughly 37 minutes plus ~2.7 hours to recharge, so about one room every 3¼ hours; once every due room has been cleaned, `roomsPendingThisCycle` hits 0 and the rule stops firing until rooms become due again (7 days for normal rooms, 3 for high-traffic). Over a week that's roughly one full pass plus the high-traffic rooms a second time — which is exactly what your cycle lengths asked for.
+
+The two things that genuinely do need gating over a long absence are in the rule above:
+
+- **The time window.** Without it, the vacuum will happily start at 3am on day four of your holiday.
+- **`hoursSinceEmptied`.** Nobody is home to empty the bin. Past a certain point it's just running a full vacuum around the house, so gate on the same threshold you use for the bin reminder.
 
 ### Correcting rotation history manually
 

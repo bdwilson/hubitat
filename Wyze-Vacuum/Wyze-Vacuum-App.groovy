@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.30.1 - Brian Wilson / bubba@bubba.org
+ * 1.31.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -57,6 +57,10 @@ import java.util.zip.Inflater
 // secret tied to any individual account. Wyze can rotate/revoke it at any time.
 @Field static final String WYZE_X_API_KEY = "RckMFKbsds5p6QY3COEXc2ABwNTYY0q18ziEiSEm"
 @Field static final String VACUUM_PRODUCT_MODEL = "JA_RO2"
+// How full counts as "as charged as it's going to get" -- used only for a room
+// whose estimated need exceeds a full charge, so it gets started at the best
+// moment available instead of being skipped forever (see roomsBatteryCanCover).
+@Field static final Integer NEARLY_FULL_BATTERY_PCT = 95
 
 definition(
     name: "Wyze Vacuum Connect",
@@ -223,9 +227,19 @@ def mainPage() {
                                         ? "Next up is ${nextUp.collect { it.name }.join(', ')}, needing about ${batteryNeededFor(mac, nextUp.collect { it.id as Integer })}% " +
                                           "(battery is currently ${getChildDevice(mac)?.currentValue('battery') ?: '?'}%)."
                                         : "Nothing is queued right now."
+                                    // Rooms too big to finish on one charge are worth calling out -- they
+                                    // behave differently (started near-full and finished after a recharge)
+                                    // and it's the clearest signal that a room wants splitting in the Wyze app.
+                                    def bigRooms = (settings["rotationRooms_${mac}"] ?: []).collect { it as Integer }.findAll {
+                                        batteryNeededFor(mac, [it]) > 100
+                                    }
+                                    def bigNote = bigRooms
+                                        ? " <b>${roomNamesFor(mac, bigRooms).join(', ')}</b> needs more than a full charge, so it's started once the battery is at least " +
+                                          "${NEARLY_FULL_BATTERY_PCT}% and the vacuum charges and resumes partway through. Splitting it into smaller zones in the Wyze app would avoid that."
+                                        : ""
                                     paragraph "Uses ${String.format('%.1f', drain)}% of battery per minute of cleaning" +
                                               (learned ? ", measured from this vacuum's own runs" : " (starting estimate — replaced once a few real runs are recorded)") +
-                                              ", plus a 10% reserve so it isn't finishing right at Wyze's own return-to-dock threshold. ${detail} " +
+                                              ", plus a 10% reserve so it isn't finishing right at Wyze's own return-to-dock threshold. ${detail}${bigNote} " +
                                               "This only decides whether to <i>start</i> a rotation room — it never overrides the vacuum's own low-battery return, and " +
                                               "cleanRooms()/room buttons/Learning Mode always run regardless."
                                 }
@@ -1760,12 +1774,33 @@ private List roomsBatteryCanCover(String mac, List rooms) {
             }
             return candidates
         }
+
+        // A single room needing more than a full charge can never satisfy this
+        // check, so refusing it would drop it out of rotation permanently and
+        // silently -- the room would just sit on "already due" forever with
+        // nothing but a log line. Not hypothetical: Living Room needs ~90% at
+        // the drain rate learned so far, and crosses 100% if that rate rises
+        // about 13%, which one carpeted run at high suction could do. Take it
+        // on a nearly-full battery instead and let the vacuum's own
+        // charge-and-resume finish the job -- that firmware behavior exists
+        // for precisely this case.
+        if (candidates.size() == 1 && needed > 100 && battery >= NEARLY_FULL_BATTERY_PCT) {
+            log.info "Wyze Vacuum ${mac}: '${candidates[0].name}' needs about ${needed}% for its ${Math.round(roomEstimateMinutes(mac, candidates[0].id as Integer))} min, which is more than one charge -- starting it at ${battery}% anyway and letting the vacuum charge and resume, rather than never cleaning it"
+            return candidates
+        }
+
+        // Trimming only ever drops from the end, never the front: the list is
+        // ordered most-overdue-first, so the neediest room keeps its place and
+        // the sweep waits for charge rather than spending it on a lesser room.
+        // That's deliberate -- it's what stops a big room being starved by
+        // small ones that keep fitting.
         candidates.remove(candidates.size() - 1)
     }
 
     def first = rooms[0]
     def needed = batteryNeededFor(mac, [first.id as Integer])
-    log.info "Wyze Vacuum ${mac}: battery ${battery}% won't cover '${first.name}' (needs about ${needed}% for its ${Math.round(roomEstimateMinutes(mac, first.id as Integer))} min) -- not starting it, it stays due for the next trigger"
+    def oneCharge = needed > 100 ? " -- more than one charge, so it waits for a nearly-full battery" : ""
+    log.info "Wyze Vacuum ${mac}: battery ${battery}% won't cover '${first.name}' (needs about ${needed}% for its ${Math.round(roomEstimateMinutes(mac, first.id as Integer))} min)${oneCharge} -- not starting it, it stays due for the next trigger"
     return []
 }
 
