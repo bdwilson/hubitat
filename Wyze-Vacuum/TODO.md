@@ -2,6 +2,89 @@
 
 Not yet implemented. Tracked here so they survive across sessions.
 
+## ~~34. A room too big for one charge was skipped forever~~ — DONE (1.31.0)
+
+Flaw in 1.30.0's own battery gate, spotted while answering a question about
+what the vacuum would do after recharging. `batteryNeededFor()` is
+`roomMinutes * drainPerMin + 10`, and nothing capped it at 100 -- so a room
+whose estimate exceeded a full charge could never satisfy the check and would
+be refused on every single trigger, forever, with only an info log line. The
+room would just sit on "already due" indefinitely.
+
+Not hypothetical. Live log: "battery 48% won't cover 'Living Room' (needs
+about 90% for its 37 min)". Working back through the formula, the learned
+drain rate was ~2.16%/min at that point; the requirement crosses 100% at
+2.43%/min. That's a 13% move, well within what one carpeted run at higher
+suction would produce -- and the drain rate is learned with an EMA from real
+runs, so it moves on its own.
+
+Fixed in `roomsBatteryCanCover()`: a *single* room needing more than a full
+charge is dispatched once the battery reaches `NEARLY_FULL_BATTERY_PCT` (95)
+rather than being refused, letting Wyze's own charge-and-resume finish the
+job -- which is precisely what that firmware behavior is for. Below 95% it
+still waits, so it waits for charge, not forever. The app page now names any
+room in that state, since it's the clearest signal the room wants splitting
+into smaller zones in the Wyze app.
+
+**Confirmed while testing, worth writing down:** trimming a batch only ever
+drops from the *end*, never the front, so an oversized most-overdue room is
+never bypassed in favour of a smaller one behind it. That looked like a bug
+at first (a first draft of the simulation asserted it *should* fall back to
+the smaller room) but it's the correct behavior -- falling back would spend
+the charge on a lesser room and push the big one out by another full
+recharge, which is the starvation loop this whole area exists to avoid. Now
+asserted explicitly in both directions. Also removed a `break` from the first
+cut that turned out to be dead code -- it produced the same result as letting
+the loop fall through, so the comment on it was misleading.
+
+Documented alongside it in the README: the Rule Machine rule for re-cleaning
+after a recharge while nobody is home (trigger on `battery` crossing 95, gated
+on away + `switch` off + `roomsPendingThisCycle` > 0 + a time window +
+`hoursSinceEmptied`), and why a long absence doesn't mean a week of cleaning:
+`roomsPendingThisCycle` self-limits it to the configured cycle, leaving time
+of day and bin capacity as the two things that genuinely need gating.
+
+
+## ~~33. Multi-vacuum audit: runIn() collision between vacuums~~ — DONE (1.30.1)
+
+User has a second vacuum they haven't enabled yet, and asked -- before any
+parent/child refactor -- whether the current single-app-with-N-sections
+design actually keeps two vacuums' state separate, or whether they'd squash
+each other.
+
+Audited every piece of state and every setting:
+
+- All 22 per-vacuum `state` fields (`activeCleanRun`, `roomHistory`,
+  `roomAvgMinutes`, `rotationSweep*`, `batteryDrainPerMin`, `learningMode`,
+  `lastKnownStatus`, notification/stuck/resume markers, etc.) are mac-keyed
+  at *every* read and write -- verified mechanically, the only unkeyed hits
+  were comments.
+- Every per-vacuum setting carries `_${mac}`; the genuinely app-level ones
+  (credentials, session, poll intervals, notification devices/toggles,
+  ignored fault codes) are correctly shared.
+- Async callbacks and the token-refresh retry all carry `mac` through their
+  data payload.
+
+**One real bug found.** Hubitat keys pending `runIn()` jobs by handler
+*method name* and overwrites by default. `continueSweepDispatch` and
+`cancelAutoResumeDock` are both scheduled per-vacuum, so with two vacuums the
+second to schedule silently cancelled the first's job -- stalling that
+vacuum's sweep a room early. Not a rare race either: `pollAllVacuums()` polls
+every vacuum in one execution, so their callbacks land milliseconds apart and
+two sweeps advancing in the same poll cycle would collide every time. Fixed
+with `overwrite: false` on all three call sites, plus a comment on
+`continueSweepDispatch` explaining why it must stay. Single-vacuum setups
+were never affected.
+
+**On the parent/child question:** the audit says data isolation is not the
+reason to refactor -- per-vacuum state is genuinely separate. The real
+arguments are ergonomic and per-vacuum settings: one page grows a section per
+vacuum, and notification devices/toggles plus the ignored-fault-code list are
+app-wide, so you can't route one vacuum's alerts differently or tune fault
+codes per model. Documented in README's new "Multiple vacuums" section rather
+than changed.
+
+
 ## ~~32. Don't dispatch a rotation room the battery can't cover~~ — DONE (1.30.0)
 
 The root cause behind #29 and #31, offered twice and declined, then asked
