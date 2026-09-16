@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.30.0 - Brian Wilson / bubba@bubba.org
+ * 1.30.1 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -821,7 +821,7 @@ def handleVacuumStatusResponse(resp, data) {
             // Deferred rather than docking inline: this is an async poll
             // callback, and venusControl posts synchronously -- the same
             // shape that tripped Hubitat's hub-load guardrail in 1.5.1.
-            runIn(2, "cancelAutoResumeDock", [data: [mac: mac]])
+            runIn(2, "cancelAutoResumeDock", [data: [mac: mac], overwrite: false])
         }
 
         if (settings.notifyCleaningStarted) {
@@ -840,7 +840,7 @@ def handleVacuumStatusResponse(resp, data) {
     if (state.rotationSweepPending?.getAt(mac) && newStatus in ["Docked", "Standby"]) {
         state.rotationSweepPending[mac] = false
         ifDebug("handleVacuumStatusResponse(${mac}): now settled (status=${newStatus}) -- resuming deferred sweep continuation")
-        runIn(5, "continueSweepDispatch", [data: [mac: mac]])
+        runIn(5, "continueSweepDispatch", [data: [mac: mac], overwrite: false])
     }
 
     checkPossiblyStuck(mac, newStatus, isCharging, d)
@@ -1507,12 +1507,21 @@ private void continueSweepIfNeeded(String mac, String newStatus) {
 
     state.rotationSweepPending?.put(mac, false)
     ifDebug("continueSweepIfNeeded(${mac}): more due rooms remain, continuing sweep")
-    runIn(5, "continueSweepDispatch", [data: [mac: mac]])
+    runIn(5, "continueSweepDispatch", [data: [mac: mac], overwrite: false])
 }
 
 // Re-checks the sweep flag before dispatching -- if dock()/pause()/off() was
 // called in the meantime (which clears rotationSweepActive), this quietly
 // no-ops instead of reactivating a sweep the user just stopped.
+// NOTE for every runIn() that schedules this: they must pass
+// `overwrite: false`. Hubitat keys pending one-shot jobs by handler *method
+// name*, and overwrites by default -- so with more than one vacuum, the
+// second one to schedule a continuation would silently cancel the first's,
+// stalling that vacuum's sweep. pollAllVacuums() polls every vacuum in a
+// single execution, so their status callbacks land milliseconds apart and two
+// sweeps advancing in the same poll cycle would collide every time, not
+// occasionally. The mac is carried in the job's own data, so the copies don't
+// interfere; this function re-checks the sweep flag anyway.
 def continueSweepDispatch(data) {
     def mac = data?.mac
     if (!mac || !(state.rotationSweepActive?.getAt(mac))) return

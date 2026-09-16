@@ -2,6 +2,46 @@
 
 Not yet implemented. Tracked here so they survive across sessions.
 
+## ~~33. Multi-vacuum audit: runIn() collision between vacuums~~ — DONE (1.30.1)
+
+User has a second vacuum they haven't enabled yet, and asked -- before any
+parent/child refactor -- whether the current single-app-with-N-sections
+design actually keeps two vacuums' state separate, or whether they'd squash
+each other.
+
+Audited every piece of state and every setting:
+
+- All 22 per-vacuum `state` fields (`activeCleanRun`, `roomHistory`,
+  `roomAvgMinutes`, `rotationSweep*`, `batteryDrainPerMin`, `learningMode`,
+  `lastKnownStatus`, notification/stuck/resume markers, etc.) are mac-keyed
+  at *every* read and write -- verified mechanically, the only unkeyed hits
+  were comments.
+- Every per-vacuum setting carries `_${mac}`; the genuinely app-level ones
+  (credentials, session, poll intervals, notification devices/toggles,
+  ignored fault codes) are correctly shared.
+- Async callbacks and the token-refresh retry all carry `mac` through their
+  data payload.
+
+**One real bug found.** Hubitat keys pending `runIn()` jobs by handler
+*method name* and overwrites by default. `continueSweepDispatch` and
+`cancelAutoResumeDock` are both scheduled per-vacuum, so with two vacuums the
+second to schedule silently cancelled the first's job -- stalling that
+vacuum's sweep a room early. Not a rare race either: `pollAllVacuums()` polls
+every vacuum in one execution, so their callbacks land milliseconds apart and
+two sweeps advancing in the same poll cycle would collide every time. Fixed
+with `overwrite: false` on all three call sites, plus a comment on
+`continueSweepDispatch` explaining why it must stay. Single-vacuum setups
+were never affected.
+
+**On the parent/child question:** the audit says data isolation is not the
+reason to refactor -- per-vacuum state is genuinely separate. The real
+arguments are ergonomic and per-vacuum settings: one page grows a section per
+vacuum, and notification devices/toggles plus the ignored-fault-code list are
+app-wide, so you can't route one vacuum's alerts differently or tune fault
+codes per model. Documented in README's new "Multiple vacuums" section rather
+than changed.
+
+
 ## ~~32. Don't dispatch a rotation room the battery can't cover~~ — DONE (1.30.0)
 
 The root cause behind #29 and #31, offered twice and declined, then asked

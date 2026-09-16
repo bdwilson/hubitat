@@ -352,6 +352,23 @@ This is deliberately distinct from a normal low-battery recharge cycle, which sh
 
 ---
 
+## Multiple vacuums
+
+All vacuums on the Wyze account are managed by one app instance, each getting its own child device and its own section on the app page. Per-vacuum data is fully separated: rooms, map, learned clean times, rotation list and cycle lengths, high-traffic rooms, sweep state, bin hours, battery-drain rate and every notification/stuck/resume marker are all stored keyed by the vacuum's MAC, so two vacuums can't overwrite each other's history or timing.
+
+**One real multi-vacuum bug, fixed in 1.30.1.** Hubitat keys pending `runIn()` jobs by handler *method name* and overwrites by default. The rotation sweep schedules its next room via `runIn(5, "continueSweepDispatch", ...)`, so with two vacuums the second one to schedule a continuation silently cancelled the first's — stalling that vacuum's sweep a room early. Because all vacuums are polled in a single execution, their status callbacks land milliseconds apart, so two sweeps advancing in the same poll cycle would have collided every time rather than occasionally. Those jobs now use `overwrite: false`. Single-vacuum setups were never affected.
+
+These settings are **shared by all vacuums** rather than being per-vacuum — worth knowing if your vacuums are different models or clean very different spaces:
+
+| Shared | Effect |
+|---|---|
+| Notification devices, and the start/finish/fault toggles | You can't send one vacuum's alerts somewhere different, or enable finish alerts for only one of them. Messages always name the device, so you can tell them apart. |
+| Fault codes to treat as normal | One ignore list across all vacuums; different models may use different codes. |
+| Poll intervals (cleaning/idle) | One cadence for the whole app — while *any* vacuum is cleaning, all of them are polled at the fast interval. |
+| Wyze account credentials and session | Correct to share; they're one account. |
+
+Everything under `<vacuum> — ...` headings on the app page is per-vacuum.
+
 ## Known limitations (v1)
 
 - **Polling only.** Wyze doesn't push status changes, so state updates only happen on the poll interval or right after you issue a command.
