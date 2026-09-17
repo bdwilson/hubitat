@@ -19,14 +19,17 @@
  *    since that's a well-worn, well-understood algorithm. Defaults here are
  *    pre-tuned from a ~30 day calibration pass against real usage logs rather
  *    than the community app's generic defaults.
- *  - Dryer start/stop uses simple active/N-sequential-inactive vibration
- *    debouncing, same as that app's "Sequence Vibration Sensor" mode.
- *  - Optional washer-cross-talk suppression: a vibration sensor mounted near
- *    a washer very often reports "active" purely from the washer running,
- *    not the dryer. When enabled, dryer vibration is ignored while the
- *    washer is actively cycling (plus a short grace period after), which a
- *    calibration pass found accounted for roughly a third of logged "dryer"
- *    cycles being pure washer bleed-through.
+ *  - Dryer start/stop is duration-based: this sensor latches "active" for as
+ *    long as it keeps feeling vibration, so a cycle is real only once that
+ *    active span outlasts a minimum run time. Handling the machine tops out
+ *    at a few minutes; real cycles hold active for 28-66. That also makes
+ *    cross-talk suppression unnecessary (it only ever produces short spans),
+ *    so it defaults off.
+ *  - The washer's end-of-cycle confirmation adapts to how long a load
+ *    normally takes on this machine: a low-power dip early in a wash needs a
+ *    long quiet period to count as the end (it is usually a fill/pause),
+ *    while one arriving after a full typical load's worth of runtime is
+ *    confirmed quickly, so back-to-back loads don't merge into one.
  *  - Every raw washer power reading and every raw dryer active/inactive
  *    vibration report is appended to a capped, persistent log (state), along
  *    with a separate log of completed cycle summaries (start/end/duration/
@@ -80,13 +83,14 @@ def mainPage() {
             input "washerStopReadings", "number", title: "Stop after power is below threshold for this many sequential readings (fast path, if the meter keeps reporting)", required: false, defaultValue: 2
             input "washerStopMinutes", "number", title: "Also require this many continuous minutes below threshold before stopping (0 = off)", required: false, defaultValue: 0
             input "washerStopConfirmMin", "number", title: "Also confirm stop after this many minutes with no reading back above the stop threshold, even without a second low reading (handles meters that stop reporting once idle; 0 = off)", required: false, defaultValue: 10
+            input "washerStopConfirmLateMin", "number", title: "Shorter confirmation once the wash has already run about as long as a normal load (catches back-to-back loads; 0 = always use the value above)", required: false, defaultValue: 4
             input "washerIgnoreW", "decimal", title: "Ignore extraneous power (W) readings above (spike filter)", required: false, defaultValue: 1500
             input "washerDeadmanMin", "number", title: "Maximum cycle time in minutes (deadman timer, force-ends a stuck cycle)", required: false, defaultValue: 90
         }
 
         section("<b>Dryer - Vibration Thresholds</b>", hideable: true, hidden: false) {
-            paragraph "The sensor stays <i>active</i> for as long as it keeps feeling vibration, so how long it stays active is what separates a real cycle from a bump: in real data, handling/bumps/cross-talk topped out at 68 seconds while every real dryer cycle held active for 28+ minutes."
-            input "dryerMinRunMin", "number", title: "Vibration must stay continuously active this many minutes to count as a real cycle", required: false, defaultValue: 3
+            paragraph "The sensor stays <i>active</i> for as long as it keeps feeling vibration, so how long it stays active is what separates a real cycle from handling it: in real data, bumps and cross-talk run about a second to a minute, loading the machine has reached 3m50s, and every real dryer cycle held active for 28+ minutes."
+            input "dryerMinRunMin", "number", title: "Vibration must stay continuously active this many minutes to count as a real cycle", required: false, defaultValue: 6
             input "dryerDeadmanMin", "number", title: "Maximum cycle time in minutes (deadman timer - safety net for a sensor that dies mid-cycle and never reports inactive)", required: false, defaultValue: 120
         }
 
@@ -208,7 +212,7 @@ def uninstalled() {
 // defaultValue only applies to a setting that has never been set. So
 // without this, an existing install keeps running on its old values and
 // silently ignores the new defaults.
-private static String settingsVersion() { return "3" }
+private static String settingsVersion() { return "4" }
 
 private void migrateSettings() {
     if (state.settingsVersion == settingsVersion()) return
@@ -266,6 +270,20 @@ private void migrateSettings() {
     if ((washerStartWaitMin ?: 0) < 4) {
         app.updateSetting("washerStartWaitMin", [value: "4", type: "number"])
         changes << "washerStartWaitMin=4"
+    }
+
+    // v4: loading the dryer produced a 3m50s continuous vibration burst -
+    // a real cycle by the old 3-minute rule, but nobody was drying
+    // anything. Next-longest non-cycle burst across all recorded data is
+    // 1.1 minutes and the shortest real cycle is 28.7, so 6 clears the
+    // outlier with margin and stays far below any real run.
+    if ((dryerMinRunMin ?: 0) < 6) {
+        app.updateSetting("dryerMinRunMin", [value: "6", type: "number"])
+        changes << "dryerMinRunMin=6"
+    }
+    if (washerStopConfirmLateMin == null) {
+        app.updateSetting("washerStopConfirmLateMin", [value: "4", type: "number"])
+        changes << "washerStopConfirmLateMin=4"
     }
 
     state.settingsVersion = settingsVersion()
@@ -420,7 +438,7 @@ def washerPowerHandler(evt) {
     // ever arrives.
     if (!state.washerEndingSince) {
         state.washerEndingSince = nowTs
-        Integer confirmMin = (washerStopConfirmMin ?: 0) as Integer
+        Integer confirmMin = stopConfirmMinutesFor(nowTs)
         if (confirmMin > 0) runIn(confirmMin * 60, "washerStopConfirmFired", [overwrite: true])
     }
 
@@ -470,6 +488,46 @@ def washerDeadmanFired() {
     if (!state.washerOn) return
     if (txtEnable) log.info "Washer deadman timer fired - forcing cycle end"
     endWasherCycle("deadman", now())
+}
+
+// Typical length of a real wash, learned from this machine's own history -
+// median of the most recent normally-ended cycles. Null until there's
+// enough history to trust.
+private Integer typicalWasherMin() {
+    List entries = (state.cycleLog instanceof List) ? state.cycleLog : []
+    List durations = []
+    entries.each { e ->
+        if (e.d == "washer" && e.p == "end" && e.reason == "normal" && e.durationMin) {
+            durations << (e.durationMin as Integer)
+        }
+    }
+    if (durations.size() < 3) return null
+    if (durations.size() > 10) durations = durations[-10..-1]
+    durations = durations.sort()
+    return durations[(int) (durations.size() / 2)] as Integer
+}
+
+// How long a low-power stretch has to hold before it counts as the end of
+// the cycle. A dip arriving early in a wash is almost always a fill/pause
+// and needs the long timeout; one arriving after the machine has already
+// run about as long as a normal load is far more likely to be the real end
+// (or the boundary before the next load), and waiting out the long timeout
+// there just merges two loads into one.
+private Integer stopConfirmMinutesFor(Long nowTs) {
+    Integer longMin = (washerStopConfirmMin ?: 0) as Integer
+    Integer lateMin = (washerStopConfirmLateMin ?: 0) as Integer
+    if (lateMin <= 0 || lateMin >= longMin) return longMin
+
+    Integer typical = typicalWasherMin()
+    Long cycleStart = state.washerCycleStart as Long
+    if (typical == null || !cycleStart) return longMin
+
+    Long lateAfterMs = (Math.max(typical * 0.8d, 20d) * 60000d) as Long
+    if ((nowTs - cycleStart) >= lateAfterMs) {
+        if (debugEnable) log.debug "washer has run ${Math.round((nowTs - cycleStart) / 60000d)}m (typical ${typical}m) - using ${lateMin}m stop confirmation"
+        return lateMin
+    }
+    return longMin
 }
 
 def washerStopConfirmFired() {

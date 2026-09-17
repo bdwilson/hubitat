@@ -56,6 +56,7 @@ Washer power thresholds
 | Stop after N sequential low readings | 2 | Fast path: how many consecutive readings below the stop threshold are needed before ending the cycle immediately. Only fires if the meter actually keeps reporting - see below. |
 | Also require N continuous minutes below threshold | 0 (off) | Extra debounce on top of the reading count, if you want it. |
 | Quiet-timeout confirmation | 10 min | Backstop: also ends the cycle after this many minutes with no reading back above the stop threshold, even if a second low reading never arrives. See below - this is the important one. |
+| Shorter confirmation late in a load | 4 min | Used instead of the 10 minutes above once the wash has already run about as long as a normal load for your machine. See "Why the stop timeout adapts" below. |
 | Ignore readings above (spike filter) | 1500W | A single reading this high or higher is treated as sensor noise and never starts a new cycle. |
 | Deadman timer | 90 min | Hard cap - force-ends a cycle that's been "on" this long, in case a real stop never gets detected. |
 
@@ -65,11 +66,41 @@ Washer power thresholds
 
 There's a third way a pending stop gets confirmed, faster than either: if the dryer starts for real while the washer has a stop pending, that's strong independent evidence the load actually just finished, so the washer's "done" is confirmed immediately rather than waiting out the rest of the quiet-timeout. Caught on real data: a wash with only one low reading (no second one to satisfy the fast path) sat pending for the full 10 minutes before "Washer is done" fired - by then the dryer had already been running for two minutes, so the notification arrived after the fact, and worse, the 15-minutes-later reminder to move the load fired anyway even though it was already in the dryer. Both are fixed: the dryer starting now resolves the pending washer stop on the spot, and the reminder checks whether the dryer has started before nagging about it, not just whether the washer restarted.
 
+**Why the stop timeout adapts to your machine:** a washer dropping to idle
+power mid-load looks *identical* to one that has actually finished - same
+2W reading, same length of quiet. Measured on real data, a genuine
+mid-cycle pause and a genuine gap between two back-to-back loads were both
+exactly 4.5 minutes. No single timeout can separate them.
+
+What does separate them is *when in the load* the dip happens. Across every
+gap recorded so far:
+
+| | when it happened | what it was |
+|---|---|---|
+| 27 min into a ~47 min load | early | mid-cycle pause (kept running) |
+| 27 min into a ~47 min load | early | mid-cycle pause (kept running) |
+| 46 min in | late | end of the load, next one started 4.5 min later |
+| 52 min in | late | end of the load, next one started 7.5 min later |
+
+So the app learns the median length of your recent normally-ended washes
+and uses the long 10-minute confirmation for dips arriving before ~80% of
+that, and the short one after. A dip early in a wash still has to go quiet
+for a full 10 minutes to count as the end; one arriving after a normal
+load's worth of runtime only needs 4. The in-between gaps that showed up
+late in real loads were all 3 minutes or shorter, so 4 clears them.
+
+Without this, two loads run back to back merge into a single cycle that
+only ends when the 90-minute deadman fires - which then immediately
+"restarts" on the still-running second load, producing a false start, a
+false "washer done" and a bogus "washer started again while the dryer is
+running" all in a row. It needs at least three completed washes before it
+has enough history to adapt; until then it always uses the long timeout.
+
 Dryer vibration thresholds
 ---
 | Setting | Default | What it does |
 |---|---|---|
-| Minimum continuous active time | 3 min | The sensor has to stay continuously `active` this long before it counts as a real cycle. Anything shorter is treated as a bump/handling and ignored entirely - no notification, no cycle logged. |
+| Minimum continuous active time | 6 min | The sensor has to stay continuously `active` this long before it counts as a real cycle. Anything shorter is treated as a bump/handling and ignored entirely - no notification, no cycle logged. |
 | Deadman timer | 120 min | Pure safety net, for a sensor that dies mid-cycle and never reports `inactive`. Not part of normal operation any more. |
 
 **How dryer detection works (and why it's this simple):** this sensor
@@ -81,10 +112,15 @@ in total:
 
 | | count | span length |
 |---|---|---|
-| bumps, door slams, unloading, washer cross-talk | 66 | 10-68 **seconds** |
-| real dryer cycles | 5 | 28.7-65.8 **minutes** |
+| bumps, door slams, unloading, washer cross-talk | 80+ | 1 second - 3m50s |
+| real dryer cycles | 7 | 28.7-65.8 **minutes** |
 
-There is nothing in between - a 25x gap. So "did the vibration last more
+There is nothing in between - a 7x gap. (The upper end of that noise range
+came later, from someone loading the dryer: a 3m50s continuous burst that
+sailed past the original 3-minute threshold and logged a fake 4-minute
+"cycle". Every other non-cycle burst on record is under 70 seconds, so 6
+minutes clears the outlier comfortably and still sits far below any real
+run.) So "did the vibration last more
 than a few minutes?" answers the question outright, and the cycle end is
 exact (the `inactive` report *is* the moment the dryer stopped), with no
 debounce, quiet-timeout, or deadman guesswork involved. Replayed against
@@ -170,6 +206,8 @@ you set afterwards is respected.
 | v2 | `dryerDeadmanMin` -> 120 (if lower) | It is only a safety net now. A real 65.8-minute cycle has been observed, so a cap near an hour truncates real cycles. |
 | v2 | `suppressCrossTalk` -> off | Cross-talk only ever produces short active spans, which the minimum run time already filters. Leaving it on only risks missing real dryer cycles that overlap a washer load. |
 | v3 | `washerStartWaitMin` -> 4 (if lower) | A real overnight false start traced to idle noise landing almost exactly on the old 2-minute boundary - see "Why the start wait is 4 minutes" above. |
+| v4 | `dryerMinRunMin` -> 6 (if lower) | Loading the dryer produced a 3m50s continuous burst that the old 3-minute rule scored as a real cycle. |
+| v4 | `washerStopConfirmLateMin` -> 4 | Enables the adaptive stop timeout so back-to-back loads stop merging - see "Why the stop timeout adapts" above. |
 
 Data Log
 ---
