@@ -269,6 +269,56 @@ the labelled set is a separate piece of work, deliberately kept apart from
 collection so that a single mistaken "No" can't move the app's behaviour
 on its own.
 
+Learned profile and the sanity gate
+---
+The three logs together answer one question the thresholds alone cannot:
+*does this event look like a real load on this machine?* From the cycle
+log the app keeps a running profile - median washer duration, median
+washer **peak power**, median dryer duration - and uses it in two places.
+
+**It excludes anything you marked wrong.** This matters more than it
+sounds. Before feedback existed, the app learned from its own output, so a
+bad call quietly taught it the wrong thing: one merged 90-minute blob
+pulls the median from 47 to 53 minutes, which shifts the adaptive stop
+timeout, which makes the next call worse. Marking that event "No" now
+removes it from the profile entirely and the median snaps back.
+
+**The sanity gate.** A finished cycle that looks nothing like a real load
+gets logged with a `doubt` note but is *not* announced, and does not start
+a reminder. It deliberately gates on only the two signals with enormous
+measured separation:
+
+| Signal | Real cycles | Known false positive | Gate |
+|---|---|---|---|
+| Washer peak power | never below 71% of median | overnight phantom hit **2%** | below 25% |
+| Dryer duration | never below 56% of median | loading the dryer hit **8%** | below 35% |
+
+Peak power is the strongest washer signal available and nothing was using
+it: a real load pulls 200-490W, while the overnight phantom that woke the
+house topped out at 11W. Both gates need at least five clean samples
+before they do anything, so a new install is never second-guessed by an
+empty profile.
+
+Washer *duration* is deliberately **not** gated - a short delicates load is
+legitimately short, and there is no safe floor.
+
+Tuning Report
+---
+**Main page → Tuning Report** builds a single pasteable prompt containing
+the current settings, the learned profile, recent detected cycles, every
+correction you have given with its note, and the raw sensor readings
+around each event you marked wrong. Drop it into any LLM and it has the
+whole picture without you explaining any of it.
+
+It asks for three things specifically: which setting caused each bad call,
+what to change it to *with the margin shown against every real cycle*, and
+an explicit callout of any change that trades one error for another - the
+failure mode that has bitten this app more than once.
+
+Nothing in it changes settings. It produces a recommendation you apply
+yourself, which is the point: a single mistaken "No" can never move the
+app's behaviour on its own.
+
 Data Log
 ---
 This is the main point of the app. Two logs are kept, both viewable and

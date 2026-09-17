@@ -74,6 +74,7 @@ mappings {
 preferences {
     page(name: "mainPage")
     page(name: "dataPage")
+    page(name: "tuningPage")
 }
 
 def mainPage() {
@@ -158,6 +159,7 @@ def mainPage() {
             paragraph "Every washer power reading and every dryer active/inactive vibration report is saved so thresholds can be re-tuned from real data later."
             input "maxRawLogEntries", "number", title: "Max raw readings to retain", required: false, defaultValue: 3000
             input "maxCycleLogEntries", "number", title: "Max cycle summaries to retain", required: false, defaultValue: 300
+            href "tuningPage", title: "Tuning Report", description: "Generate a ready-to-paste prompt for re-tuning from your own labelled data"
             href "dataPage", title: "View / Export Data Log", description: "Stored: ${(state.rawLog ?: []).size()} raw readings, ${(state.cycleLog ?: []).size()} cycle summaries"
         }
 
@@ -179,6 +181,106 @@ def mainPage() {
             }
         }
     }
+}
+
+def tuningPage() {
+    dynamicPage(name: "tuningPage", title: "Tuning Report") {
+        section {
+            paragraph "Everything needed to re-derive this app's thresholds from your own data: current settings, what the app has learned about your machines, the cycles it detected, and every event you marked wrong. Copy it into any LLM and it will have the full picture without you having to explain any of it."
+            paragraph "Nothing here changes settings. It produces a recommendation you apply yourself."
+            paragraph "<textarea readonly rows='24' style='width:100%;font-family:monospace;font-size:11px'>${tuningPrompt()}</textarea>"
+        }
+    }
+}
+
+private String tuningPrompt() {
+    Map prof = cycleProfile()
+    List cyc = (state.cycleLog instanceof List) ? state.cycleLog : []
+    List fb = (state.feedback instanceof List) ? state.feedback : []
+    List idx = (state.feedbackIndex instanceof List) ? state.feedbackIndex : []
+    List arch = (state.feedbackRaw instanceof List) ? state.feedbackRaw : []
+    StringBuilder sb = new StringBuilder()
+
+    sb << "I run a Hubitat app that detects washer and dryer cycles and notifies me.\n"
+    sb << "It got some calls wrong. Below is its configuration, what it has learned,\n"
+    sb << "what it detected, and my corrections. Tell me which specific settings to\n"
+    sb << "change and why, using only this data. Flag anything you cannot resolve\n"
+    sb << "from the evidence rather than guessing.\n\n"
+
+    sb << "HOW DETECTION WORKS\n"
+    sb << "Washer: a power meter. A cycle starts when power stays at/above the start\n"
+    sb << "threshold for the start-wait window, and ends when power drops below the\n"
+    sb << "stop threshold and stays there - confirmed either by N sequential low\n"
+    sb << "readings or by a quiet timeout. The quiet timeout is shorter once the wash\n"
+    sb << "has already run about as long as a typical load, because a dip that late is\n"
+    sb << "more likely the end of one load than a mid-cycle pause.\n"
+    sb << "Dryer: a vibration sensor with NO power monitoring. It latches 'active'\n"
+    sb << "while it feels vibration, so a cycle is real only if that active span\n"
+    sb << "outlasts the minimum run time; the 'inactive' report is the exact end.\n"
+    sb << "Handling the machine (loading, emptying, bumps) also produces vibration,\n"
+    sb << "which is the main source of false dryer cycles.\n\n"
+
+    sb << "CURRENT SETTINGS\n"
+    sb << "washer start threshold: ${washerStartW ?: 5} W\n"
+    sb << "washer start wait: ${washerStartWaitMin ?: 4} min\n"
+    sb << "washer stop threshold: ${washerStopW ?: 3} W\n"
+    sb << "washer min minutes before end detection: ${washerMinEndMin ?: 10}\n"
+    sb << "washer stop - sequential low readings: ${washerStopReadings ?: 2}\n"
+    sb << "washer stop - quiet timeout: ${washerStopConfirmMin ?: 10} min\n"
+    sb << "washer stop - quiet timeout late in load: ${washerStopConfirmLateMin ?: 4} min\n"
+    sb << "washer spike filter: ${washerIgnoreW ?: 1500} W\n"
+    sb << "washer deadman: ${washerDeadmanMin ?: 90} min\n"
+    sb << "dryer minimum continuous active: ${dryerMinRunMin ?: 6} min\n"
+    sb << "dryer deadman: ${dryerDeadmanMin ?: 120} min\n"
+    sb << "cross-talk suppression: ${suppressCrossTalk ? 'on' : 'off'}\n\n"
+
+    sb << "LEARNED PROFILE (medians, excluding anything I marked wrong)\n"
+    sb << "typical washer cycle: ${prof.washerMin ?: 'n/a'} min over ${prof.washerN} sample(s)\n"
+    sb << "typical washer peak power: ${prof.washerPeak ?: 'n/a'} W\n"
+    sb << "typical dryer cycle: ${prof.dryerMin ?: 'n/a'} min over ${prof.dryerN} sample(s)\n\n"
+
+    sb << "DETECTED CYCLES (most recent last)\n"
+    sb << "when,device,phase,durationMin,peakW,reason,concurrent,appDoubted\n"
+    List recent = cyc.size() > 40 ? cyc[-40..-1] : cyc
+    recent.each { e ->
+        sb << "${new Date(e.t as Long).format('yyyy-MM-dd HH:mm:ss')},${e.d},${e.p},"
+        sb << "${e.durationMin ?: ''},${e.peakW ?: ''},${e.reason ?: ''},"
+        sb << "${e.concurrent ? 1 : 0},${e.doubt ? 'yes' : ''}\n"
+    }
+
+    sb << "\nMY CORRECTIONS\n"
+    if (!fb) {
+        sb << "(none yet - answer the Yes/No links on notifications to build this up)\n"
+    } else {
+        fb.each { f ->
+            Map n = idx.find { (it.i as Integer) == (f.i as Integer) }
+            sb << "- ${n?.t ? new Date(n.t as Long).format('yyyy-MM-dd HH:mm') : '?'} "
+            sb << "\"${n?.m ?: '?'}\" (${n?.k} ${n?.d}) -> ${f.ok ? 'CORRECT' : 'WRONG'}"
+            if (f.note) sb << " - I said: ${f.note}"
+            sb << "\n"
+        }
+    }
+
+    List wrongIds = fb.findAll { !it.ok }.collect { it.i as Integer }
+    if (wrongIds) {
+        sb << "\nRAW SENSOR READINGS AROUND THE EVENTS I MARKED WRONG\n"
+        sb << "(washer values are watts; dryer values are active/inactive)\n"
+        sb << "eventId,timestamp,device,value\n"
+        arch.each { a ->
+            if (!wrongIds.contains(a.i as Integer)) return
+            a.rows.each { r ->
+                sb << "${a.i},${new Date(r[0] as Long).format('yyyy-MM-dd HH:mm:ss')},${r[1]},${r[2]}\n"
+            }
+        }
+    }
+
+    sb << "\nWHAT I WANT\n"
+    sb << "1. For each event I marked wrong, say which setting caused it.\n"
+    sb << "2. Recommend new values, with the reasoning and the margin - i.e. show\n"
+    sb << "   that the new value separates the bad events from the real ones, and\n"
+    sb << "   check it against every real cycle above so it does not break them.\n"
+    sb << "3. Call out any change that trades one error for another.\n"
+    return sb.toString()
 }
 
 def dataPage() {
@@ -519,7 +621,10 @@ private void endWasherCycle(String reason, Long endTs) {
     Long ts = endTs ?: now()
     Long startTs = state.washerCycleStart as Long
     Integer durMin = startTs ? Math.round((ts - startTs) / 60000d) as Integer : 0
-    logCycleEvent("washer", "end", ts, [durationMin: durMin, peakW: state.washerPeakW, reason: reason, concurrent: (state.dryerOn as boolean)])
+    String doubt = implausibleReason("washer", durMin, state.washerPeakW)
+    Map extra = [durationMin: durMin, peakW: state.washerPeakW, reason: reason, concurrent: (state.dryerOn as boolean)]
+    if (doubt) extra.doubt = doubt
+    logCycleEvent("washer", "end", ts, extra)
     if (txtEnable) log.info "Washer done after ${durMin} min (peak ${state.washerPeakW}W, ${reason})"
     unschedule("washerDeadmanFired")
     unschedule("washerStopConfirmFired")
@@ -529,8 +634,14 @@ private void endWasherCycle(String reason, Long endTs) {
     state.remove("washerEndingSince")
     state.remove("washerPendingSince")
     if (switchList) switchList*.off()
-    if (enableDoneNotify) notify(washerDoneMessage ?: "Washer is done", "done", "washer", ts)
-    if (enableReminder) runIn(((reminderMinutes ?: 15) as Integer) * 60, "washerReminderFired", [overwrite: true])
+    if (enableDoneNotify) {
+        if (doubt) {
+            log.warn "Laundry Monitor: not announcing washer done - ${doubt}. Logged for review."
+        } else {
+            notify(washerDoneMessage ?: "Washer is done", "done", "washer", ts)
+        }
+    }
+    if (enableReminder && !doubt) runIn(((reminderMinutes ?: 15) as Integer) * 60, "washerReminderFired", [overwrite: true])
 }
 
 def washerDeadmanFired() {
@@ -539,21 +650,78 @@ def washerDeadmanFired() {
     endWasherCycle("deadman", now())
 }
 
-// Typical length of a real wash, learned from this machine's own history -
-// median of the most recent normally-ended cycles. Null until there's
-// enough history to trust.
-private Integer typicalWasherMin() {
+// Cycles the user has explicitly told us were wrong. Without this the app
+// learns from its own mistakes: a bad call goes into the history, shifts
+// the median, and makes the next call worse.
+private List rejectedCycleKeys() {
+    List fb = (state.feedback instanceof List) ? state.feedback : []
+    List idx = (state.feedbackIndex instanceof List) ? state.feedbackIndex : []
+    List keys = []
+    fb.each { f ->
+        if (f.ok) return
+        Map n = idx.find { (it.i as Integer) == (f.i as Integer) }
+        if (n?.c && n?.d) keys << "${n.d}|${n.c}".toString()
+    }
+    return keys
+}
+
+private Integer medianOf(List values) {
+    if (!values) return null
+    List s = values.sort()
+    return s[(int) (s.size() / 2)] as Integer
+}
+
+// What a normal load looks like on THIS machine, learned from its own
+// history minus anything the user rejected. Everything downstream - the
+// adaptive stop timeout and the sanity gate - reads from here.
+private Map cycleProfile() {
     List entries = (state.cycleLog instanceof List) ? state.cycleLog : []
-    List durations = []
+    List rejected = rejectedCycleKeys()
+    List wDur = [], wPeak = [], dDur = []
     entries.each { e ->
-        if (e.d == "washer" && e.p == "end" && e.reason == "normal" && e.durationMin) {
-            durations << (e.durationMin as Integer)
+        if (e.p != "end" || e.reason != "normal" || !e.durationMin) return
+        if (rejected.contains("${e.d}|${e.t}".toString())) return
+        if (e.d == "washer") {
+            wDur << (e.durationMin as Integer)
+            if (e.peakW) wPeak << (e.peakW as BigDecimal).intValue()
+        } else if (e.d == "dryer") {
+            dDur << (e.durationMin as Integer)
         }
     }
-    if (durations.size() < 3) return null
-    if (durations.size() > 10) durations = durations[-10..-1]
-    durations = durations.sort()
-    return durations[(int) (durations.size() / 2)] as Integer
+    if (wDur.size() > 10) wDur = wDur[-10..-1]
+    if (wPeak.size() > 10) wPeak = wPeak[-10..-1]
+    if (dDur.size() > 10) dDur = dDur[-10..-1]
+    return [washerMin: medianOf(wDur), washerPeak: medianOf(wPeak), dryerMin: medianOf(dDur),
+            washerN: wDur.size(), dryerN: dDur.size()]
+}
+
+private Integer typicalWasherMin() {
+    Map prof = cycleProfile()
+    return (prof.washerN >= 3) ? (prof.washerMin as Integer) : null
+}
+
+// A finished cycle that looks nothing like a real load on this machine.
+// Deliberately only gates on the two signals with enormous measured
+// separation: washer peak power (real loads never dropped below 71% of
+// median, the overnight phantom hit 2%) and dryer duration (real never
+// below 56%, loading-the-machine hit 8%). Washer duration is NOT gated -
+// a short delicates load is legitimately short.
+private String implausibleReason(String device, Integer durMin, def peakW) {
+    Map prof = cycleProfile()
+    if (device == "washer") {
+        if (prof.washerN < 5 || !prof.washerPeak || peakW == null) return null
+        BigDecimal floor = (prof.washerPeak as BigDecimal) * 0.25
+        if ((peakW as BigDecimal) < floor) {
+            return "peak ${peakW}W is far below the ${prof.washerPeak}W typical for a real load"
+        }
+    } else {
+        if (prof.dryerN < 5 || !prof.dryerMin || durMin == null) return null
+        BigDecimal floor = (prof.dryerMin as BigDecimal) * 0.35
+        if ((durMin as BigDecimal) < floor) {
+            return "ran ${durMin} min against a ${prof.dryerMin} min typical cycle"
+        }
+    }
+    return null
 }
 
 // How long a low-power stretch has to hold before it counts as the end of
@@ -679,14 +847,23 @@ private void endDryerCycle(String reason, Long endTs) {
     Long ts = endTs ?: now()
     Long startTs = state.dryerCycleStart as Long
     Integer durMin = startTs ? Math.round((ts - startTs) / 60000d) as Integer : 0
-    logCycleEvent("dryer", "end", ts, [durationMin: durMin, reason: reason, concurrent: (state.washerOn as boolean)])
+    String doubt = implausibleReason("dryer", durMin, null)
+    Map extra = [durationMin: durMin, reason: reason, concurrent: (state.washerOn as boolean)]
+    if (doubt) extra.doubt = doubt
+    logCycleEvent("dryer", "end", ts, extra)
     if (txtEnable) log.info "Dryer done after ${durMin} min (${reason})"
     unschedule("dryerDeadmanFired")
     unschedule("dryerMinRunFired")
     state.dryerOn = false
     state.remove("dryerActiveSince")
     if (switchList) switchList*.off()
-    if (enableDoneNotify) notify(dryerDoneMessage ?: "Dryer is done", "done", "dryer", ts)
+    if (enableDoneNotify) {
+        if (doubt) {
+            log.warn "Laundry Monitor: not announcing dryer done - ${doubt}. Logged for review."
+        } else {
+            notify(dryerDoneMessage ?: "Dryer is done", "done", "dryer", ts)
+        }
+    }
 }
 
 def dryerDeadmanFired() {
