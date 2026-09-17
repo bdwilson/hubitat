@@ -680,6 +680,9 @@ private Map cycleProfile() {
     List wDur = [], wPeak = [], dDur = []
     entries.each { e ->
         if (e.p != "end" || e.reason != "normal" || !e.durationMin) return
+        // Never learn from a cycle we ourselves refused to announce - the
+        // app would otherwise be taught by the very events it distrusted.
+        if (e.doubt) return
         if (rejected.contains("${e.d}|${e.t}".toString())) return
         if (e.d == "washer") {
             wDur << (e.durationMin as Integer)

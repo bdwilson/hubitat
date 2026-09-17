@@ -276,6 +276,14 @@ The three logs together answer one question the thresholds alone cannot:
 log the app keeps a running profile - median washer duration, median
 washer **peak power**, median dryer duration - and uses it in two places.
 
+**What counts as a sample.** Any cycle that ended normally - a deadman or
+manual-reset cycle never counts, and neither does one the app itself
+doubted, nor one you marked wrong. Giving feedback is *not* required for a
+cycle to count: silence means included, matching the rule that no answer
+implies the alert was fine. The practical consequence is that a bad call
+you never correct still teaches the profile, so the corrections are worth
+giving when something is obviously wrong.
+
 **It excludes anything you marked wrong.** This matters more than it
 sounds. Before feedback existed, the app learned from its own output, so a
 bad call quietly taught it the wrong thing: one merged 90-minute blob
