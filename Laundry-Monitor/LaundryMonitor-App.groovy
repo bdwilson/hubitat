@@ -142,8 +142,8 @@ def mainPage() {
             input "enableFeedback", "bool", title: "Add feedback links to notifications", required: false, defaultValue: false, submitOnChange: true
             if (enableFeedback) {
                 input "feedbackUrlMode", "enum", title: "Which URL to put in notifications", required: false, defaultValue: "cloud", options: ["cloud": "Cloud (works away from home)", "local": "Local (LAN only)"], submitOnChange: true
-                input "feedbackLinkStyle", "enum", title: "How to put the links in the message", required: false, defaultValue: "plain", options: ["plain": "Plain text (works everywhere)", "html": "HTML links (only if your notifier really renders HTML)"], submitOnChange: true
-                paragraph "<small>Most Hubitat notification drivers - including the common Pushover one - hand the message to the service without telling it the text is HTML, so <code>&lt;a href&gt;</code> arrives as literal markup. Plain text sends the URLs bare and lets the push client link them itself. Only pick HTML if you have confirmed your own notifier renders it.</small>"
+                input "feedbackLinkStyle", "enum", title: "How to put the links in the message", required: false, defaultValue: "auto", options: ["auto": "Automatic - tidy links on Pushover, plain text elsewhere", "plain": "Always plain text", "html": "Always HTML"], submitOnChange: true
+                paragraph "<small><b>Automatic</b> sends Pushover devices the <code>[HTML]</code> marker its driver needs to render real links, and sends every other notifier plain URLs that the push client links itself. Pick <b>Always HTML</b> only if you have confirmed your notifier renders HTML without a marker; pick <b>Always plain text</b> if tags show up as literal markup.</small>"
                 if (!state.accessToken) {
                     paragraph "<span style='color:#b00'><b>OAuth is not enabled yet.</b> Go to <b>Apps Code</b> &rarr; this app &rarr; <b>OAuth</b> &rarr; Enable, then come back and hit Done.</span>"
                 } else {
@@ -352,7 +352,7 @@ def uninstalled() {
 // defaultValue only applies to a setting that has never been set. So
 // without this, an existing install keeps running on its old values and
 // silently ignores the new defaults.
-private static String settingsVersion() { return "5" }
+private static String settingsVersion() { return "6" }
 
 private void migrateSettings() {
     if (state.settingsVersion == settingsVersion()) return
@@ -426,14 +426,16 @@ private void migrateSettings() {
         changes << "washerStopConfirmLateMin=4"
     }
 
-    // v5: feedback links went out as HTML anchors. The common Hubitat
-    // Pushover driver never sets the Pushover API's html flag, so the
-    // markup showed up verbatim in the notification instead of as tappable
-    // links. Plain URLs get auto-linked by every push client, so that is
-    // now the default and HTML is opt-in.
-    if (feedbackLinkStyle == null) {
-        app.updateSetting("feedbackLinkStyle", [value: "plain", type: "enum"])
-        changes << "feedbackLinkStyle=plain"
+    // v5/v6: feedback links went out as HTML anchors and showed up as
+    // literal markup in Pushover. v5 fell back to plain URLs everywhere;
+    // v6 is better than that - the Pushover driver does render HTML, it
+    // just wants a "[HTML]" marker on the message first, so "auto" sends
+    // that marker to Pushover devices and plain URLs to everything else.
+    // Only v5's own fallback is overwritten here, and it shipped the same
+    // day, so nobody chose "plain" deliberately yet.
+    if (feedbackLinkStyle == null || feedbackLinkStyle == "plain") {
+        app.updateSetting("feedbackLinkStyle", [value: "auto", type: "enum"])
+        changes << "feedbackLinkStyle=auto"
     }
 
     state.settingsVersion = settingsVersion()
@@ -1048,7 +1050,8 @@ private Integer safeInt(v) {
 
 private void notify(String msg, String kind, String device, Long cycleTs) {
     if (!msg) return
-    String pushMsg = msg
+    String plain = msg
+    String html = null
     if (enableFeedback && state.accessToken) {
         Integer id = recordNotification(msg, kind, device, cycleTs)
         if (id != null) {
@@ -1056,22 +1059,47 @@ private void notify(String msg, String kind, String device, Long cycleTs) {
             if (base) {
                 String yes = "${base}/f/${id}/y?access_token=${state.accessToken}"
                 String no = "${base}/f/${id}/n?access_token=${state.accessToken}"
-                // Plain text by default: most notification drivers pass the
-                // message straight through without flagging it as HTML, so
-                // anchor tags arrive as literal markup. Bare URLs get linked
-                // by the push client itself and work everywhere.
-                if (feedbackLinkStyle == "html") {
-                    pushMsg = "${msg}<br><br>Was this correct? <a href=\"${yes}\">Yes</a>&nbsp;&nbsp;&nbsp;<a href=\"${no}\">No</a>"
-                } else {
-                    pushMsg = "${msg}\n\nWas this correct?\nYes: ${yes}\nNo: ${no}"
-                }
+                plain = "${msg}\n\nWas this correct?\nYes: ${yes}\nNo: ${no}"
+                html = "${msg}<br><br>Was this correct? <a href=\"${yes}\">Yes</a> | <a href=\"${no}\">No</a>"
             }
         }
     }
-    if (notifyDevices) notifyDevices*.deviceNotification(pushMsg)
-    // Speech gets the plain text - nobody wants markup read aloud.
+    notifyDevices?.each { dev ->
+        try {
+            dev.deviceNotification(messageFor(dev, plain, html))
+        } catch (Exception e) {
+            log.warn "Laundry Monitor: ${dev} rejected the notification - ${e.message}"
+        }
+    }
+    // Speech gets the plain subject line - nobody wants a URL read aloud.
     if (speechDevices) speechDevices*.speak(msg)
     if (txtEnable) log.info "notify: ${msg}"
+}
+
+// Pushover does render HTML, but its Hubitat driver only asks the API for
+// that when the message carries a literal "[HTML]" marker; without it the
+// tags arrive as text. No other notifier understands that marker - it would
+// just show up verbatim - so the choice is made per device rather than baked
+// into the message.
+private String messageFor(dev, String plain, String html) {
+    if (html == null) return plain
+    switch (feedbackLinkStyle) {
+        case "html":
+            return html
+        case "plain":
+            return plain
+        default:
+            return isPushoverDevice(dev) ? "[HTML]${html}" : plain
+    }
+}
+
+private boolean isPushoverDevice(dev) {
+    try {
+        String t = dev?.getTypeName()
+        return t != null && t.toLowerCase().contains("pushover")
+    } catch (Exception ignored) {
+        return false
+    }
 }
 
 private BigDecimal safeDecimal(v) {

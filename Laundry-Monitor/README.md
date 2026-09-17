@@ -208,7 +208,8 @@ you set afterwards is respected.
 | v3 | `washerStartWaitMin` -> 4 (if lower) | A real overnight false start traced to idle noise landing almost exactly on the old 2-minute boundary - see "Why the start wait is 4 minutes" above. |
 | v4 | `dryerMinRunMin` -> 6 (if lower) | Loading the dryer produced a 3m50s continuous burst that the old 3-minute rule scored as a real cycle. |
 | v4 | `washerStopConfirmLateMin` -> 4 | Enables the adaptive stop timeout so back-to-back loads stop merging - see "Why the stop timeout adapts" above. |
-| v5 | `feedbackLinkStyle` -> `plain` | Feedback links used to go out as HTML anchors; the common Hubitat Pushover driver never flags the message as HTML, so the markup arrived as literal text. |
+| v5 | `feedbackLinkStyle` -> `plain` | Superseded by v6 the same day; see below. |
+| v6 | `feedbackLinkStyle` -> `auto` (from `plain` or unset) | Pushover's driver does render HTML - it just needs a `[HTML]` marker on the message. `auto` sends that marker to Pushover and plain URLs to everything else. |
 
 Feedback (optional, off by default)
 ---
@@ -219,13 +220,9 @@ right, at the one moment you know the answer.
 
 Turn on **Add feedback links to notifications** and each push gains:
 
-```
-Washer is done
-
-Was this correct?
-Yes: https://cloud.hubitat.com/api/<hub>/apps/<id>/f/142/y?access_token=<token>
-No:  https://cloud.hubitat.com/api/<hub>/apps/<id>/f/142/n?access_token=<token>
-```
+> Washer is done
+>
+> Was this correct? **Yes** | **No**
 
 **Yes** is a single tap and needs nothing else - the link records the
 answer and returns a page saying so. **No** records it and then offers an
@@ -235,20 +232,34 @@ the question entirely is treated as *nothing said*, not as a yes. The Yes
 page also carries an "actually, that one was wrong" link, so a mis-tap
 takes one more tap to correct rather than being stuck.
 
-### Why plain URLs and not tidy "Yes / No" links
+### How the links are formatted
 
-HTML links read much better, and Pushover itself renders them - but only
-when the sender sets the API's `html=1` flag. The widely used Hubitat
-Pushover driver does not, so anchor tags arrive verbatim:
+**How to put the links in the message** decides, and **Automatic** is the
+default and almost certainly what you want:
+
+| Setting | What each notifier receives |
+| --- | --- |
+| **Automatic** | Pushover devices get `[HTML]` + real anchor tags; every other notifier gets plain URLs. |
+| **Always plain text** | Bare URLs everywhere. Ugly but universal. |
+| **Always HTML** | Anchor tags with no marker - only for a notifier you have confirmed renders HTML on its own. |
+
+The reason Automatic isn't just "send HTML": Pushover renders HTML only
+when the sender sets the API's `html=1` flag, and [Dan Ogorchock's Pushover
+driver](https://raw.githubusercontent.com/ogiewon/Hubitat/master/Drivers/pushover-notifications.src/pushover-notifications.groovy)
+- the one nearly everyone uses - sets that flag only when the message
+carries a literal `[HTML]` marker. Without it you get:
 
 ```
 Washer is done<br><br>Was this correct? <a href="https://...">Yes</a>
 ```
 
-The message text isn't the problem; the driver is. Since plain URLs get
-auto-linked by every push client, that's the default. **How to put the
-links in the message** switches to HTML if you have confirmed your own
-notifier renders it - check with a test message before relying on it.
+No other notifier understands that marker, so it is added per device
+(matched on the driver's type name) rather than baked into the message.
+Nothing needs changing in the Pushover driver itself.
+
+Plain text is not a downgrade, just less tidy - every push client links a
+bare URL automatically. If your notifier shows tags as literal text and
+isn't Pushover, choose **Always plain text**.
 
 Setup, once:
 
