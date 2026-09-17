@@ -59,8 +59,17 @@ definition(
     importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/claude/laundry-monitor-calibration-53grlv/Laundry-Monitor/LaundryMonitor-App.groovy",
     iconUrl: "",
     iconX2Url: "",
-    iconX3Url: ""
+    iconX3Url: "",
+    oauth: true
 )
+
+mappings {
+    // Yes/No land straight from the notification - one tap. "No" then
+    // offers an optional note. Distinct path shapes so ":answer" can't
+    // swallow the note submission.
+    path("/f/:id/:answer") { action: [GET: "feedbackAnswer"] }
+    path("/fn/:id")        { action: [GET: "feedbackNote"] }
+}
 
 preferences {
     page(name: "mainPage")
@@ -127,6 +136,24 @@ def mainPage() {
             input "switchList", "capability.switch", title: "Follower switch(es) - on during a cycle, off when it ends", multiple: true, required: false
         }
 
+        section("<b>Feedback (off by default)</b>", hideable: true, hidden: !(enableFeedback as boolean)) {
+            paragraph "Adds <i>Was this correct? Yes / No</i> links to each notification. Yes is one tap; No offers an optional note. No answer is treated as nothing said - not as a yes. Answers are stored with the raw readings behind them so detection can be re-tuned from real labelled events instead of guesswork."
+            input "enableFeedback", "bool", title: "Add feedback links to notifications", required: false, defaultValue: false, submitOnChange: true
+            if (enableFeedback) {
+                input "feedbackUrlMode", "enum", title: "Which URL to put in notifications", required: false, defaultValue: "cloud", options: ["cloud": "Cloud (works away from home)", "local": "Local (LAN only)"], submitOnChange: true
+                if (!state.accessToken) {
+                    paragraph "<span style='color:#b00'><b>OAuth is not enabled yet.</b> Go to <b>Apps Code</b> &rarr; this app &rarr; <b>OAuth</b> &rarr; Enable, then come back and hit Done.</span>"
+                } else {
+                    paragraph "Cloud: <code>${getFullApiServerUrl()}/f/&lt;id&gt;/y?access_token=${state.accessToken}</code>"
+                    paragraph "Local: <code>${getFullLocalApiServerUrl()}/f/&lt;id&gt;/y?access_token=${state.accessToken}</code>"
+                    paragraph "<small>Anyone with that token can submit feedback, so treat the link as mildly sensitive. It cannot read your logs, change settings, or control devices.</small>"
+                }
+                Integer answered = ((state.feedback instanceof List) ? state.feedback : []).size()
+                Integer wrong = ((state.feedback instanceof List) ? state.feedback : []).count { !(it.ok) } as Integer
+                paragraph "Answers so far: ${answered} (${wrong} marked not correct)"
+            }
+        }
+
         section("<b>Data Log</b>") {
             paragraph "Every washer power reading and every dryer active/inactive vibration report is saved so thresholds can be re-tuned from real data later."
             input "maxRawLogEntries", "number", title: "Max raw readings to retain", required: false, defaultValue: 3000
@@ -175,6 +202,15 @@ def dataPage() {
                 paragraph "<textarea readonly rows='18' style='width:100%;font-family:monospace;font-size:11px'>${cycleLogCsv()}</textarea>"
             }
             input "clearCycleLogButton", "button", title: "Clear Cycle Log", backgroundColor: "Crimson", textColor: "white", submitOnChange: true
+        }
+        section("<b>Feedback Log</b>") {
+            List fb = (state.feedback instanceof List) ? state.feedback : []
+            paragraph "Stored: ${fb.size()} answered event(s), ${((state.feedbackRaw instanceof List) ? state.feedbackRaw : []).size()} with pinned raw readings."
+            input "showFeedbackExport", "bool", title: "Show CSV for copy/paste", required: false, defaultValue: false, submitOnChange: true
+            if (showFeedbackExport) {
+                paragraph "<textarea readonly rows='18' style='width:100%;font-family:monospace;font-size:11px'>${feedbackCsv()}</textarea>"
+            }
+            input "clearFeedbackButton", "button", title: "Clear Feedback Log", backgroundColor: "Crimson", textColor: "white", submitOnChange: true
         }
     }
 }
@@ -293,6 +329,14 @@ private void migrateSettings() {
 def initialize() {
     migrateSettings()
 
+    if (enableFeedback && !state.accessToken) {
+        try {
+            createAccessToken()
+        } catch (Exception e) {
+            log.warn "Laundry Monitor: enable OAuth in Apps Code before feedback links can be sent (${e.message})"
+        }
+    }
+
     subscribe(washerPowerMeter, "power", washerPowerHandler)
     subscribe(dryerVibrationSensor, "acceleration", dryerAccelHandler)
 
@@ -356,6 +400,11 @@ def appButtonHandler(String btn) {
             break
         case "clearCycleLogButton":
             state.cycleLog = []
+            break
+        case "clearFeedbackButton":
+            state.feedback = []
+            state.feedbackRaw = []
+            state.feedbackIndex = []
             break
         case "resetWasherButton":
             if (state.washerOn) endWasherCycle("manual reset", now())
@@ -460,9 +509,9 @@ private void startWasherCycle(Long ts, BigDecimal p) {
     if (txtEnable) log.info "Washer started (${p}W)${concurrentDryer ? ' - dryer is still running (second load)' : ''}"
     armDeadman("washer", ts)
     if (switchList) switchList*.on()
-    if (enableStartNotify) notify(washerStartMessage ?: "Washer started")
+    if (enableStartNotify) notify(washerStartMessage ?: "Washer started", "start", "washer", ts)
     if (concurrentDryer && enableConcurrentLoadNotify) {
-        notify(concurrentLoadMessage ?: "Washer started again - the dryer is still running the previous load")
+        notify(concurrentLoadMessage ?: "Washer started again - the dryer is still running the previous load", "concurrent", "washer", ts)
     }
 }
 
@@ -480,7 +529,7 @@ private void endWasherCycle(String reason, Long endTs) {
     state.remove("washerEndingSince")
     state.remove("washerPendingSince")
     if (switchList) switchList*.off()
-    if (enableDoneNotify) notify(washerDoneMessage ?: "Washer is done")
+    if (enableDoneNotify) notify(washerDoneMessage ?: "Washer is done", "done", "washer", ts)
     if (enableReminder) runIn(((reminderMinutes ?: 15) as Integer) * 60, "washerReminderFired", [overwrite: true])
 }
 
@@ -542,7 +591,7 @@ def washerReminderFired() {
     // because it only checked whether the washer had restarted, never
     // whether the dryer already had.
     if (!state.washerOn && !state.dryerOn) {
-        notify(washerReminderMessage ?: "Reminder: the washer is still waiting to be moved to the dryer")
+        notify(washerReminderMessage ?: "Reminder: the washer is still waiting to be moved to the dryer", "reminder", "washer", state.washerCycleEndTs as Long)
     }
 }
 
@@ -612,7 +661,7 @@ private void startDryerCycle(Long ts) {
     if (txtEnable) log.info "Dryer started${concurrentWasher ? ' - washer is also running' : ''}"
     armDeadman("dryer", ts)
     if (switchList) switchList*.on()
-    if (enableStartNotify) notify(dryerStartMessage ?: "Dryer started")
+    if (enableStartNotify) notify(dryerStartMessage ?: "Dryer started", "start", "dryer", ts)
 
     // The washer's quiet-timeout can take up to washerStopConfirmMin to
     // confirm a real stop when only one low reading ever arrives (no
@@ -637,7 +686,7 @@ private void endDryerCycle(String reason, Long endTs) {
     state.dryerOn = false
     state.remove("dryerActiveSince")
     if (switchList) switchList*.off()
-    if (enableDoneNotify) notify(dryerDoneMessage ?: "Dryer is done")
+    if (enableDoneNotify) notify(dryerDoneMessage ?: "Dryer is done", "done", "dryer", ts)
 }
 
 def dryerDeadmanFired() {
@@ -647,11 +696,152 @@ def dryerDeadmanFired() {
 }
 
 
+/* ---------------- feedback loop ---------------- */
+
+private String feedbackBaseUrl() {
+    try {
+        return (feedbackUrlMode == "local") ? getFullLocalApiServerUrl() : getFullApiServerUrl()
+    } catch (Exception e) {
+        log.warn "Laundry Monitor: could not build feedback URL - ${e.message}"
+        return null
+    }
+}
+
+// Every notification gets an id so feedback can be tied back to the exact
+// event it is about - including the reminder and second-load alerts, which
+// have no cycle-log entry of their own.
+private Integer recordNotification(String msg, String kind, String device, Long cycleTs) {
+    Integer id = (state.nextFeedbackId ?: 1) as Integer
+    state.nextFeedbackId = id + 1
+    List idx = (state.feedbackIndex instanceof List) ? state.feedbackIndex : []
+    Map entry = [i: id, t: now(), k: kind, d: device, m: msg]
+    if (cycleTs) entry.c = cycleTs
+    idx << entry
+    while (idx.size() > 200) idx.remove(0)
+    state.feedbackIndex = idx
+    return id
+}
+
+private Map findNotification(Integer id) {
+    List idx = (state.feedbackIndex instanceof List) ? state.feedbackIndex : []
+    return idx.find { (it.i as Integer) == id }
+}
+
+// A label is worthless once the raw readings behind it have rolled out of
+// the capped log, so snapshot the window around the event the moment
+// feedback arrives.
+private void pinRawWindow(Integer id, Map note) {
+    List archive = (state.feedbackRaw instanceof List) ? state.feedbackRaw : []
+    if (archive.find { (it.i as Integer) == id }) return
+    Long from = ((note.c ?: note.t) as Long) - (15 * 60000L)
+    List raw = (state.rawLog instanceof List) ? state.rawLog : []
+    List rows = []
+    raw.each { r ->
+        if ((r.t as Long) >= from) rows << [r.t, r.d, r.v]
+    }
+    if (rows.size() > 400) rows = rows[-400..-1]
+    archive << [i: id, rows: rows]
+    while (archive.size() > 20) archive.remove(0)
+    state.feedbackRaw = archive
+}
+
+private void storeFeedback(Integer id, boolean ok, String noteText) {
+    List fb = (state.feedback instanceof List) ? state.feedback : []
+    fb = fb.findAll { (it.i as Integer) != id }
+    Map rec = [i: id, t: now(), ok: ok]
+    if (noteText) rec.note = noteText
+    fb << rec
+    while (fb.size() > 200) fb.remove(0)
+    state.feedback = fb
+    Map n = findNotification(id)
+    if (n) pinRawWindow(id, n)
+    if (txtEnable) log.info "Laundry Monitor feedback on #${id} (${n?.k} ${n?.d}): ${ok ? 'correct' : 'NOT correct'}${noteText ? " - ${noteText}" : ''}"
+}
+
+private String esc(String s) {
+    if (s == null) return ""
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&#39;")
+}
+
+private String fbPage(String bodyHtml) {
+    return """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Laundry Monitor</title><style>
+body{font-family:-apple-system,system-ui,sans-serif;background:#111;color:#eee;margin:0;padding:28px 20px;font-size:17px;line-height:1.5}
+.card{max-width:520px;margin:0 auto}
+.ok{color:#5cd65c;font-size:22px;font-weight:600}
+.bad{color:#ff8a65;font-size:22px;font-weight:600}
+.ev{color:#aaa;margin:14px 0 22px}
+textarea{width:100%;box-sizing:border-box;min-height:110px;font-size:17px;padding:10px;border-radius:8px;border:1px solid #444;background:#1c1c1c;color:#eee}
+button{margin-top:14px;width:100%;padding:14px;font-size:18px;font-weight:600;border:0;border-radius:8px;background:#2f6fed;color:#fff}
+</style></head><body><div class="card">${bodyHtml}</div></body></html>"""
+}
+
+def feedbackAnswer() {
+    Integer id = safeInt(params?.id)
+    String answer = params?.answer
+    Map n = id == null ? null : findNotification(id)
+    if (n == null) {
+        render(contentType: "text/html", data: fbPage("<p class=\"bad\">Event not found</p><p class=\"ev\">It may have aged out of the log.</p>"), status: 200)
+        return
+    }
+    boolean ok = (answer == "y")
+    storeFeedback(id, ok, null)
+    String when = new Date(n.t as Long).format("h:mm a")
+    String ev = "<p class=\"ev\">${esc(n.m as String)}<br><small>${esc(n.k as String)} &middot; ${esc(n.d as String)} &middot; ${when}</small></p>"
+    if (ok) {
+        render(contentType: "text/html", data: fbPage("<p class=\"ok\">Thanks &mdash; logged as correct.</p>${ev}"), status: 200)
+        return
+    }
+    String action = "${feedbackBaseUrl()}/fn/${id}"
+    String form = """<p class="bad">Logged as not correct.</p>${ev}
+<form action="${action}" method="GET">
+<input type="hidden" name="access_token" value="${state.accessToken}">
+<label for="note">What actually happened? (optional)</label>
+<textarea id="note" name="note" placeholder="e.g. nothing was running, I was just emptying the dryer"></textarea>
+<button type="submit">Save note</button></form>"""
+    render(contentType: "text/html", data: fbPage(form), status: 200)
+}
+
+def feedbackNote() {
+    Integer id = safeInt(params?.id)
+    Map n = id == null ? null : findNotification(id)
+    if (n == null) {
+        render(contentType: "text/html", data: fbPage("<p class=\"bad\">Event not found</p>"), status: 200)
+        return
+    }
+    String noteText = (params?.note ?: "") as String
+    if (noteText.length() > 500) noteText = noteText.substring(0, 500)
+    storeFeedback(id, false, noteText)
+    render(contentType: "text/html", data: fbPage("<p class=\"ok\">Thanks &mdash; noted.</p><p class=\"ev\">${esc(noteText)}</p>"), status: 200)
+}
+
+private Integer safeInt(v) {
+    if (v == null) return null
+    try {
+        return (v as Integer)
+    } catch (Exception ignored) {
+        return null
+    }
+}
+
 /* ---------------- shared helpers ---------------- */
 
-private void notify(String msg) {
+private void notify(String msg, String kind, String device, Long cycleTs) {
     if (!msg) return
-    if (notifyDevices) notifyDevices*.deviceNotification(msg)
+    String pushMsg = msg
+    if (enableFeedback && state.accessToken) {
+        Integer id = recordNotification(msg, kind, device, cycleTs)
+        if (id != null) {
+            String base = feedbackBaseUrl()
+            if (base) {
+                String yes = "${base}/f/${id}/y?access_token=${state.accessToken}"
+                String no = "${base}/f/${id}/n?access_token=${state.accessToken}"
+                pushMsg = "${msg}<br><br>Was this correct? <a href=\"${yes}\">Yes</a>&nbsp;&nbsp;&nbsp;<a href=\"${no}\">No</a>"
+            }
+        }
+    }
+    if (notifyDevices) notifyDevices*.deviceNotification(pushMsg)
+    // Speech gets the plain text - nobody wants markup read aloud.
     if (speechDevices) speechDevices*.speak(msg)
     if (txtEnable) log.info "notify: ${msg}"
 }
@@ -692,6 +882,39 @@ private String rawLogCsv() {
     sb << "timestamp,device,value,suppressed\n"
     shown.each { e ->
         sb << "${new Date(e.t as Long).format('yyyy-MM-dd HH:mm:ss')},${e.d},${e.v},${e.s ? 1 : 0}\n"
+    }
+    return sb.toString()
+}
+
+// Replay-ready join: the label, the event it was about, and the cycle it
+// came from. Pinned raw readings are exported separately below it.
+private String feedbackCsv() {
+    List fb = (state.feedback instanceof List) ? state.feedback : []
+    List idx = (state.feedbackIndex instanceof List) ? state.feedbackIndex : []
+    List cyc = (state.cycleLog instanceof List) ? state.cycleLog : []
+    StringBuilder sb = new StringBuilder()
+    sb << "eventId,notifiedAt,answeredAt,kind,device,correct,cycleAt,durationMin,peakW,reason,note\n"
+    fb.each { f ->
+        Map n = idx.find { (it.i as Integer) == (f.i as Integer) }
+        Map c = null
+        if (n?.c) c = cyc.find { (it.t as Long) == (n.c as Long) && it.d == n.d }
+        sb << "${f.i},"
+        sb << "${n?.t ? new Date(n.t as Long).format('yyyy-MM-dd HH:mm:ss') : ''},"
+        sb << "${new Date(f.t as Long).format('yyyy-MM-dd HH:mm:ss')},"
+        sb << "${n?.k ?: ''},${n?.d ?: ''},${f.ok ? 1 : 0},"
+        sb << "${n?.c ? new Date(n.c as Long).format('yyyy-MM-dd HH:mm:ss') : ''},"
+        sb << "${c?.durationMin ?: ''},${c?.peakW ?: ''},${c?.reason ?: ''},"
+        sb << "\"${((f.note ?: '') as String).replace('"', "'")}\"\n"
+    }
+    List arch = (state.feedbackRaw instanceof List) ? state.feedbackRaw : []
+    if (arch) {
+        sb << "\n# pinned raw readings for the events above\n"
+        sb << "eventId,timestamp,device,value\n"
+        arch.each { a ->
+            a.rows.each { r ->
+                sb << "${a.i},${new Date(r[0] as Long).format('yyyy-MM-dd HH:mm:ss')},${r[1]},${r[2]}\n"
+            }
+        }
     }
     return sb.toString()
 }

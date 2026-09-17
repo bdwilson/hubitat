@@ -209,6 +209,66 @@ you set afterwards is respected.
 | v4 | `dryerMinRunMin` -> 6 (if lower) | Loading the dryer produced a 3m50s continuous burst that the old 3-minute rule scored as a real cycle. |
 | v4 | `washerStopConfirmLateMin` -> 4 | Enables the adaptive stop timeout so back-to-back loads stop merging - see "Why the stop timeout adapts" above. |
 
+Feedback (optional, off by default)
+---
+Everything this app knows about your machines it learned from its own
+output - which means a wrong call quietly teaches it the wrong thing. The
+feedback loop fixes that by capturing whether each alert was actually
+right, at the one moment you know the answer.
+
+Turn on **Add feedback links to notifications** and each push gains:
+
+> Washer is done
+>
+> Was this correct? **Yes**   **No**
+
+**Yes** is a single tap and needs nothing else. **No** records it and then
+offers an optional note - "nothing was running, I was just emptying the
+dryer" is exactly the kind of label that no threshold could have inferred.
+Ignoring the question entirely is treated as *nothing said*, not as a yes.
+
+Setup, once:
+
+1. **Apps Code** → this app → **OAuth** → Enable OAuth in App. (Hubitat
+   only allows this from that screen; the app can't do it for you.)
+2. Back in the app, enable the feedback setting and pick **cloud** or
+   **local** URLs. Cloud is the default and works when you're away from
+   home - local links only resolve on your own network, which is exactly
+   when you're least likely to be there to answer.
+
+The settings page prints both URL forms so you can see what's being sent.
+
+**What gets stored.** Every answer is saved against the specific event it
+refers to - including the reminder and second-load alerts, which have no
+cycle-log entry of their own. Alongside it the app pins a snapshot of the
+raw readings from 15 minutes before the event onward, because a label is
+worthless once the readings behind it roll out of the capped raw log
+(~12 days). Twenty such snapshots are kept, roughly 25KB.
+
+**Getting it back out.** The Data Log page gains a **Feedback Log** CSV
+that joins the label, the notification, and the cycle it came from, with
+the pinned raw readings underneath it:
+
+```
+eventId,notifiedAt,answeredAt,kind,device,correct,cycleAt,durationMin,peakW,reason,note
+142,2026-09-17 13:33:31,2026-09-17 13:41:02,done,washer,0,2026-09-17 13:30:34,47,241,normal,"was just emptying it"
+```
+
+That is deliberately everything needed to replay a disputed event offline
+and work out which threshold was responsible.
+
+**A note on the token.** The link carries an OAuth token, so it passes
+through Pushover and sits in your notification history. The endpoint it
+unlocks only ever writes feedback - it cannot read your logs, change
+settings, or control any device. Notes are capped at 500 characters and
+escaped before they're ever shown back.
+
+**What this does not do yet.** Nothing adjusts itself. Labels accumulate
+and thresholds stay exactly where you set them. Automatic re-tuning from
+the labelled set is a separate piece of work, deliberately kept apart from
+collection so that a single mistaken "No" can't move the app's behaviour
+on its own.
+
 Data Log
 ---
 This is the main point of the app. Two logs are kept, both viewable and
