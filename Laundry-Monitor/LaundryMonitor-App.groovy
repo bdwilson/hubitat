@@ -142,6 +142,8 @@ def mainPage() {
             input "enableFeedback", "bool", title: "Add feedback links to notifications", required: false, defaultValue: false, submitOnChange: true
             if (enableFeedback) {
                 input "feedbackUrlMode", "enum", title: "Which URL to put in notifications", required: false, defaultValue: "cloud", options: ["cloud": "Cloud (works away from home)", "local": "Local (LAN only)"], submitOnChange: true
+                input "feedbackLinkStyle", "enum", title: "How to put the links in the message", required: false, defaultValue: "plain", options: ["plain": "Plain text (works everywhere)", "html": "HTML links (only if your notifier really renders HTML)"], submitOnChange: true
+                paragraph "<small>Most Hubitat notification drivers - including the common Pushover one - hand the message to the service without telling it the text is HTML, so <code>&lt;a href&gt;</code> arrives as literal markup. Plain text sends the URLs bare and lets the push client link them itself. Only pick HTML if you have confirmed your own notifier renders it.</small>"
                 if (!state.accessToken) {
                     paragraph "<span style='color:#b00'><b>OAuth is not enabled yet.</b> Go to <b>Apps Code</b> &rarr; this app &rarr; <b>OAuth</b> &rarr; Enable, then come back and hit Done.</span>"
                 } else {
@@ -350,7 +352,7 @@ def uninstalled() {
 // defaultValue only applies to a setting that has never been set. So
 // without this, an existing install keeps running on its old values and
 // silently ignores the new defaults.
-private static String settingsVersion() { return "4" }
+private static String settingsVersion() { return "5" }
 
 private void migrateSettings() {
     if (state.settingsVersion == settingsVersion()) return
@@ -422,6 +424,16 @@ private void migrateSettings() {
     if (washerStopConfirmLateMin == null) {
         app.updateSetting("washerStopConfirmLateMin", [value: "4", type: "number"])
         changes << "washerStopConfirmLateMin=4"
+    }
+
+    // v5: feedback links went out as HTML anchors. The common Hubitat
+    // Pushover driver never sets the Pushover API's html flag, so the
+    // markup showed up verbatim in the notification instead of as tappable
+    // links. Plain URLs get auto-linked by every push client, so that is
+    // now the default and HTML is opt-in.
+    if (feedbackLinkStyle == null) {
+        app.updateSetting("feedbackLinkStyle", [value: "plain", type: "enum"])
+        changes << "feedbackLinkStyle=plain"
     }
 
     state.settingsVersion = settingsVersion()
@@ -951,48 +963,76 @@ body{font-family:-apple-system,system-ui,sans-serif;background:#111;color:#eee;m
 .ok{color:#5cd65c;font-size:22px;font-weight:600}
 .bad{color:#ff8a65;font-size:22px;font-weight:600}
 .ev{color:#aaa;margin:14px 0 22px}
+.link{color:#7aa7ff}
 textarea{width:100%;box-sizing:border-box;min-height:110px;font-size:17px;padding:10px;border-radius:8px;border:1px solid #444;background:#1c1c1c;color:#eee}
 button{margin-top:14px;width:100%;padding:14px;font-size:18px;font-weight:600;border:0;border-radius:8px;background:#2f6fed;color:#fff}
 </style></head><body><div class="card">${bodyHtml}</div></body></html>"""
 }
 
+// render() hands the response back as this method's RETURN VALUE - calling
+// it and then falling out of the method sends an empty body, which is
+// exactly the blank page this used to produce. Every exit below returns
+// render(...) directly, and the whole thing is wrapped so that even an
+// unexpected failure says something instead of nothing.
+private def fbRender(String bodyHtml) {
+    return render(contentType: "text/html", data: fbPage(bodyHtml), status: 200)
+}
+
+private String fbEventHtml(Map n) {
+    String when = ""
+    try {
+        when = " &middot; " + new Date(n.t as Long).format("h:mm a", location.timeZone)
+    } catch (Exception ignored) {
+    }
+    return "<p class=\"ev\">${esc(n.m as String)}<br><small>${esc(n.k as String)} &middot; ${esc(n.d as String)}${when}</small></p>"
+}
+
 def feedbackAnswer() {
-    Integer id = safeInt(params?.id)
-    String answer = params?.answer
-    Map n = id == null ? null : findNotification(id)
-    if (n == null) {
-        render(contentType: "text/html", data: fbPage("<p class=\"bad\">Event not found</p><p class=\"ev\">It may have aged out of the log.</p>"), status: 200)
-        return
-    }
-    boolean ok = (answer == "y")
-    storeFeedback(id, ok, null)
-    String when = new Date(n.t as Long).format("h:mm a")
-    String ev = "<p class=\"ev\">${esc(n.m as String)}<br><small>${esc(n.k as String)} &middot; ${esc(n.d as String)} &middot; ${when}</small></p>"
-    if (ok) {
-        render(contentType: "text/html", data: fbPage("<p class=\"ok\">Thanks &mdash; logged as correct.</p>${ev}"), status: 200)
-        return
-    }
-    String action = "${feedbackBaseUrl()}/fn/${id}"
-    String form = """<p class="bad">Logged as not correct.</p>${ev}
-<form action="${action}" method="GET">
+    try {
+        Integer id = safeInt(params?.id)
+        String answer = params?.answer
+        Map n = id == null ? null : findNotification(id)
+        if (n == null) {
+            return fbRender("<p class=\"bad\">Event not found</p><p class=\"ev\">It may have aged out of the log.</p>")
+        }
+        boolean ok = (answer == "y")
+        storeFeedback(id, ok, null)
+        String ev = fbEventHtml(n)
+        String base = feedbackBaseUrl()
+        if (ok) {
+            String flip = "${base}/f/${id}/n?access_token=${state.accessToken}"
+            return fbRender("<p class=\"ok\">Thanks &mdash; logged as correct.</p>${ev}<p><a class=\"link\" href=\"${flip}\">Actually, that one was wrong</a></p>")
+        }
+        return fbRender("""<p class="bad">Logged as not correct.</p>${ev}
+<form action="${base}/fn/${id}" method="GET">
 <input type="hidden" name="access_token" value="${state.accessToken}">
 <label for="note">What actually happened? (optional)</label>
 <textarea id="note" name="note" placeholder="e.g. nothing was running, I was just emptying the dryer"></textarea>
-<button type="submit">Save note</button></form>"""
-    render(contentType: "text/html", data: fbPage(form), status: 200)
+<button type="submit">Save note</button></form>
+<p><small>The answer is already saved. The note is optional extra detail.</small></p>""")
+    } catch (Exception e) {
+        log.error "Laundry Monitor: feedback link failed - ${e}"
+        return fbRender("<p class=\"bad\">Something went wrong</p><p class=\"ev\">${esc(e.message as String)}</p>")
+    }
 }
 
 def feedbackNote() {
-    Integer id = safeInt(params?.id)
-    Map n = id == null ? null : findNotification(id)
-    if (n == null) {
-        render(contentType: "text/html", data: fbPage("<p class=\"bad\">Event not found</p>"), status: 200)
-        return
+    try {
+        Integer id = safeInt(params?.id)
+        Map n = id == null ? null : findNotification(id)
+        if (n == null) {
+            return fbRender("<p class=\"bad\">Event not found</p>")
+        }
+        String noteText = (params?.note ?: "") as String
+        if (noteText.length() > 500) noteText = noteText.substring(0, 500)
+        storeFeedback(id, false, noteText)
+        String body = "<p class=\"ok\">Thanks &mdash; noted.</p>" + fbEventHtml(n)
+        if (noteText) body += "<p class=\"ev\">&ldquo;${esc(noteText)}&rdquo;</p>"
+        return fbRender(body)
+    } catch (Exception e) {
+        log.error "Laundry Monitor: feedback note failed - ${e}"
+        return fbRender("<p class=\"bad\">Something went wrong</p><p class=\"ev\">${esc(e.message as String)}</p>")
     }
-    String noteText = (params?.note ?: "") as String
-    if (noteText.length() > 500) noteText = noteText.substring(0, 500)
-    storeFeedback(id, false, noteText)
-    render(contentType: "text/html", data: fbPage("<p class=\"ok\">Thanks &mdash; noted.</p><p class=\"ev\">${esc(noteText)}</p>"), status: 200)
 }
 
 private Integer safeInt(v) {
@@ -1016,7 +1056,15 @@ private void notify(String msg, String kind, String device, Long cycleTs) {
             if (base) {
                 String yes = "${base}/f/${id}/y?access_token=${state.accessToken}"
                 String no = "${base}/f/${id}/n?access_token=${state.accessToken}"
-                pushMsg = "${msg}<br><br>Was this correct? <a href=\"${yes}\">Yes</a>&nbsp;&nbsp;&nbsp;<a href=\"${no}\">No</a>"
+                // Plain text by default: most notification drivers pass the
+                // message straight through without flagging it as HTML, so
+                // anchor tags arrive as literal markup. Bare URLs get linked
+                // by the push client itself and work everywhere.
+                if (feedbackLinkStyle == "html") {
+                    pushMsg = "${msg}<br><br>Was this correct? <a href=\"${yes}\">Yes</a>&nbsp;&nbsp;&nbsp;<a href=\"${no}\">No</a>"
+                } else {
+                    pushMsg = "${msg}\n\nWas this correct?\nYes: ${yes}\nNo: ${no}"
+                }
             }
         }
     }

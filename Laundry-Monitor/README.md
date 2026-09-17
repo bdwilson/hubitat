@@ -208,6 +208,7 @@ you set afterwards is respected.
 | v3 | `washerStartWaitMin` -> 4 (if lower) | A real overnight false start traced to idle noise landing almost exactly on the old 2-minute boundary - see "Why the start wait is 4 minutes" above. |
 | v4 | `dryerMinRunMin` -> 6 (if lower) | Loading the dryer produced a 3m50s continuous burst that the old 3-minute rule scored as a real cycle. |
 | v4 | `washerStopConfirmLateMin` -> 4 | Enables the adaptive stop timeout so back-to-back loads stop merging - see "Why the stop timeout adapts" above. |
+| v5 | `feedbackLinkStyle` -> `plain` | Feedback links used to go out as HTML anchors; the common Hubitat Pushover driver never flags the message as HTML, so the markup arrived as literal text. |
 
 Feedback (optional, off by default)
 ---
@@ -218,14 +219,36 @@ right, at the one moment you know the answer.
 
 Turn on **Add feedback links to notifications** and each push gains:
 
-> Washer is done
->
-> Was this correct? **Yes**   **No**
+```
+Washer is done
 
-**Yes** is a single tap and needs nothing else. **No** records it and then
-offers an optional note - "nothing was running, I was just emptying the
-dryer" is exactly the kind of label that no threshold could have inferred.
-Ignoring the question entirely is treated as *nothing said*, not as a yes.
+Was this correct?
+Yes: https://cloud.hubitat.com/api/<hub>/apps/<id>/f/142/y?access_token=<token>
+No:  https://cloud.hubitat.com/api/<hub>/apps/<id>/f/142/n?access_token=<token>
+```
+
+**Yes** is a single tap and needs nothing else - the link records the
+answer and returns a page saying so. **No** records it and then offers an
+optional note - "nothing was running, I was just emptying the dryer" is
+exactly the kind of label that no threshold could have inferred. Ignoring
+the question entirely is treated as *nothing said*, not as a yes. The Yes
+page also carries an "actually, that one was wrong" link, so a mis-tap
+takes one more tap to correct rather than being stuck.
+
+### Why plain URLs and not tidy "Yes / No" links
+
+HTML links read much better, and Pushover itself renders them - but only
+when the sender sets the API's `html=1` flag. The widely used Hubitat
+Pushover driver does not, so anchor tags arrive verbatim:
+
+```
+Washer is done<br><br>Was this correct? <a href="https://...">Yes</a>
+```
+
+The message text isn't the problem; the driver is. Since plain URLs get
+auto-linked by every push client, that's the default. **How to put the
+links in the message** switches to HTML if you have confirmed your own
+notifier renders it - check with a test message before relying on it.
 
 Setup, once:
 
