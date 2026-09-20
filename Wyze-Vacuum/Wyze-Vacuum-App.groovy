@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.31.0 - Brian Wilson / bubba@bubba.org
+ * 1.31.1 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -187,7 +187,7 @@ def mainPage() {
                                 def selectedIds = (settings["rotationRooms_${mac}"] ?: []).collect { it as Integer }
                                 def selectedRoomOptions = rooms.findAll { (it.id as Integer) in selectedIds }.collectEntries { [(it.id.toString()): it.name] }
                                 input "highTrafficRooms_${mac}", "enum",
-                                    title: "High-traffic rooms — get their own shorter cycle below and are prioritized over normal-traffic rooms once due",
+                                    title: "High-traffic rooms — get their own shorter cycle (set once you've picked some) and are prioritized over normal-traffic rooms once due",
                                     options: selectedRoomOptions, multiple: true, required: false, submitOnChange: true
 
                                 if (settings["highTrafficRooms_${mac}"]) {
@@ -201,7 +201,9 @@ def mainPage() {
                                 }
 
                                 input "rotationContinuousMode_${mac}", "bool",
-                                    title: "Keep sweeping continuously while triggered, even once nothing's technically due yet (works through the whole rotation list on a loop; stops when dock()/pause()/off() is called, or when it hits the time limit below)",
+                                    // Deliberately not "the time limit below" -- that input only exists while this
+                                    // toggle is on, so with it off the label pointed at nothing.
+                                    title: "Keep sweeping continuously while triggered, even once nothing's technically due yet (works through the whole rotation list on a loop; stops when dock()/pause()/off() is called, or after an optional time limit that appears once this is switched on)",
                                     defaultValue: false, required: false, submitOnChange: true
 
                                 if (settings["rotationContinuousMode_${mac}"]) {
