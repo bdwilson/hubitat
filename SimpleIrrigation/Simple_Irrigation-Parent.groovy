@@ -32,6 +32,11 @@
  *
  * ------------------------------------------------------------------------------------------------------------------------------
  *
+ *  This copy is a personal fork maintained at https://github.com/bdwilson/hubitat/ (folder SimpleIrrigation). It is
+ *  NOT published to Hubitat Package Manager and is not supported by @BPTWorld - use at your own risk.
+ *
+ * ------------------------------------------------------------------------------------------------------------------------------
+ *
  *  Changes:
  *
  *  2.0.1 - 04/27/20 - Cosmetic changes
@@ -53,7 +58,8 @@ definition(
     category: "Convenience",
     iconUrl: "",
     iconX2Url: "",
-    iconX3Url: ""
+    iconX3Url: "",
+    importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/claude/optimistic-heisenberg-yso1ot/SimpleIrrigation/Simple_Irrigation-Parent.groovy"
 )
 
 preferences {

@@ -36,8 +36,28 @@
  *
  * ------------------------------------------------------------------------------------------------------------------------------
  *
+ *  This copy is a personal fork maintained at https://github.com/bdwilson/hubitat/ (folder SimpleIrrigation). It is
+ *  NOT published to Hubitat Package Manager and is not supported by @BPTWorld - use at your own risk.
+ *
+ * ------------------------------------------------------------------------------------------------------------------------------
+ *
  *  Changes:
  *
+ *  2.1.0 - 09/20/26 - [bdwilson] Added a configurable OPEN command (text field) + a toggle for whether that
+ *                     command accepts the run length in minutes as an argument, so this app can drive drivers
+ *                     that don't support a plain open(duration) - e.g. this repo's Tuya Zigbee Valve Port driver,
+ *                     which exposes a distinctly-named openFor(duration) instead (see that driver's README for
+ *                     why: Maker API can't dispatch an overloaded open() with two different arities). When the
+ *                     open command does NOT take a duration, this app now explicitly arms its own internal
+ *                     runIn() shutoff timer and documents that in the UI; when it DOES take a duration, this app
+ *                     still also arms that same safety-net timer in case the device's own timer doesn't fire -
+ *                     for a water valve, closing twice is harmless but failing to close is not. Also fixed:
+ *                     turnValveOff() was gated on today matching the configured watering days, so the safety
+ *                     shutoff (or a weather/day-check abort) could silently skip closing the valve entirely if it
+ *                     ran past midnight into a non-watering day; closing is now unconditional. Fixed a typo
+ *                     (swtichDevice) in the weather-check-failed log line that threw and aborted the rest of
+ *                     turnValveOn() - including the turnValveOff() safety call at the end of that path - whenever
+ *                     weather blocked watering in switch mode.
  *  2.0.9 - 06/23/21 - Minor changes
  *  2.0.8 - 06/23/21 - Fixed a typo
  *  2.0.7 - 05/26/21 - Added switch option
@@ -58,7 +78,7 @@ import java.text.SimpleDateFormat
 
 def setVersion(){
     state.name = "Simple Irrigation"
-	state.version = "2.0.9"
+	state.version = "2.1.0"
 }
 
 definition(
@@ -71,7 +91,7 @@ definition(
     iconUrl: "",
     iconX2Url: "",
     iconX3Url: "",
-	importUrl: "https://raw.githubusercontent.com/bptworld/Hubitat/master/Apps/Simple%20Irrigation/SI-child.groovy",
+	importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/claude/optimistic-heisenberg-yso1ot/SimpleIrrigation/Simple_Irrigation-Child.groovy",
 )
 
 preferences {
@@ -90,8 +110,21 @@ def pageConfig() {
             if(valveORswitch) {
                 input "switchDevice", "capability.switch", title: "Select Switch Device", required: true
             } else {
-                input "valveDevice", "capability.valve", title: "Select Valve Device", required: true	
+                input "valveDevice", "capability.valve", title: "Select Valve Device", required: true
             }
+		}
+		if(!valveORswitch) {
+			section(getFormat("header-green", "${getImage("Blank")}"+" Open Command")) {
+				paragraph "Some valve drivers only support a plain, zero-argument <b>open()</b> - this app will run its own internal shutoff timer and call <b>close()</b> once the scheduled run time elapses. Others expose a separate timed-open command (e.g. this repo's Tuya Zigbee Valve Port driver's <b>openFor(minutes)</b>) that manages its own shutoff - this app will still ALSO arm its internal shutoff timer as a safety net in that case, in case the device's own timer doesn't fire."
+				input "openCommand", "text", title: "Command to OPEN the valve", description: "Defaults to 'open' if left blank. Example: openFor", required: false, submitOnChange: true
+				input "openCommandHasDuration", "bool", title: "Send the run time (minutes) as an argument to that command? (e.g. openFor(30))", defaultValue: false, required: true, submitOnChange: true
+				if(valveDevice) {
+					try {
+						def supportedCmds = valveDevice.supportedCommands*.name?.unique()?.sort()?.join(", ")
+						if(supportedCmds) paragraph "<small>${valveDevice} supports: ${supportedCmds}</small>"
+					} catch (e) { }
+				}
+			}
 		}
 		section(getFormat("header-green", "${getImage("Blank")}"+" Schedule")) {
 			input(name: "days", type: "enum", title: "Only water on these days", description: "Days to water", required: true, multiple: true, options: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
@@ -157,6 +190,28 @@ def settingUpHandler() {
     turnValveOn()
 }
 
+// Sends the configured OPEN command to valveDevice, dynamically dispatched by name so drivers that don't call
+// their timed-open command "open" (e.g. Tuya Zigbee Valve Port's openFor, kept distinct from the Valve
+// capability's own zero-arg open() because Maker API can't dispatch an overloaded open() with two arities) still
+// work. openCommandHasDuration controls whether onLength is passed as an argument; either way, turnValveOn()'s
+// own runIn(delay, turnValveOff) safety-net timer (armed once the device reports open) still fires afterward.
+def openValveDevice(onLength) {
+    String cmd = (openCommand?.trim()) ? openCommand.trim() : "open"
+    try {
+        if(openCommandHasDuration) {
+            if(logEnable) log.debug "In openValveDevice - sending ${cmd}(${onLength}) to ${valveDevice}"
+            valveDevice."${cmd}"(onLength)
+        } else {
+            if(logEnable) log.debug "In openValveDevice - sending ${cmd}() to ${valveDevice}"
+            valveDevice."${cmd}"()
+        }
+    } catch (e) {
+        log.error "In openValveDevice - failed to send '${cmd}' to ${valveDevice}: ${e.message}. Check the 'Command to OPEN the valve' setting."
+        state.msg = "${valveDevice} - failed to send '${cmd}' command. Check app configuration."
+        if(sendTroublePushMessage) pushHandler()
+    }
+}
+
 def turnValveOn() {
     if(state.valveTry == null) state.valveTry = 0
     if(state.valveTry == 0) { if(logEnable) log.warn "*************** Start Valve On - Simple Irrigation Child - (${state.version}) ***************" }	
@@ -189,7 +244,7 @@ def turnValveOn() {
                     switchDevice.on()
                 } else {
                     if(logEnable) log.debug "In turnValveOn for ${onLength} - trying to open - Attempt ${state.valveTry} - will check again in 20 seconds"
-                    valveDevice.open(onLength)
+                    openValveDevice(onLength)
                 }
                 if(state.valveTry <= maxTriesOn) runIn(30, turnValveOn)		// Repeat for safety
                 if(state.valveTry > maxTriesOn) {
@@ -234,7 +289,7 @@ def turnValveOn() {
             }
         } else {
             if(valveORswitch) {
-                log.info "${app.label} didn't pass weather check. ${swtichDevice} not turned on."
+                log.info "${app.label} didn't pass weather check. ${switchDevice} not turned on."
             } else {
                 log.info "${app.label} didn't pass weather check. ${valveDevice} not turned on."
             }
@@ -264,51 +319,51 @@ def turnValveOn() {
 def turnValveOff() {
     if(state.valveTryOff == null) state.valveTryOff = 0
     if(state.valveTryOff == 0) { if(logEnable) log.warn "*************** Start Valve Off - Simple Irrigation Child - (${state.version}) ***************" }
-    dayOfTheWeekHandler()
-    if(state.daysMatch) {
-        if(logEnable) log.debug "In turnValveOff (${state.version})"
+    // Closing is a safety action (undoing an open, or a safety-net shutoff firing after midnight into a
+    // non-watering day) and must never be skipped based on day-of-week - unlike turnValveOn(), there is
+    // deliberately no dayOfTheWeekHandler()/daysMatch gate here.
+    if(logEnable) log.debug "In turnValveOff (${state.version})"
+    if(valveORswitch) {
+        if(switchDevice) state.switchStatus = switchDevice.currentValue("switch")
+    } else {
+        if(valveDevice) state.valveStatus = valveDevice.currentValue("valve")
+    }
+    if(state.valveStatus == "open" || state.switchStatus == "on") {
+        state.valveTryOff = state.valveTryOff + 1
         if(valveORswitch) {
-            if(switchDevice) state.switchStatus = switchDevice.currentValue("switch")
+            if(logEnable) log.debug "In turnValveOff - trying to turn off - Attempt ${state.valveTryOff} - will check again in 20 seconds"
+            switchDevice.off()
         } else {
-            if(valveDevice) state.valveStatus = valveDevice.currentValue("valve")
+            if(logEnable) log.debug "In turnValveOff - trying to close - Attempt ${state.valveTryOff} - will check again in 20 seconds"
+            valveDevice.close()
         }
-        if(state.valveStatus == "open" || state.switchStatus == "on") {
-            state.valveTryOff = state.valveTryOff + 1
+        if(state.valveTryOff <= maxTriesOff) runIn(20, turnValveOff)		// Repeat for safety
+        if(state.valveTryOff > maxTriesOff) {
             if(valveORswitch) {
-                if(logEnable) log.debug "In turnValveOff - trying to turn off - Attempt ${state.valveTryOff} - will check again in 20 seconds"
-                switchDevice.off()
+                log.warn "${switchDevice} didn't turn off after ${maxTriesOff} tries."
+                state.msg = "${switchDevice} didn't turn off after ${maxTriesOff} tries. Please CHECK device."
             } else {
-                if(logEnable) log.debug "In turnValveOff - trying to close - Attempt ${state.valveTryOff} - will check again in 20 seconds"
-                valveDevice.close()
+                log.warn "${valveDevice} didn't close after ${maxTriesOff} tries."
+                state.msg = "${valveDevice} didn't close after ${maxTriesOff} tries. Please CHECK device."
             }
-            if(state.valveTryOff <= maxTriesOff) runIn(20, turnValveOff)		// Repeat for safety
-            if(state.valveTryOff > maxTriesOff) {
-                if(valveORswitch) {
-                    log.warn "${switchDevice} didn't turn off after ${maxTriesOff} tries."
-                    state.msg = "${switchDevice} didn't turn off after ${maxTriesOff} tries. Please CHECK device."
-                } else {
-                    log.warn "${valveDevice} didn't close after ${maxTriesOff} tries."
-                    state.msg = "${valveDevice} didn't close after ${maxTriesOff} tries. Please CHECK device."
-                }
-                if(sendTroublePushMessage) pushHandler()
-                resetTrys()
-            }
+            if(sendTroublePushMessage) pushHandler()
+            resetTrys()
+        }
+    } else {
+        if(valveORswitch) {
+            log.warn "In turnValveOff - ${switchDevice} is now ${state.switchStatus}"
+            state.msg = "${switchDevice} is now ${state.switchStatus}"
         } else {
-            if(valveORswitch) {
-                log.warn "In turnValveOff - ${switchDevice} is now ${state.switchStatus}"
-                state.msg = "${switchDevice} is now ${state.switchStatus}"
-            } else {
-                log.warn "In turnValveOff - ${valveDevice} is now ${state.valveStatus}"
-                state.msg = "${valveDevice} is now ${state.valveStatus}"
-            }
-            //if (!state.canWater) {
-            //    state.msg = "${valveDevice} is now ${state.valveStatus}. Watering session skipped due to weather switch."
-            //    resetTrys()
-            //}
-            if (state.canWater) {
-                if(sendInfoPushMessage) pushHandler()
-                resetTrys()
-            }
+            log.warn "In turnValveOff - ${valveDevice} is now ${state.valveStatus}"
+            state.msg = "${valveDevice} is now ${state.valveStatus}"
+        }
+        //if (!state.canWater) {
+        //    state.msg = "${valveDevice} is now ${state.valveStatus}. Watering session skipped due to weather switch."
+        //    resetTrys()
+        //}
+        if (state.canWater) {
+            if(sendInfoPushMessage) pushHandler()
+            resetTrys()
         }
     }
     if(state.valveTryOff == 0) { if(logEnable) log.warn "*************** End Valve Off - Simple Irrigation Child - (${state.version}) ***************" }
