@@ -2,13 +2,32 @@
  * Genmon Generator Monitor — Hubitat Driver
  *
  *   - Converted by Brian Wilson based on https://github.com/jgyates/genmon-ha using Claude Code
- *   - v2.01 - 021MAY26 - Initial Release
- *   - v2.1.0 - 30JUN26 - Native Genmon addon; Home Assistant no longer required.
- *                        Default port updated to 9084.
- *   - v2.2.0 - 08AUG26 - Temperature and CPU temperature now reported in the
- *                        Hubitat hub's configured temperature scale (°F or °C),
- *                        converting automatically from whatever unit Genmon
- *                        reports the raw value in.
+ *   - v2.01  - 021MAY26 - Initial Release
+ *   - v2.1.0 - 30JUN26  - Native Genmon addon; Home Assistant no longer required.
+ *                         Default port updated to 9084.
+ *   - v2.2.0 - 08AUG26  - Temperature and CPU temperature now reported in the
+ *                         Hubitat hub's configured temperature scale (°F or °C),
+ *                         converting automatically from whatever unit Genmon
+ *                         reports the raw value in.
+ *   - v2.2.1 - 15AUG26  - Fix spurious events: numeric attributes were firing on
+ *                         every parse cycle due to Double.toString() vs Hubitat's
+ *                         stored value string format mismatch. Comparison is now
+ *                         numeric (BigDecimal). Also fixed refresh() firing
+ *                         connectionStatus and lastUpdate unconditionally on
+ *                         every poll regardless of whether the value changed.
+ *   - v2.3.0 - 16AUG26  - Suppress always-changing diagnostic fields (monitorTime,
+ *                         generatorTime, systemTime, systemUptime, monitorRunTime,
+ *                         packetCount) from event history; stored in State Variables
+ *                         instead. Fix missing transferToGenerator attribute
+ *                         declaration that caused it to fire every poll.
+ *   - v2.4.0 - 20SEP26  - Removed the lastUpdate attribute: it was a formatted
+ *                         timestamp, so it differed on every message and
+ *                         updateStringIfChanged() could never suppress it — one
+ *                         event per accepted update (~2,880/day at the default 30s
+ *                         throttle). Replaced with a healthStatus attribute
+ *                         ["offline","online"] driven by a scheduled staleness
+ *                         check, which fires only on an actual health transition.
+ *                         Threshold configurable (default 1 hour).
  *
  * Communicates directly with the Genmon REST/WebSocket API using the native
  * Genmon addon for Hubitat.  Home Assistant is NOT required.
@@ -54,6 +73,7 @@ metadata {
         attribute "switchState",            "string"   // e.g. "Auto", "Manual"
         attribute "activeAlarms",           "string"   // "No Active Alarms" or description
         attribute "alarmActive",            "string"   // "true" / "false" derived from above
+        attribute "transferToGenerator",    "string"   // "on" when generator supplying load, else "off"
         attribute "batteryVoltage",         "number"   // V   Status/Engine/Battery Voltage
         attribute "engineRPM",             "number"   //     Status/Engine/RPM
         attribute "outputFrequency",        "number"   // Hz  Status/Engine/Frequency
@@ -123,14 +143,9 @@ metadata {
         attribute "lastRunLog",            "string"   //     Status/Last Log Entries/Logs/Run Log
         attribute "lastServiceLog",         "string"   //     Status/Last Log Entries/Logs/Service Log
 
-        // ── Status time  (path: Status/Time/...) ─────────────────────────
-        attribute "monitorTime",            "string"   //     Status/Time/Monitor Time
-        attribute "generatorTime",          "string"   //     Status/Time/Generator Time
-
         // ── Monitor — generator stats  (Monitor/Generator Monitor Stats/...) ──
         attribute "monitorHealth",          "string"   //     Monitor/Generator Monitor Stats/Monitor Health
         attribute "genmonVersion",          "string"   //     Monitor/Generator Monitor Stats/Generator Monitor Version
-        attribute "monitorRunTime",         "string"   //     Monitor/Generator Monitor Stats/Run time
         attribute "powerLogSize",           "string"   //     Monitor/Generator Monitor Stats/Power log file size
         attribute "updateAvailable",        "string"   //     Monitor/Generator Monitor Stats/Update Available
         attribute "updateVersion",          "string"   //     Monitor/Generator Monitor Stats/Update Version
@@ -150,7 +165,6 @@ metadata {
         attribute "averageTransactionTime", "string"   //     Monitor/Communication Stats/Average Transaction Time
         attribute "modbusTransport",        "string"   //     Monitor/Communication Stats/Modbus Transport
         attribute "serialDataRate",         "string"   //     Monitor/Communication Stats/Serial Data Rate
-        attribute "packetCount",           "string"   //     Monitor/Communication Stats/Packet Count
 
         // ── Monitor — platform stats  (Monitor/Platform Stats/...) ───────
         attribute "cpuUsage",              "number"   // %   Monitor/Platform Stats/CPU Utilization
@@ -167,9 +181,7 @@ metadata {
         attribute "piUndervoltage",         "string"   //     Monitor/Platform Stats/Pi Undervoltage
         attribute "osName",                "string"   //     Monitor/Platform Stats/OS Name
         attribute "osVersion",             "string"   //     Monitor/Platform Stats/OS Version
-        attribute "systemUptime",           "string"   //     Monitor/Platform Stats/System Uptime
         attribute "networkInterfaceUsed",   "string"   //     Monitor/Platform Stats/Network Interface Used
-        attribute "systemTime",            "string"   //     Monitor/Platform Stats/System Time
         attribute "cpuTemperature",         "number"   // hub scale (°F or °C) — Tiles/CPU Temp/value, auto-converted
 
         // ── Monitor — weather  (Monitor/Weather/...) ─────────────────────
@@ -177,8 +189,9 @@ metadata {
         attribute "currentTemperature",     "number"   // hub scale (°F or °C) — Monitor/Weather/Current Temperature, auto-converted
 
         // ── Connectivity ──────────────────────────────────────────────────
-        attribute "connectionStatus",       "string"
-        attribute "lastUpdate",             "string"
+        attribute "connectionStatus",       "string"   // transport state (ws / poll / error)
+        attribute "healthStatus",           "enum", ["offline", "online"]   // data freshness
+        // lastUpdate was removed in v2.4.0 — see markDataFresh()
 
         // ── Custom commands ───────────────────────────────────────────────
         command "startGenerator"
@@ -203,6 +216,10 @@ metadata {
         input name: "wsMinInterval", type: "enum",    title: "Minimum interval between WebSocket state updates (genmon pushes very frequently — throttle here to avoid Hubitat event queue overload)",
                                     options: ["10": "10 sec", "15": "15 sec", "30": "30 sec", "60": "1 min", "120": "2 min"],
                                     defaultValue: "30"
+        input name: "staleThreshold", type: "enum",   title: "Mark healthStatus offline after receiving no data from genmon for",
+                                    options: ["15": "15 min", "30": "30 min", "60": "1 hour",
+                                              "120": "2 hours", "360": "6 hours"],
+                                    defaultValue: "60"
         input name: "logEnable",    type: "bool",     title: "Enable debug logging", defaultValue: false
     }
 }
@@ -224,6 +241,12 @@ def initialize() {
     state.wsConnected        = false
     state.wsAuthPending      = false
     atomicState.lastWsParsed = 0L
+
+    // Start the staleness clock now: healthStatus should only report offline
+    // after genmon has actually been silent for the configured window, not
+    // immediately on restart before the first message has had time to arrive.
+    state.lastDataMs = now()
+    runEvery15Minutes("healthCheck")
 
     updateDNI()
 
@@ -288,10 +311,11 @@ private String ipPortToHex(String ip, int port) {
 }
 
 def disconnect() {
-    unschedule()
+    unschedule()   // also stops healthCheck, so report offline explicitly here
     interfaces.webSocket.close()
     state.wsConnected = false
     sendEvent(name: "connectionStatus", value: "disconnected")
+    updateStringIfChanged("healthStatus", "offline")
     log.info "Genmon driver: disconnected"
 }
 
@@ -400,7 +424,7 @@ private void _parse(String rawMsg) {
         atomicState.lastWsParsed = nowMs
 
         parseStatus(stateData)
-        updateStringIfChanged("lastUpdate",       new Date().toString())
+        markDataFresh()
         updateStringIfChanged("connectionStatus", "connected (ws)")
 
     } else if (msgType == "ping") {
@@ -447,18 +471,20 @@ def refresh() {
                 def body      = resp.data
                 def stateData = body?.state ?: body
                 parseStatus(stateData)
-                sendEvent(name: "lastUpdate", value: new Date().toString())
+                // Use change-guarded helpers so polling at short intervals
+                // doesn't generate spurious events when values are stable.
+                markDataFresh()
                 if (!state.wsConnected) {
-                    sendEvent(name: "connectionStatus", value: "connected (poll)")
+                    updateStringIfChanged("connectionStatus", "connected (poll)")
                 }
             } else {
                 log.warn "Genmon: /api/status returned HTTP ${resp.status}"
-                sendEvent(name: "connectionStatus", value: "error: HTTP ${resp.status}")
+                updateStringIfChanged("connectionStatus", "error: HTTP ${resp.status}")
             }
         }
     } catch (Exception e) {
         log.error "Genmon: refresh failed — ${e.message}"
-        sendEvent(name: "connectionStatus", value: "error: ${e.message}")
+        updateStringIfChanged("connectionStatus", "error: ${e.message}")
     }
 }
 
@@ -513,9 +539,9 @@ private void parseStatus(Map data) {
             def kw    = (unit == "W") ? num / 1000.0 : num
             def kwVal = kw.round(3)
             def wVal  = (kw * 1000).round(0)
-            if (kwVal.toString() != device.currentValue("outputPower")?.toString())
+            if (!numericEquals(kwVal, device.currentValue("outputPower")))
                 sendEvent(name: "outputPower", value: kwVal, unit: "kW")
-            if (wVal.toString() != device.currentValue("power")?.toString())
+            if (!numericEquals(wVal, device.currentValue("power")))
                 sendEvent(name: "power", value: wVal, unit: "W")
         }
     }
@@ -545,9 +571,11 @@ private void parseStatus(Map data) {
     safeStringEvent("lastRunLog",     pathGet(data, "Status/Last Log Entries/Logs/Run Log"))
     safeStringEvent("lastServiceLog", pathGet(data, "Status/Last Log Entries/Logs/Service Log"))
 
-    // ── Status/Time ───────────────────────────────────────────────────
-    safeStringEvent("monitorTime",   pathGet(data, "Status/Time/Monitor Time"))
-    safeStringEvent("generatorTime", pathGet(data, "Status/Time/Generator Time"))
+    // ── Status/Time (stored in state — changes every second, generates no events) ──
+    def monitorTimeVal = extractString(pathGet(data, "Status/Time/Monitor Time"))
+    if (monitorTimeVal) state.monitorTime = monitorTimeVal
+    def generatorTimeVal = extractString(pathGet(data, "Status/Time/Generator Time"))
+    if (generatorTimeVal) state.generatorTime = generatorTimeVal
 
     // ── Outage ────────────────────────────────────────────────────────
     def outageRaw = pathGet(data, "Outage/System In Outage")
@@ -601,7 +629,9 @@ private void parseStatus(Map data) {
     // ── Monitor/Generator Monitor Stats ──────────────────────────────
     safeStringEvent("monitorHealth",  pathGet(data, "Monitor/Generator Monitor Stats/Monitor Health"))
     safeStringEvent("genmonVersion",  pathGet(data, "Monitor/Generator Monitor Stats/Generator Monitor Version"))
-    safeStringEvent("monitorRunTime", pathGet(data, "Monitor/Generator Monitor Stats/Run time"))
+    // monitorRunTime changes every second — store in state, not events
+    def monitorRunTimeVal = extractString(pathGet(data, "Monitor/Generator Monitor Stats/Run time"))
+    if (monitorRunTimeVal) state.monitorRunTime = monitorRunTimeVal
     safeStringEvent("powerLogSize",   pathGet(data, "Monitor/Generator Monitor Stats/Power log file size"))
     safeStringEvent("updateAvailable", pathGet(data, "Monitor/Generator Monitor Stats/Update Available"))
     safeStringEvent("updateVersion",   pathGet(data, "Monitor/Generator Monitor Stats/Update Version"))
@@ -621,7 +651,9 @@ private void parseStatus(Map data) {
     safeStringEvent("averageTransactionTime", pathGet(data, "Monitor/Communication Stats/Average Transaction Time"))
     safeStringEvent("modbusTransport",       pathGet(data, "Monitor/Communication Stats/Modbus Transport"))
     safeStringEvent("serialDataRate",        pathGet(data, "Monitor/Communication Stats/Serial Data Rate"))
-    safeStringEvent("packetCount",           pathGet(data, "Monitor/Communication Stats/Packet Count"))
+    // packetCount always increments — store in state, not events
+    def packetCountVal = extractString(pathGet(data, "Monitor/Communication Stats/Packet Count"))
+    if (packetCountVal) state.packetCount = packetCountVal
 
     // ── Monitor/Platform Stats ────────────────────────────────────────
     safeNumericEvent("cpuUsage",          pathGet(data, "Monitor/Platform Stats/CPU Utilization"),    "%")
@@ -638,9 +670,12 @@ private void parseStatus(Map data) {
     safeStringEvent("piUndervoltage",     pathGet(data, "Monitor/Platform Stats/Pi Undervoltage"))
     safeStringEvent("osName",             pathGet(data, "Monitor/Platform Stats/OS Name"))
     safeStringEvent("osVersion",          pathGet(data, "Monitor/Platform Stats/OS Version"))
-    safeStringEvent("systemUptime",       pathGet(data, "Monitor/Platform Stats/System Uptime"))
+    // systemUptime and systemTime change every second — store in state, not events
+    def systemUptimeVal = extractString(pathGet(data, "Monitor/Platform Stats/System Uptime"))
+    if (systemUptimeVal) state.systemUptime = systemUptimeVal
     safeStringEvent("networkInterfaceUsed", pathGet(data, "Monitor/Platform Stats/Network Interface Used"))
-    safeStringEvent("systemTime",         pathGet(data, "Monitor/Platform Stats/System Time"))
+    def systemTimeVal = extractString(pathGet(data, "Monitor/Platform Stats/System Time"))
+    if (systemTimeVal) state.systemTime = systemTimeVal
 
     // ── Monitor/Weather ───────────────────────────────────────────────
     safeStringEvent("weatherConditions", pathGet(data, "Monitor/Weather/Conditions"))
@@ -772,14 +807,24 @@ private List extractNumeric(Object raw) {
     return [null, null]
 }
 
+// Numeric equality check that avoids Double.toString() vs Hubitat stored-value
+// format mismatches (e.g. "120.0" vs "120"). Compares via BigDecimal so that
+// 120.0 == 120 == 120.00, preventing spurious events when the value is stable.
+private boolean numericEquals(Number newNum, Object curRaw) {
+    if (curRaw == null) return false
+    try {
+        return new BigDecimal(newNum.toString()).compareTo(new BigDecimal(curRaw.toString())) == 0
+    } catch (Exception e) {
+        return false
+    }
+}
+
 private void safeNumericEvent(String attr, Object raw, String defaultUnit = null) {
     if (raw == null) return
     def (num, unit) = extractNumeric(raw)
     if (num == null) return
-    def u        = unit ?: defaultUnit
-    def newVal   = num.toString()
-    def curVal   = device.currentValue(attr)?.toString()
-    if (newVal == curVal) return   // no change — skip sendEvent
+    def u = unit ?: defaultUnit
+    if (numericEquals(num, device.currentValue(attr))) return   // no change — skip sendEvent
     if (u) sendEvent(name: attr, value: num, unit: u)
     else   sendEvent(name: attr, value: num)
 }
@@ -794,13 +839,11 @@ private void safeTemperatureEvent(String attr, Object raw, String defaultSourceU
     def (num, unit) = extractNumeric(raw)
     if (num == null) return
 
-    def srcUnit  = unit ?: defaultSourceUnit
-    def hubScale = ((location?.temperatureScale ?: "F") as String).toUpperCase().startsWith("C") ? "C" : "F"
+    def srcUnit   = unit ?: defaultSourceUnit
+    def hubScale  = ((location?.temperatureScale ?: "F") as String).toUpperCase().startsWith("C") ? "C" : "F"
     def converted = convertTemperature(num, srcUnit, hubScale)
 
-    def newVal = converted.toString()
-    def curVal = device.currentValue(attr)?.toString()
-    if (newVal == curVal) return   // no change — skip sendEvent
+    if (numericEquals(converted, device.currentValue(attr))) return   // no change — skip sendEvent
     sendEvent(name: attr, value: converted, unit: "°${hubScale}")
 }
 
@@ -842,4 +885,35 @@ private void updateStringIfChanged(String attr, String newVal) {
 private void safeEvent(String attr, Object value) {
     if (value == null) return
     updateStringIfChanged(attr, value.toString())
+}
+
+// ── Health tracking ───────────────────────────────────────────────────────────
+
+// Record that fresh data arrived from genmon.
+//
+// Only an epoch stamp is kept, and only in state — the old lastUpdate
+// attribute was a formatted timestamp, so it differed on every message and
+// updateStringIfChanged() could never suppress it. It alone produced one
+// event per accepted update, roughly 2,880 a day at the default 30s
+// throttle. healthStatus carries the signal an automation actually wants and
+// only fires on a real online/offline change.
+private void markDataFresh() {
+    state.lastDataMs = now()
+    updateStringIfChanged("healthStatus", "online")
+}
+
+// Scheduled staleness check. Runs on a timer rather than on receipt, so a
+// genmon that goes completely silent is still noticed.
+def healthCheck() {
+    def maxAgeMs = (staleThreshold ?: "60").toLong() * 60000L
+    def lastMs   = (state.lastDataMs ?: 0L).toLong()
+    def ageMs    = now() - lastMs
+    def stale    = (ageMs > maxAgeMs)
+    if (logEnable) {
+        // intdiv() keeps this Long arithmetic — Groovy's / on two Longs yields
+        // a BigDecimal, which Math.round() does not accept unambiguously.
+        log.debug "Genmon: healthCheck — last data ${ageMs.intdiv(60000L)} min ago, " +
+                  "threshold ${staleThreshold ?: '60'} min → ${stale ? 'offline' : 'online'}"
+    }
+    updateStringIfChanged("healthStatus", stale ? "offline" : "online")
 }

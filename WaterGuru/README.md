@@ -25,7 +25,7 @@ click **Discover**, select your device(s), and configure your poll interval.
 * Device discovery UI — select which WaterGuru device(s) to create child devices for
 * Configurable poll interval (1, 2, 3, 4, 6, 8, or 12 hours)
 * Optional day-of-week poll filter
-* Tracks: free chlorine, pH, temperature, flow rate, cassette status/life, battery, RSSI, alerts
+* Tracks: free chlorine, pH, temperature, flow rate, cassette status/life, cassette type (C2/C5), battery, RSSI, alerts
 * Smart notifications (v2.2) — see below
 
 ## Notifications

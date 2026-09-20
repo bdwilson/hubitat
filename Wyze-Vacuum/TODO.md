@@ -1,0 +1,916 @@
+# Wyze Vacuum Connect — TODO / Planned Enhancements
+
+Not yet implemented. Tracked here so they survive across sessions.
+
+## ~~34. A room too big for one charge was skipped forever~~ — DONE (1.31.0)
+
+Flaw in 1.30.0's own battery gate, spotted while answering a question about
+what the vacuum would do after recharging. `batteryNeededFor()` is
+`roomMinutes * drainPerMin + 10`, and nothing capped it at 100 -- so a room
+whose estimate exceeded a full charge could never satisfy the check and would
+be refused on every single trigger, forever, with only an info log line. The
+room would just sit on "already due" indefinitely.
+
+Not hypothetical. Live log: "battery 48% won't cover 'Living Room' (needs
+about 90% for its 37 min)". Working back through the formula, the learned
+drain rate was ~2.16%/min at that point; the requirement crosses 100% at
+2.43%/min. That's a 13% move, well within what one carpeted run at higher
+suction would produce -- and the drain rate is learned with an EMA from real
+runs, so it moves on its own.
+
+Fixed in `roomsBatteryCanCover()`: a *single* room needing more than a full
+charge is dispatched once the battery reaches `NEARLY_FULL_BATTERY_PCT` (95)
+rather than being refused, letting Wyze's own charge-and-resume finish the
+job -- which is precisely what that firmware behavior is for. Below 95% it
+still waits, so it waits for charge, not forever. The app page now names any
+room in that state, since it's the clearest signal the room wants splitting
+into smaller zones in the Wyze app.
+
+**Confirmed while testing, worth writing down:** trimming a batch only ever
+drops from the *end*, never the front, so an oversized most-overdue room is
+never bypassed in favour of a smaller one behind it. That looked like a bug
+at first (a first draft of the simulation asserted it *should* fall back to
+the smaller room) but it's the correct behavior -- falling back would spend
+the charge on a lesser room and push the big one out by another full
+recharge, which is the starvation loop this whole area exists to avoid. Now
+asserted explicitly in both directions. Also removed a `break` from the first
+cut that turned out to be dead code -- it produced the same result as letting
+the loop fall through, so the comment on it was misleading.
+
+Documented alongside it in the README: the Rule Machine rule for re-cleaning
+after a recharge while nobody is home (trigger on `battery` crossing 95, gated
+on away + `switch` off + `roomsPendingThisCycle` > 0 + a time window +
+`hoursSinceEmptied`), and why a long absence doesn't mean a week of cleaning:
+`roomsPendingThisCycle` self-limits it to the configured cycle, leaving time
+of day and bin capacity as the two things that genuinely need gating.
+
+
+## ~~33. Multi-vacuum audit: runIn() collision between vacuums~~ — DONE (1.30.1)
+
+User has a second vacuum they haven't enabled yet, and asked -- before any
+parent/child refactor -- whether the current single-app-with-N-sections
+design actually keeps two vacuums' state separate, or whether they'd squash
+each other.
+
+Audited every piece of state and every setting:
+
+- All 22 per-vacuum `state` fields (`activeCleanRun`, `roomHistory`,
+  `roomAvgMinutes`, `rotationSweep*`, `batteryDrainPerMin`, `learningMode`,
+  `lastKnownStatus`, notification/stuck/resume markers, etc.) are mac-keyed
+  at *every* read and write -- verified mechanically, the only unkeyed hits
+  were comments.
+- Every per-vacuum setting carries `_${mac}`; the genuinely app-level ones
+  (credentials, session, poll intervals, notification devices/toggles,
+  ignored fault codes) are correctly shared.
+- Async callbacks and the token-refresh retry all carry `mac` through their
+  data payload.
+
+**One real bug found.** Hubitat keys pending `runIn()` jobs by handler
+*method name* and overwrites by default. `continueSweepDispatch` and
+`cancelAutoResumeDock` are both scheduled per-vacuum, so with two vacuums the
+second to schedule silently cancelled the first's job -- stalling that
+vacuum's sweep a room early. Not a rare race either: `pollAllVacuums()` polls
+every vacuum in one execution, so their callbacks land milliseconds apart and
+two sweeps advancing in the same poll cycle would collide every time. Fixed
+with `overwrite: false` on all three call sites, plus a comment on
+`continueSweepDispatch` explaining why it must stay. Single-vacuum setups
+were never affected.
+
+**On the parent/child question:** the audit says data isolation is not the
+reason to refactor -- per-vacuum state is genuinely separate. The real
+arguments are ergonomic and per-vacuum settings: one page grows a section per
+vacuum, and notification devices/toggles plus the ignored-fault-code list are
+app-wide, so you can't route one vacuum's alerts differently or tune fault
+codes per model. Documented in README's new "Multiple vacuums" section rather
+than changed.
+
+
+## ~~32. Don't dispatch a rotation room the battery can't cover~~ — DONE (1.30.0)
+
+The root cause behind #29 and #31, offered twice and declined, then asked
+about directly: "what is your proposed fix on the minimum battery piece?
+Wyze has built in recharging at 8% so it has time to get back to charge. are
+you suggesting we usurp that setting?"
+
+No -- and the distinction is the whole point. Wyze's ~8% answers "when do I
+need to head home," mid-run, and is untouched (there's no way to change it
+from here and no reason to). This answers "is it worth setting out at all,"
+which the firmware never asks because by then it's already committed. The
+9/14 log is the argument: the sweep dispatched a room at 8% and the vacuum
+never acted on the command, not on the first try nor the automatic retry.
+The firmware had already decided the job was pointless; the app was just the
+last to know.
+
+User picked the learned-time variant over a flat threshold, and log-only
+over a push. `roomsBatteryCanCover()` gates `cleanNextRooms()` only:
+`needed = roomMinutes * drainPerMin + 10` reserve, the reserve deliberately
+above Wyze's threshold so the vacuum isn't finishing at the edge of it.
+`learnBatteryDrain()` measures the rate from real runs with the same EMA the
+room times use, defaulting to 2.3%/min (this vacuum's own observed figure:
+100->10 in 37 min, 100->19 in 36 min). Bad samples are dropped rather than
+averaged in -- under 5 minutes, battery went up (a mode-11 charge pause), or
+outside 0.5-10%/min. A skipped room stays due; a multi-room batch is trimmed
+from the end until it fits rather than skipped whole. Explicit commands
+(`cleanRooms()`, room buttons, Learning Mode) are deliberately never gated.
+
+Skipping also calls `endRotationSweep()` -- without it the sweep flag would
+stay set with nothing running, which is exactly the #31 latched-switch bug.
+
+**Caught by the simulation, worth remembering:** the first cut wrote the
+opt-out as `settings[...] ?: true`, which is broken for a bool -- Groovy
+Truth treats `false` as falsy, so the elvis hands back the `true` default and
+the toggle does nothing. Same trap as the `mode: 0` bug fixed in 1.18.1. Now
+an explicit `== false` check, with all three setting states (unset, true,
+false) covered by the simulation.
+
+## ~~31. Switch latched ON after a given-up dispatch~~ — DONE (1.29.1)
+
+Regression from #30, reported the next day: "someone left at 9am and came
+back at 11. It looks like the switch is still on."
+
+9/14 log: the 9am trigger cleaned Living Room (9:01-9:40, 37 min, credited
+fine, battery 100% -> 8%). The sweep then advanced and dispatched the next
+room at 9:46:05 **at 8% battery**; the vacuum never acted on it, the retry at
+9:49 did nothing either, and `checkStaleActiveCleanRun` gave up at 9:57 and
+cleared `activeCleanRun`. But it did *not* clear `rotationSweepActive` --
+and a sweep only ever advances off the back of a run finishing, so with the
+run gone nothing would ever clear that flag again. #30's `hasWorkPending()`
+reads it as outstanding work, so the switch stayed on: still on at 12:00,
+two hours later, with the vacuum idle on its dock at 81%. (Confirmed no
+`off()` reached the app either -- every poll from 10:00 to 12:00 is exactly
+on the 15-minute idle cadence, no command-triggered off-schedule poll.)
+
+So #30's claim that "every condition is self-limiting" was wrong for this
+one. Fixed by funnelling every sweep exit through a single
+`endRotationSweep()` (the command handlers, all of `continueSweepIfNeeded`'s
+exits, the continuous-mode time limit, and both `checkStaleActiveCleanRun`
+give-up branches, which previously cleared nothing), plus
+`checkOrphanedSweep()` as a safety net: a sweep flag set while nothing is
+cleaning, dispatched, or queued to dispatch gets cleared after a 2-minute
+grace period. The grace covers the few seconds between a room finishing and
+`continueSweepDispatch` firing, so a healthy sweep is never cut short.
+Verified via simulation of the exact 9/14 timeline (on through the retry
+window, off from the give-up onward) plus an orphaned-flag case and a
+control where a sweep queued to dispatch correctly stays on.
+
+**Third sighting of the same root cause:** dispatching a room at 8% battery.
+See #29 -- a minimum-battery-to-dispatch check has been offered twice and
+declined; this episode cost a dispatch, a retry, a give-up notification and
+a stuck switch.
+
+## ~~30. Switch went off mid-job, breaking the on/off presence wiring~~ — DONE (1.29.0)
+
+Follow-on from #29, reported from the same episode. User's wiring is the
+common one: switch on (= `cleanNextRooms`) when everyone leaves, switch off
+(= `dock`) when someone gets home. When the battery died mid-job the vacuum
+parked to charge, and `switch` -- computed as exactly
+`newStatus == "Cleaning"` -- flipped to off while the job was still very much
+outstanding. So by the time anyone got home the switch was *already* off,
+their "turn it off" automation had nothing to turn off, and the firmware
+resumed the job later anyway.
+
+Two halves:
+
+1. `switch` now reports on whenever work is outstanding, via
+   `hasWorkPending()`: actively cleaning, a job paused for charging
+   (`pausedForResumeAt` inside its 3-hour horizon), an `activeCleanRun` that
+   hasn't finished, or a sweep active/pending. Every one of those is
+   self-limiting, so the switch can't latch on forever.
+2. `dockVacuum`/`pauseVacuum` now call `cancelPendingWork()`, which actually
+   ends a job that's only paused for charging. Previously there was no
+   Cleaning -> non-Cleaning transition left to close the run out (the vacuum
+   was already docked), so the run hung around until its 3-hour timeout and
+   the switch stayed on. Rooms are deliberately left uncredited -- cancelled,
+   not finished, so they stay due.
+
+Since there's no API to clear the vacuum's pending-resume intent, the
+cancellation is remembered as `state.resumeCancelled[mac]` and consumed on
+the next Cleaning transition, which sends it straight back to the dock. That
+path is deliberately *not* gated on the #29 `cancelAutoResume` setting: an
+explicit stop already expresses the intent, and this is the only place it can
+be enforced. Cleared by a deliberate `start()` or a new dispatch.
+
+Verified via simulation of the 9/11 timeline with the option off: switch
+reads on through the pause and while docked/charging, goes off the moment
+`off()` lands, the run is closed out with the room still due, and the
+firmware's later restart is squashed with exactly one dock. Control case
+(nobody intervenes) still resumes normally with no dock.
+
+## ~~29. Option to stop the vacuum auto-resuming at an unwanted time~~ — DONE (1.28.0)
+
+User: "the vacuum just started up again... we have been home for over an
+hour. Why did this kick off if the automation should have docked this."
+
+Diagnosis from the 9/11 log. The session *was* Hubitat's: leaving the house
+triggered `cleanNextRooms()`, which dispatched Living Room at 5:57pm; it
+finished at 6:34pm with the battery at 19%, and the sweep auto-advanced to
+Kitchen at 6:44pm on a **15%** battery. Kitchen ran itself flat by 6:51pm at
+6% -> `mode=11`, docked, charging. It then charged 6% -> 60% and the
+*firmware* restarted that job on its own at ~8:35pm, by which point everyone
+was home.
+
+The distinction that matters: the job was app-dispatched, but the 8:35pm
+restart was the vacuum's own decision, not a new dispatch. That's why their
+"dock when someone gets home" automation caught nothing -- it triggers on
+arrival, fired hours earlier with the vacuum already parked and charging,
+and nothing re-triggers it when the firmware picks the job back up.
+Confirmed no dock/pause was issued in that window: every poll from 6:51 to
+8:35 sits exactly on the 1-minute cadence with no off-schedule command poll
+(compare 6:44:05 and 5:57:45, which are dispatch-triggered).
+
+Added `cancelAutoResume_${mac}` (bool, default off, under Low Battery
+Protection). The resume is already detected as of 1.26.0
+(`consumePausedForResume`); when the option is on, the poll that spots it
+schedules `cancelAutoResumeDock` via `runIn(2, ...)` -- deferred rather than
+docking inline because this is an async poll callback and `venusControl`
+posts synchronously, the same shape that tripped Hubitat's hub-load
+guardrail in 1.5.1. That handler re-checks the vacuum is still cleaning,
+docks it, and marks the interrupt `silent` so the run's end doesn't fire a
+second "was docked N min into cleaning" message on top of the start-side
+explanation. Still counts as an interruption for crediting (1.27.0), so the
+room stays pending and keeps its learned time. Verified via simulation of
+the exact 9/11 timeline: exactly one dock, exactly two notifications, room
+not credited, learned time untouched -- and with the option off, the resume
+proceeds unchanged.
+
+**Offered but not taken (user declined for now):** refusing to dispatch a
+sweep room below a battery threshold, which is the actual root cause here --
+dispatching Kitchen at 15% was never going to finish. Worth revisiting; the
+whole cascade starts there. Also offered: backing polling off to the idle
+interval during a charge pause (this episode polled every minute for 1h45m,
+~105 polls, because `state.activeCleanRun` stays populated through a
+mode-11 pause and `rescheduleDynamicPoll` keys off that).
+
+## ~~28. Interrupted room clean reported (and credited) as a finish~~ — DONE (1.27.0)
+
+User asked for a notification when a room clean gets interrupted by
+`dock()` being called -- their real case being an automation that docks the
+vacuum when someone comes home. Digging into the existing behavior turned
+up a bigger problem than the missing message.
+
+A commanded stop is indistinguishable from a natural finish in the vacuum's
+own status -- both just show it returning to the dock -- and
+`finishActiveCleanRun()` treated any non-Paused/Error exit of a single-room
+run as genuine (`genuinelyFinished = !(newStatus == "Paused" || newStatus
+== "Error") && totalElapsed > 0`). So docking 3 minutes into a 35-minute
+room did two wrong things at once: `markRoomsCleaned()` credited it, taking
+that room out of rotation for a whole cycle after barely being touched, and
+-- because a single-room dispatch is treated as ground truth and overwrites
+outright rather than blending -- its learned clean time was replaced with
+the truncated 3 minutes, skewing every later time-budget run. The user also
+got "finished cleaning after 3 min -- cleaned: <room>", which was simply
+untrue.
+
+The app does know when *it* sent the stop, which is the unambiguous signal
+the vacuum's status can't provide. `markCommandInterrupt()` records it in
+`dockVacuum`/`pauseVacuum`/`startVacuum`; `handleCleaningSessionEnd()`
+consumes it (10-minute window covering command -> next poll, cleared
+outright by a new dispatch or a new Cleaning transition, and deliberately
+left alone on a mode-11 exit so it survives a battery pause to the run's
+real end) and passes it into `finishActiveCleanRun()`, where an interrupted
+single-room run is no longer counted as finished. Multi-room batches keep
+the existing estimate-based split, since rooms that got their full time
+before the interruption really did finish. New `cleaningEndedMessage()`
+covers every way a session can end, so the notification matches reality.
+Verified via simulation: interrupted run not credited and learned time
+preserved, genuine finish still credited and still updates timing, paused
+run unchanged, externally-started run docked from Hubitat worded correctly,
+stale marker past its window ignored, and a new dispatch clearing a pending
+marker.
+
+**Known limit, unchanged:** docking from the Wyze app mid-run leaves no
+app-side marker and still looks exactly like a finish. Same root cause as
+the unknowable room list for externally-started runs (#27) -- Wyze's API
+doesn't report it.
+
+## ~~27. Runs started outside Hubitat reported as "whole house"; mode-11 resume announced as a new run~~ — DONE (1.26.0)
+
+User started a 2-zone clean from the Wyze app and got a push saying
+"started cleaning: whole house" -- pleasantly surprised the integration
+noticed at all (start/finish detection is purely status-transition driven,
+so it picks up *any* run regardless of who started it), but the message
+itself was wrong.
+
+**Wrong label:** the start notification used
+`activeRoomIds ? roomNames : "whole house"` -- so "whole house" really meant
+"this app didn't dispatch this, so I don't know," conflating an app-issued
+whole-house `start()` with a run started from the Wyze app / the vacuum's
+schedule / its button. Wyze's API doesn't report which rooms or zones an
+externally-started run picked, so the honest answer is that it's unknown.
+`startVacuum()` now stamps `state.appWholeHouseStartAt[mac]`, consumed by
+the next poll that observes Cleaning (10-minute validity, matching the
+existing stale-dispatch window), so "whole house" is claimed only when this
+app's own start() command actually caused the run; anything else says it
+started outside Hubitat with rooms unreported.
+
+**Duplicate start notification on auto-resume:** same log showed the job
+pausing at 8:05pm (mode 11, battery 6%), charging for ~2 hours, then
+resuming at 10:00pm -- and since that's a non-Cleaning -> Cleaning
+transition, it fired a *second* "started cleaning" notification as if a new
+run had begun. 1.24.0 suppressed the symmetric case (the premature "finished
+cleaning" on a mode-11 exit) but not this side. `handleCleaningSessionEnd()`
+now records `state.pausedForResumeAt[mac]` on any mode-11 exit -- tracked
+separately from `state.activeCleanRun`, since an externally started run has
+no active-run record but resumes identically -- and the next Cleaning
+transition consumes it and reports a resume instead of a start. Expires
+after 3 hours (matching `checkStaleActiveCleanRun`'s give-up window) and is
+cleared by an explicit `start()`/`dock()`, so a genuinely new run later
+isn't mislabeled. Verified via simulation against the exact 9/10 timeline
+plus app-start, room-dispatch, stale-marker, and dock-cancels-resume cases.
+
+**Not changed, deliberately:** polling stays on the idle interval during a
+mode-11 charge pause for an externally started run (no `activeCleanRun` to
+hold it fast), so a resume can go unnoticed for up to one idle interval --
+15 minutes in the 9/10 log. Keeping fast polling engaged across a ~2-hour
+charge cycle would mean ~120 needless polls to save a few minutes of
+latency, which isn't worth the hub load.
+
+## ~~26. nextRoomDueAt/lastRefresh firing twice per poll~~ — DONE (1.25.1)
+
+User noticed `nextRoomDueAt` (and its siblings `roomsPendingThisCycle`,
+`nextRoomsToClean`, `lastRefresh`) still showing a fresh event on every
+update despite the 1.22.0 dedup fix (`sendEventIfChanged`), even though the
+value never actually changed. Root cause, confirmed by reading the raw
+event timestamps: `pollVacuum()` runs the props poll and the status poll as
+two independent async HTTP calls every cycle, and both response handlers
+(`handleVacuumPropsResponse`/`handleVacuumStatusResponse`) called
+`updateRotationPreviewAttributes()` and sent `lastRefresh` themselves --
+producing two near-identical events milliseconds apart every poll, not one.
+`sendEventIfChanged`'s dedup itself wasn't broken (values genuinely didn't
+change poll-to-poll) -- the second callback's `d.currentValue()` read just
+doesn't reliably see the first callback's `sendEvent()` yet, since they're
+two separate concurrent async contexts, so the comparison silently missed
+it. Moved both updates into `handleVacuumStatusResponse` only, removed from
+`handleVacuumPropsResponse` -- each poll cycle now produces at most one
+event per attribute, matching what 1.22.0 actually intended.
+
+## ~~25. Optional time limit on continuous sweep mode~~ — DONE (1.25.0)
+
+Continuous sweep mode (#20) has no natural stopping point -- it loops the
+whole rotation list forever until an explicit `dock()`/`pause()`/`off()`,
+which meant "just run forever even if things don't need cleaning" if you
+forgot to stop it. Requested directly: an option that, when checked,
+requires a number of minutes and docks the vacuum after that long instead
+of running indefinitely.
+
+Added a second toggle, **"Limit how long continuous sweeping runs before
+docking"**, shown only when continuous mode itself is on, plus a required
+minutes field once that's checked. `cleanNextRooms()` now stamps
+`state.rotationSweepStartedAt[mac]` on a genuine fresh sweep start (not on
+`continueSweepDispatch`'s re-call for the next batch, so the clock is
+measured from when the whole sweep began, not the most recent room).
+`continueSweepIfNeeded()` checks elapsed time against the configured limit
+before dispatching the next room and, once it's reached, clears the sweep
+state and calls `dockVacuum()` instead of continuing. The explicit-stop
+command handlers (`startVacuum`/`pauseVacuum`/`dockVacuum`) also clear the
+started-at timestamp, so a later trigger starts its clock cleanly. Leaving
+the limit toggle off preserves the original unbounded behavior. Verified
+via simulation: dispatches every 10 minutes with a 60-minute limit produced
+exactly one `dock()` call at the 60-minute mark and no further dispatches;
+with the limit disabled, the same simulation ran 20 cycles with zero dock
+calls.
+
+## ~~24. Mode-11 "will resume" mis-credited as finished, plus no stuck alerting~~ — DONE (1.24.0)
+
+Two real bugs found from the same Aug 28 log paste + Wyze app cleaning-history
+screenshot ("stopped cleaning the sitting room a bit early... got stuck on
+the way home under the living room sofa").
+
+**Mis-crediting:** the vacuum's `mode` signal distinguishes mode `10`
+("cleaning completed, returning to charge" -- a genuine finish) from mode
+`11` ("docked, cleaning will resume" -- not a finish, the vacuum fully
+intends to auto-resume the same job). Both were previously collapsed into
+the same "Returning to charge" `status` label, so a mode-11 exit credited
+and cleared the room immediately. Confirmed live: Kitchen was credited at 9
+minutes when mode 11 appeared, then the vacuum resumed on its own 1h42m
+later and cleaned for another 25 minutes, completely uncredited -- 34 real
+minutes, only 9 recorded. New `modeSignalsResume()` helper + carry-forward
+logic in `finishActiveCleanRun()`/`handleCleaningSessionEnd()`: a mode-11
+exit now leaves the run active and carries elapsed time forward
+(`pausedElapsedMin`/`pausedAt`) instead of crediting/clearing, so the
+eventual genuine finish credits the full total across both segments. Also
+suppresses the rotation-sweep continuation and "finished cleaning"
+notification on a mode-11 exit, since dispatching a new room while the
+vacuum still intends to finish this one would conflict. A 3-hour safety
+timeout in `checkStaleActiveCleanRun()` force-finishes a run that never
+actually resumes, so nothing can get stuck "active" forever. Verified via
+simulation reproducing the exact 9+25=34-minute total from the log.
+
+**No stuck alerting:** Sitting Room's dispatch stopped after 3 minutes,
+`status` went to `Standby` with `charge_state` not charging, and stayed
+that way continuously for 7+ hours while battery drained 42% -> 6%, with no
+alert of any kind. New `checkPossiblyStuck()`: idle-and-not-charging for
+30+ minutes isn't a state a healthy vacuum should ever sit in (it's always
+cleaning, returning to charge, or charging), so it now fires one push
+notification per episode, resetting once the vacuum is next seen cleaning
+or charging. Verified via simulation against the real 7.5-hour timeline
+(exactly one notification, correctly reset on recovery).
+
+Deliberately left un-extended this round: Learning Mode's
+`handleLearningRoomEnd` doesn't get the same mode-11 treatment yet (only
+normal rotation/single-room dispatches do), and the 30-minute/3-hour
+thresholds are hardcoded rather than configurable settings.
+
+## ~~23. Silently-dropped dispatch while fully charged/idle~~ — DONE (1.23.0)
+
+User's presence-based trigger only fires once ("everyone left"). Confirmed
+via a specific log line -- `room-clean dispatched 11 min ago never
+actually started cleaning` -- that a dispatch had failed the entire
+previous day, costing the whole day since there was no second trigger to
+retry it. Distinct from the two dispatch-drop bugs already fixed (#19):
+`battery=100`, `charge_state=1`, `mode=0` the entire 11-minute window --
+the vacuum was sitting fully charged and idle the whole time, not
+mid-transit returning to the dock. Wyze's control API acknowledged the
+command (no `code != "1"` warning at dispatch time) but the vacuum simply
+never acted on it.
+
+`checkStaleActiveCleanRun()` now retries the same `venusControl` dispatch
+once, 2 minutes in, if `Cleaning` still hasn't been confirmed -- before
+falling back to the existing 10-minute give-up/clear behavior. If it still
+never starts even after the retry, sends a push notification (not just a
+`log.warn`) so a silent failure doesn't cost an entire day unnoticed.
+Verified via simulation against the exact real timeline (11-minute-old
+dispatch, retry at minute 2, notification once at minute 10, no duplicate
+notification after the run is cleared).
+
+## ~~1. Skip in-progress rooms when `cleanNextRooms()` is called again~~ — DONE (1.8.0)
+
+Confirmed live: calling `cleanNextRooms()` again while a batch was still
+mid-clean re-selected the same in-progress rooms and re-dispatched an
+identical command, which visibly did nothing (the vacuum was already doing
+exactly that). Fixed by excluding `state.activeCleanRun[mac].roomIds` from
+the candidate pool in `previewNextRooms()`.
+
+**Still open, needs live observation:** how does the physical vacuum/Wyze
+firmware behave when a brand-new room-clean command arrives while mid-job on
+a *different* set of rooms (not this same-rooms case, which is now avoided)?
+Does it abandon the current room and switch immediately? No evidence of
+command queuing in the reverse-engineered API, so "abandons and switches" is
+the working assumption, but unconfirmed.
+
+## ~~22. Computed weekly-frequency text + event-log noise reduction~~ — DONE (1.22.0)
+
+Two small requests from the same message: (1) the high-traffic cycle
+length setting's "e.g. 3 for roughly twice a week" was static example
+text, not computed from what's actually entered -- now shows
+`7.0 / enteredDays` live under the input (`submitOnChange: true` added so
+it recomputes as you type). (2) User noticed `nextRoomDueAt` (and by
+extension `roomsPendingThisCycle`/`nextRoomsToClean`, which share the same
+code path) logging a brand new identical device event on *every single
+poll*, even when nothing changed -- "not sure we need this many events."
+Added `sendEventIfChanged()`, comparing against `d.currentValue(name)`
+first and only calling `sendEvent` when the value actually differs.
+Verified via simulation (identical values skip, a real change still
+sends).
+
+## ~~21. nextRoomDueAt attribute~~ — DONE (1.21.0)
+
+User asked how `roomsPendingThisCycle` "resets" now that it's a new week --
+clarified there's no calendar-based reset at all (deliberately: each room
+runs its own rolling `last cleaned + cycle length` countdown, not tied to
+any day of the week). Follow-up: "How can one see when the next room is
+due?" There wasn't a good answer -- `nextRoomsToClean` names a candidate
+regardless of due-status, `roomsPendingThisCycle` is just a count. Added
+`nextRoomDueAt`, computing the earliest `(lastCleaned + cycleLength)`
+across the rotation list and showing it as a real timestamp (or
+"(already due)" if in the past) alongside the room name. Mathematically
+the same room `nextRoomsToClean`/`previewNextRooms` would rank first,
+since both are driven by the same per-room urgency ratio. Verified via
+simulation (distinct due times picking the correct soonest room, and a
+never-cleaned room correctly reporting already-due).
+
+## ~~20. Continuous sweep mode toggle~~ — DONE (1.20.0)
+
+After Master Bedroom finished and `Rooms Pending This Cycle` correctly hit
+0, the sweep stopped -- exactly per the "sweep due rooms, then stop" design
+the user picked earlier (item #10). But live, that turned out not to match
+what they actually wanted in practice: "If there is free time to clean, you
+should keep cleaning. Maybe this is a toggle on the app." I.e. use a
+triggered sweep to get *ahead* of the rotation, not just to catch up to it.
+
+Added `rotationContinuousMode_${mac}` (default off, preserving existing
+behavior). When on, `continueSweepIfNeeded()` ignores `pendingRoomCount()`
+entirely and instead keeps going as long as `previewNextRooms()` returns
+anything at all (which it always will, picking whichever room is
+least-recently-cleaned) -- looping through the full rotation list
+continuously until an explicit `dock()`/`pause()`/`off()` stops it, same
+stop mechanism already in place. Verified via simulation against the exact
+"nothing due" scenario from the live logs (Rooms Pending: 0): continuous
+mode off correctly stops (matching observed behavior), continuous mode on
+correctly keeps going.
+
+## ~~19. Command dispatched while "Returning to charge" gets silently dropped~~ — DONE (1.19.0)
+
+Resolves the open question from item #1 above ("how does the physical
+vacuum/Wyze firmware behave when a brand-new room-clean command arrives
+while mid-job on a different set of rooms... 'abandons and switches' is
+the working assumption, but unconfirmed"). Now confirmed, with full log
+evidence: it does NOT abandon-and-switch. Full sequence from real logs:
+
+```
+10:51:00  mode=1  -> status="Cleaning"           (Hallway actively cleaning)
+10:52:00  mode=10 -> status="Returning to charge" (Hallway "finished" -- vacuum starts driving back)
+10:52:00  finishActiveCleanRun: Hallway credited, 23 min
+10:52:00  continueSweepIfNeeded: more due rooms remain, continuing sweep
+10:52:05  dispatchRoomClean: [Master Bedroom]      (dispatched 5s later, per the then-current fixed delay)
+10:52:05  mode=10 -> status="Returning to charge"  (still mid-transit -- unaffected by the new command)
+10:53:00  mode=10 -> status="Returning to charge"  (still mid-transit, 1 min after dispatch)
+10:54:00  mode=10 -> status="Returning to charge"  (still mid-transit, 2 min after dispatch)
+10:55:00  mode=0, charge_state=1 -> status="Docked" (finally docked/charging -- Master Bedroom never started)
+```
+
+The vacuum reports leaving `Cleaning` the moment it *starts* driving back to
+the dock, not once it arrives -- which can take a couple of minutes. A
+command sent during that transit window is silently dropped: no error, no
+rejection, the vacuum just continues its own return-to-dock and starts
+charging as if nothing was sent. `state.activeCleanRun[mac]` for Master
+Bedroom was left permanently "active" as a result (no Cleaning->non-Cleaning
+transition ever fires for a dispatch that never started), silently excluding
+Master Bedroom from all future room selection.
+
+Fixed two ways:
+1. `continueSweepIfNeeded(mac, newStatus)` now checks `newStatus` before
+   dispatching: if `"Returning to charge"`, it defers instead of firing the
+   fixed 5s `runIn`, setting `state.rotationSweepPending[mac] = true`.
+   `handleVacuumStatusResponse` resumes the deferred dispatch on a later
+   poll once `newStatus` becomes `"Docked"`/`"Standby"`. `rescheduleDynamicPoll()`
+   keeps fast polling engaged the whole time via `rotationSweepPending`, so
+   this typically resolves within about a minute of actually docking, not
+   up to 15. Also defers/cancels appropriately on `Paused`/`Error` instead
+   of blindly pushing forward.
+2. `checkStaleActiveCleanRun()` safety net: a run that's been active 10+
+   minutes and never confirmed `Cleaning` even once (tracked via a new
+   `everConfirmedCleaning` flag on the run, set the first time `Cleaning`
+   is observed) gets cleared automatically -- covers this exact failure
+   mode plus any other reason a dispatch might silently fail to take, so a
+   room can't stay excluded from rotation forever. A legitimately
+   long-running clean (which *did* confirm Cleaning at some point) is left
+   alone.
+
+Verified via standalone simulations: the defer-then-resume sequence
+reproducing the exact real timeline above, and the stale-run timeout math
+against Master Bedroom's actual stuck duration.
+
+## ~~18. Rotation sweep silently self-cancelling via bare unschedule()~~ — DONE (1.18.4)
+
+User: "nobody is home... something must have turned it off" -- Kitchen had
+genuinely finished, `Rooms Pending This Cycle` still showed 3, Low Battery
+Protection was confirmed disabled (ruling out that theory), yet `switch`
+was `off` and nothing advanced to Hallway. Traced by re-reading the code
+rather than more live back-and-forth: `handleCleaningSessionEnd` (called on
+every genuine finish) calls `continueSweepIfNeeded()`, which schedules
+`runIn(5, "continueSweepDispatch", ...)` to dispatch the next room. Right
+after that, in the *same* `handleVacuumStatusResponse` call,
+`rescheduleDynamicPoll()` runs (since cleaning just ended, polling should
+slow back down) -- and it called bare `unschedule()`, which cancels *every*
+pending one-shot job for the app instance, not just the recurring poll.
+That wiped out the just-scheduled Hallway dispatch before it ever fired,
+silently, with zero logging (matching the user's "nothing turned it off
+that I can see" experience).
+
+Fixed by unscheduling only the poll job by name (`unschedule("pollAllVacuums")`)
+in both `rescheduleDynamicPoll()` and `updated()` (the latter has the same
+risk whenever settings are saved while a sweep continuation is pending).
+This is the second time a bare/overly-broad Hubitat scheduler or Groovy
+truthiness gotcha has caused a hard-to-see silent failure in the sweep path
+this session (see #15) -- worth remembering as a pattern for future review:
+prefer named/scoped variants of `unschedule`/state-clearing operations over
+blanket ones whenever multiple independent scheduled jobs can coexist.
+
+## ~~17. status vs. charging cross-poll race (cosmetic)~~ — DONE (1.18.3)
+
+Confirmed live right after the 1.18.2 fault-code fix: with mode/charging
+both finally working correctly, `status` still briefly showed `Standby`
+instead of `Docked` immediately after the vacuum actually docked (device
+page showed `mode: Idle`, `charging: true`, but `status: Standby`) --
+purely cosmetic, both are non-`Cleaning` states so nothing functional was
+affected, but undermines confidence after all the status-accuracy work
+this session. Cause: `charging` was read from the separately-polled props
+attribute, which can lag a poll behind the status poll's `mode` reading
+since they're two independent async calls (same root class of issue as
+the original 1.17.0 charging-override work, now actually fully closed).
+Fix: read `charge_state` directly from the *same* status-poll response
+`mode` came from (confirmed present there in the same raw dump that
+revealed `mode`), instead of the cross-poll device attribute. Verified via
+simulation against the real payload shape.
+
+## ~~16. Add fault code 2102 to the default ignore list~~ — DONE (1.18.2)
+
+First seen right after the sweep-continuation fix went live and actually
+worked (Kitchen cleaned automatically for the first time). Confirmed twice
+now, both times firing right as the vacuum returned to charge after a room
+finished, no visible problem either time -- same pattern as 2103/2105.
+Added to the default `ignoredFaultCodes` value. `2101` stays off the list
+on purpose (see existing note) -- it was tied to a genuine low-battery
+recharge-and-resume cycle, which may carry real information rather than
+being purely benign like 2102/2103/2105.
+
+Note for existing installs: changing the code's `defaultValue` only affects
+*new* app installs -- an already-configured instance keeps whatever's
+already saved in the "Fault codes to treat as normal" field regardless of
+this change, and needs `2102` added by hand to pick it up.
+
+## ~~15. Groovy Truth bug in 1.18.0's own mode extraction~~ — DONE (1.18.1)
+
+1.18.0 shipped, user re-imported (confirmed 1.18.0 in the code editor),
+refreshed -- `status` was *still* stuck on "Cleaning". Fresh logs revealed
+why: the brand new 1.17.1 "no mode" warning was firing on every single
+poll, even though the pasted `heartBeat` dump clearly had `mode:0` right
+there in it. Root cause: `statusData?.heartBeat?.mode ?: statusData?.eventFlag?.mode`
+-- Groovy Truth treats `0` as falsy, so a genuine `mode:0` ("Idle") got
+discarded by `?:` and fell through to `eventFlag.mode`, which doesn't even
+exist as a key in that response, landing on `null` and triggering the "no
+mode" warning for perfectly valid data. This is the exact same bug class as
+the earlier `?.foo?[bar]` parser trap and the false-positive `code != "1"`
+string/int comparison bug from earlier in this project -- a Groovy
+truthiness/type gotcha, not a logic error. Fixed with explicit `if (x ==
+null)` checks instead of `?:`. Verified with a standalone simulation using
+the actual live payload shape (`mode:0` correctly extracts as `0`, not
+`null`). Swept the rest of the file for the same `a?.x ?: b?.x` pattern --
+no other instances found.
+
+## ~~14. status frozen on "Cleaning" for hours~~ — ROOT-CAUSED AND FIXED (1.18.0)
+
+After 1.17.0 shipped (charging overrides a conflicting "Cleaning" status),
+live logs still showed `status=Cleaning` unchanged for 2.5+ hours straight
+(11:20am - 1:13pm, confirmed 1.17.0 was actually loaded), even though the
+Wyze app itself showed the vacuum fully charged/docked/idle the whole time.
+Notably, the existing unconditional `log.info ".. vacuum_work_status=... ->
+status=..."` line -- which should print every single poll if
+`handleVacuumStatusResponse` runs to completion -- never once appeared in
+~130 lines of pasted logs spanning that whole window, while the *separate*
+props poll (fault_code logging, battery draining 100%->86%) fired
+correctly every single minute without fail.
+
+Leading theory: the status poll's response is coming back without
+`vacuum_work_status` under some condition (e.g. once idle for a while, or a
+changed response shape), hitting the silent `if (newStatus == null) return`
+at the very top of `handleVacuumStatusResponse` -- before the log.info
+line, before the charging-override fix, before transition detection, all
+of it. That would explain every symptom at once: status frozen, no
+notifications ever, sweep never continuing -- while props polling looks
+completely normal, making it look like "everything's polling but nothing
+updates."
+
+1.17.1's diagnostic (`log.warn` with the raw response shape) confirmed it
+immediately on the next poll: `heartBeat` really has no `vacuum_work_status`
+field at all, only `mode`/`charge_state`/`battery`/etc -- the exact same
+shape as the props poll. `vacuum_work_status` isn't stale or occasionally
+missing, it's simply never sent by this endpoint for this vacuum. The
+entire `status` pipeline had been silently no-op'ing since day one whenever
+this code path ran (which, per the log evidence, was apparently *always*).
+
+Fixed in 1.18.0 by deriving `status` from `mode` instead -- a field that
+genuinely is present in both the props and status polls, using the same
+code groups as the existing `mode` attribute's own mapping (`vacuumModeDescription`,
+already cross-validated once live: mode 11 during an actual low-battery
+recharge cycle), collapsed to the coarse states the rest of the app needs.
+`mode`'s "idle" group doesn't distinguish parked-on-the-dock from genuinely
+off it, so `charging` (a direct boolean) breaks that tie -- this subsumes
+and replaces the narrower charging-override added in 1.17.0 for item #13
+below, which was patching a symptom of this same root cause rather than
+the cause itself. `vacuumStatusDescription()` (the old, now-provably-wrong
+mapping) and the `vacuum_work_status` field references are removed
+entirely rather than left as dead/misleading code.
+
+Verified via a standalone simulation using the actual live data point
+(`mode=0, charging=true -> Docked`, matching the user's confirmed real
+state: fully charged, docked, idle in the Wyze app) plus several other
+mode codes.
+
+## ~~13. status vs. charging disagreement blocking sweep continuation~~ — DONE (1.17.0), superseded by #14
+
+Real bug, confirmed live via device page screenshot: `status: Cleaning` while
+`mode: Idle` and `charging: true` -- the vacuum had actually finished and
+was sitting on the dock, per the user's direct observation ("the cleaning
+finished, it's now at home charging"). User: "Is it cleaning or is it
+charging?" and directly connected this to the sweep never advancing
+("switch is still 'on' and there are more rooms to clean").
+
+Confirmed root cause: `status` and `charging` come from two *separate*
+async polls that can land moments apart, and `status`'s underlying mapping
+is unverified third-party data to begin with -- this is the same class of
+mismatch flagged earlier in the session ("Returning to charge" while
+charging:true), now observed a second time with "Cleaning" instead. Since a
+vacuum can't physically charge and clean simultaneously, `charging` (a
+direct boolean reading) is trusted over `status` (a translated, unverified
+code) whenever they conflict: `handleVacuumStatusResponse` now overrides a
+"Cleaning" reading to "Docked" if the most recently known `charging` value
+is `true`, *before* that status is used for anything -- the displayed
+attribute, `state.lastKnownStatus`, notifications, room crediting, sweep
+continuation, and poll-interval switching. This directly unblocks the sweep
+continuation added in 1.14.0, which was silently stuck waiting on a
+transition that this exact mismatch was preventing from ever being detected.
+
+Known trade-off, accepted rather than engineered around: `charging` is
+itself up to ~1 poll cycle stale (same async-lag reason), so there's a
+narrow theoretical window right as a resumed clean starts where a
+just-turned-stale `charging:true` could wrongly override a correct new
+"Cleaning" reading. Self-corrects within one more fast-poll cycle; not
+worth more machinery for a rare, self-healing edge case.
+
+Also reported alongside this: a new fault code, 2102, not yet on the
+ignored-codes list (2103/2105 are). Not silently suppressed -- no evidence
+yet on what it means, and it arrived right as the vacuum returned to
+charge, so it may belong in the same benign-charging-status family as
+2101/2103/2105, or may not. Logged with full context as usual
+(`fault_code=2102 ... mode=... chargeState=... status=... battery=...`) for
+the user to build evidence from before adding it to the ignore list.
+
+## ~~12. Mark-cleaned picker never clears + bin-hours correction~~ — DONE (1.16.0)
+
+User asked how the "Mark rooms as cleaned" picker gets emptied out -- answer
+was "it doesn't," a real gap: `markCleanRooms_${mac}` was never cleared
+after `btnMarkCleaned_` applied it, so it sat looking selected indefinitely.
+Fixed with `app.removeSetting(...)` after applying.
+
+Also reported `hoursSinceEmptied` reading 0.0 despite real cleaning having
+happened -- directly explained by the 1.15.0 poll-mode-flapping bug fixed
+just before this: `accumulateBinHours()` only runs from
+`handleCleaningSessionEnd`, which only runs when a Cleaning->non-Cleaning
+transition is actually detected, so every session whose transition got
+missed also silently skipped its bin-hour contribution. Going forward this
+self-resolves with the 1.15.0 fix, but the already-lost hours can't be
+recovered, so added a "Set cumulative hours to" field + button (Bin
+Reminder section) to correct the running total directly instead of only
+being able to reset it to zero.
+
+## ~~11. Missing start/finish notifications + poll-mode flapping~~ — DONE (1.15.0)
+
+Real bug, confirmed live twice: (1) user reported "still not getting
+notifications when cleaning starts... I do get error alerts, but that's it"
+-- both notifyCleaningStarted and notifyCleaningFinished were silently not
+firing; (2) live log showed `rescheduleDynamicPoll: switched to idle polling`
+while the vacuum was visibly still Cleaning (status/mode both confirmed
+"Cleaning" on the device page at the time).
+
+Root cause: `rescheduleDynamicPoll()`'s "is anything cleaning" check relied
+solely on `state.lastKnownStatus`, which is only set from a *confirmed* poll
+response. Two consequences: (a) with rooms-per-run now defaulting to 1 and
+the idle interval defaulting to 15 min, a short single-room clean could
+start and finish entirely between two idle-interval polls, so
+`lastKnownStatus` never saw "Cleaning" at all -- no transition ever
+detected, no notifications, no room credit; (b) even once fast polling
+engaged, a single noisy/transient status read could flip it straight back
+to idle for up to 15 min.
+
+Fixed by also trusting `state.activeCleanRun` (set synchronously at dispatch
+time, cleared only on a genuine finish) as evidence of "cleaning," not just
+the latest single poll reading -- and calling `rescheduleDynamicPoll()`
+directly from `dispatchRoomClean`/`dispatchLearningRoom` so fast polling
+engages immediately at dispatch, without waiting on a poll to confirm it
+first.
+
+Also enriched notification content per the same request: "started cleaning"
+now names the room(s) (or "whole house" for a plain `start()`); "finished
+cleaning" now breaks down completed vs. not-completed rooms, using
+`finishActiveCleanRun`'s (now Map-returning) result instead of a generic
+elapsed-minutes-only message. `notifyCleaningStarted` default flipped to
+true (was false, inconsistent with the other two notification toggles which
+already defaulted on). Also added a `log.info` line recording each
+single-room dispatch's measured clean time, independent of debug logging,
+per a related user request.
+
+## ~~9. Battery-forced-return "fix" — tried, disproved by live data, reverted~~
+
+Shipped in 1.13.0: treated a return-to-charge at/below a battery threshold as
+"not a genuine finish" (Wyze's own low-battery behavior cutting the room
+short), leaving the run active with elapsed time carried forward instead of
+crediting it. **Live testing immediately falsified this**: a room legitimately
+finished (confirmed against the map) with the battery down at 21% -- low
+battery at dock time is apparently unremarkable, not evidence of an
+interruption. Reverted in 1.14.0 back to the original, simpler rule: any
+non-Paused/Error exit is trusted as a genuine finish. Noted here as a
+recorded dead end so it isn't re-attempted the same way later without new
+evidence.
+
+## ~~10. Rotation sweep — auto-continue to the next due room~~ — DONE (1.14.0)
+
+User asked directly, after a room finished and the vacuum just sat there:
+"we're still 'on', shouldn't we be cleaning the next room?" Confirmed with
+the user which stopping condition they wanted (auto-continue through
+everything due, then stop on its own -- not indefinitely until manually
+turned off, and not left as a fully manual per-room trigger).
+
+Implementation: `cleanNextRooms()` sets `state.rotationSweepActive[mac] =
+true`. On every genuine finish (`handleCleaningSessionEnd`'s non-learning
+branch), `continueSweepIfNeeded()` checks `pendingRoomCount(mac)` -- if
+anything's still actually due, it schedules `continueSweepDispatch` (`runIn`,
+5s) to call `cleanNextRooms()` again; otherwise it clears the flag and stops.
+`continueSweepDispatch` re-checks the flag before dispatching, so if
+`dock()`/`pause()`/`start()` cleared it in the meantime (all three now do),
+the scheduled continuation quietly no-ops instead of reactivating a sweep the
+user just stopped. Verified via standalone simulations: a 3-room sweep
+draining to completion and stopping on its own, and a dock()-during-sweep
+cancellation correctly no-op'ing the pending continuation.
+
+## ~~8. Default to 1 room per run + manual room-time overrides~~ — DONE (1.12.0)
+
+User feedback: the high-traffic-tier/urgency-fraction machinery above (item
+7) is more than actually needed for the core "know each room's real clean
+time" goal -- if rotation dispatches exactly one room per run, every run is
+already ground truth (see `finishActiveCleanRun`'s single-room branch), and
+since rotation always advances to the currently-most-overdue room, repeated
+`cleanNextRooms()` triggers naturally cycle through every room over time.
+So: `rotationCount_${mac}` now defaults to 1 instead of 2, with a paragraph
+explaining to raise it once every room has real timing data. Also added a
+manual override UI (`<vacuum> — Room Timing`): one editable minutes field
+per discovered room + a "Save Room Times" button, so timing data can be
+restored/corrected by hand (state.roomAvgMinutes is app-local and doesn't
+survive an app reinstall).
+
+## ~~7. High-traffic rooms — clean some rooms more often than others~~ — DONE (1.11.0)
+
+Added a "High-traffic rooms" multi-select per vacuum with its own (shorter)
+cycle-length setting, distinct from the normal-traffic `rotationCycleDays_${mac}`.
+Room selection in `previewNextRooms()` now sorts by relative overdue-ness
+(elapsed time ÷ that room's own cycle length) instead of raw last-cleaned
+time, so a 3-day-cycle room naturally surfaces ~2-3x as often as a 7-day-cycle
+one across repeated `cleanNextRooms()` triggers — no hard-gated separate
+queue, and it degrades to the old plain oldest-first behavior when every
+room shares one cycle length. `pendingRoomCount`/`roomsPendingThisCycle`
+updated to use each room's own cycle length too. Verified via a standalone
+simulation (3-day vs 7-day room, triggered every 3 days over 21 days):
+5 picks vs 2 picks, matching the intended "multiple times/week vs. once/week"
+pacing as a soft heuristic, not an exact schedule.
+
+## ~~6. Rough job-completeness metric from room time estimates~~ — DONE (1.10.0)
+
+Added `lastRunCompleteness`: sums each dispatched room's learned/estimated
+clean time and compares that total to the run's actual elapsed minutes, so
+you get a rough "how much of this job actually got done" percentage without
+needing a completion record for every individual room. Separate from (and
+complementary to) the existing per-room credit/no-credit heuristic in
+`finishActiveCleanRun` — that logic is unchanged.
+
+## 2. Attribute showing rooms currently being cleaned
+
+`lastCleanedRooms` only reflects *confirmed-completed* rooms (as of the
+partial-credit fix) — there's no attribute showing what's actively being
+cleaned right now. Add e.g. `currentlyCleaningRooms`:
+- Populate from `state.activeCleanRun[mac].roomIds` (resolved to names) when a
+  room-scoped clean is dispatched (`dispatchRoomClean` / `dispatchLearningRoom`).
+- Clear it (e.g. to `"none"`) when that run ends (`finishActiveCleanRun` /
+  `handleLearningRoomEnd`), or on whole-house `start()`/`dock()`/`pause()`.
+
+## 3. Battery-aware full-rotation auto-sweep mode
+
+A new mode that works through the **entire** rotation room list across
+multiple battery cycles in one go, rather than one batch per trigger:
+
+1. Clean the configured group size (per the existing count/time rotation mode).
+2. Check battery: **above** the configured threshold → advance immediately to
+   the next group.
+3. **At/below** threshold → return to dock, wait for battery to climb back
+   above the threshold, then resume with the next group.
+4. Repeat until every rotation room has been cleaned this cycle, **or** the
+   user presses `dock()` — which should abort the whole sweep, not just stop
+   the current group.
+
+Needed pieces:
+- A persistent "sweep in progress" state: the *remaining room queue across the
+  whole rotation list*, distinct from a single dispatch batch (Learning Mode's
+  queue/advance machinery is a reasonable structural starting point, but gated
+  on battery level with auto-resume-after-charging instead of advancing
+  immediately after each room).
+- A configurable battery threshold setting (per vacuum).
+- Polling-driven logic to detect "charged back above threshold" and
+  auto-resume the sweep.
+- `dock()` needs to cancel the whole sweep, not just the in-progress group —
+  currently `dock()` has no concept of an active sweep to cancel.
+
+## 4. Enrich notification content with rooms and next-up info
+
+- "Notify when cleaning starts" should say *which rooms* are being cleaned
+  (from `state.activeCleanRun[mac].roomIds` resolved to names, or "whole
+  house" for a plain `start()`).
+- "Notify when cleaning finishes" / returning-to-charge should include
+  current charge status (battery %, charging true/false) and which rooms
+  are next in the rotation queue (the next N candidates `cleanNextRooms()`
+  would pick).
+
+Mostly enriching the existing `sendVacuumNotification(...)` call sites in
+`pollVacuum`/`handleCleaningSessionEnd`/`dispatchRoomClean` using data
+that's already available. Shares underlying data with #2 above
+(`currentlyCleaningRooms`).
+
+## 5. Actionable Stop/Skip links in push notifications
+
+Let a push notification (e.g. Pushover) include a tappable HTTP link that
+triggers "Stop" or "Skip these rooms" directly, without opening Hubitat.
+
+Needed pieces:
+- Enable `oauth: true` on the app (currently `false`) and add mapped HTTP
+  endpoints, mirroring Volvo's `/callback` pattern:
+  `mappings { path("/stop"){action:[GET:"webStopVacuum"]} path("/skipRooms"){action:[GET:"webSkipRooms"]} }`
+- Secure the same way Volvo's callback is — Hubitat's built-in per-app
+  `access_token` embedded in the URL.
+- Embed the plain URL as text in the notification body — most notification
+  apps (Pushover included) auto-link bare URLs in message text, no special
+  action-button API needed.
+- "Stop" maps directly to `dockVacuum(mac)`.
+- "Skip these rooms" needs product thinking before implementing: does it
+  just dock (same as Stop, relying on the existing partial-credit logic to
+  leave the rooms pending), or does it need to explicitly *defer* those
+  rooms so they don't immediately get picked again next cycle (distinct
+  from "cleaned" or plain "interrupted")? Decide this before implementing.
