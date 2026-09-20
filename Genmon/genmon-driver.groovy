@@ -20,6 +20,14 @@
  *                         packetCount) from event history; stored in State Variables
  *                         instead. Fix missing transferToGenerator attribute
  *                         declaration that caused it to fire every poll.
+ *   - v2.4.0 - 20SEP26  - Removed the lastUpdate attribute: it was a formatted
+ *                         timestamp, so it differed on every message and
+ *                         updateStringIfChanged() could never suppress it — one
+ *                         event per accepted update (~2,880/day at the default 30s
+ *                         throttle). Replaced with a healthStatus attribute
+ *                         ["offline","online"] driven by a scheduled staleness
+ *                         check, which fires only on an actual health transition.
+ *                         Threshold configurable (default 1 hour).
  *
  * Communicates directly with the Genmon REST/WebSocket API using the native
  * Genmon addon for Hubitat.  Home Assistant is NOT required.
@@ -181,8 +189,9 @@ metadata {
         attribute "currentTemperature",     "number"   // hub scale (°F or °C) — Monitor/Weather/Current Temperature, auto-converted
 
         // ── Connectivity ──────────────────────────────────────────────────
-        attribute "connectionStatus",       "string"
-        attribute "lastUpdate",             "string"
+        attribute "connectionStatus",       "string"   // transport state (ws / poll / error)
+        attribute "healthStatus",           "enum", ["offline", "online"]   // data freshness
+        // lastUpdate was removed in v2.4.0 — see markDataFresh()
 
         // ── Custom commands ───────────────────────────────────────────────
         command "startGenerator"
@@ -207,6 +216,10 @@ metadata {
         input name: "wsMinInterval", type: "enum",    title: "Minimum interval between WebSocket state updates (genmon pushes very frequently — throttle here to avoid Hubitat event queue overload)",
                                     options: ["10": "10 sec", "15": "15 sec", "30": "30 sec", "60": "1 min", "120": "2 min"],
                                     defaultValue: "30"
+        input name: "staleThreshold", type: "enum",   title: "Mark healthStatus offline after receiving no data from genmon for",
+                                    options: ["15": "15 min", "30": "30 min", "60": "1 hour",
+                                              "120": "2 hours", "360": "6 hours"],
+                                    defaultValue: "60"
         input name: "logEnable",    type: "bool",     title: "Enable debug logging", defaultValue: false
     }
 }
@@ -228,6 +241,12 @@ def initialize() {
     state.wsConnected        = false
     state.wsAuthPending      = false
     atomicState.lastWsParsed = 0L
+
+    // Start the staleness clock now: healthStatus should only report offline
+    // after genmon has actually been silent for the configured window, not
+    // immediately on restart before the first message has had time to arrive.
+    state.lastDataMs = now()
+    runEvery15Minutes("healthCheck")
 
     updateDNI()
 
@@ -292,10 +311,11 @@ private String ipPortToHex(String ip, int port) {
 }
 
 def disconnect() {
-    unschedule()
+    unschedule()   // also stops healthCheck, so report offline explicitly here
     interfaces.webSocket.close()
     state.wsConnected = false
     sendEvent(name: "connectionStatus", value: "disconnected")
+    updateStringIfChanged("healthStatus", "offline")
     log.info "Genmon driver: disconnected"
 }
 
@@ -404,7 +424,7 @@ private void _parse(String rawMsg) {
         atomicState.lastWsParsed = nowMs
 
         parseStatus(stateData)
-        updateStringIfChanged("lastUpdate",       new Date().toString())
+        markDataFresh()
         updateStringIfChanged("connectionStatus", "connected (ws)")
 
     } else if (msgType == "ping") {
@@ -453,7 +473,7 @@ def refresh() {
                 parseStatus(stateData)
                 // Use change-guarded helpers so polling at short intervals
                 // doesn't generate spurious events when values are stable.
-                updateStringIfChanged("lastUpdate", new Date().toString())
+                markDataFresh()
                 if (!state.wsConnected) {
                     updateStringIfChanged("connectionStatus", "connected (poll)")
                 }
@@ -865,4 +885,35 @@ private void updateStringIfChanged(String attr, String newVal) {
 private void safeEvent(String attr, Object value) {
     if (value == null) return
     updateStringIfChanged(attr, value.toString())
+}
+
+// ── Health tracking ───────────────────────────────────────────────────────────
+
+// Record that fresh data arrived from genmon.
+//
+// Only an epoch stamp is kept, and only in state — the old lastUpdate
+// attribute was a formatted timestamp, so it differed on every message and
+// updateStringIfChanged() could never suppress it. It alone produced one
+// event per accepted update, roughly 2,880 a day at the default 30s
+// throttle. healthStatus carries the signal an automation actually wants and
+// only fires on a real online/offline change.
+private void markDataFresh() {
+    state.lastDataMs = now()
+    updateStringIfChanged("healthStatus", "online")
+}
+
+// Scheduled staleness check. Runs on a timer rather than on receipt, so a
+// genmon that goes completely silent is still noticed.
+def healthCheck() {
+    def maxAgeMs = (staleThreshold ?: "60").toLong() * 60000L
+    def lastMs   = (state.lastDataMs ?: 0L).toLong()
+    def ageMs    = now() - lastMs
+    def stale    = (ageMs > maxAgeMs)
+    if (logEnable) {
+        // intdiv() keeps this Long arithmetic — Groovy's / on two Longs yields
+        // a BigDecimal, which Math.round() does not accept unambiguously.
+        log.debug "Genmon: healthCheck — last data ${ageMs.intdiv(60000L)} min ago, " +
+                  "threshold ${staleThreshold ?: '60'} min → ${stale ? 'offline' : 'online'}"
+    }
+    updateStringIfChanged("healthStatus", stale ? "offline" : "online")
 }
