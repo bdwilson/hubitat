@@ -142,8 +142,19 @@ def mainPage() {
             input "enableFeedback", "bool", title: "Add feedback links to notifications", required: false, defaultValue: false, submitOnChange: true
             if (enableFeedback) {
                 input "feedbackUrlMode", "enum", title: "Which URL to put in notifications", required: false, defaultValue: "cloud", options: ["cloud": "Cloud (works away from home)", "local": "Local (LAN only)"], submitOnChange: true
-                input "feedbackLinkStyle", "enum", title: "How to put the links in the message", required: false, defaultValue: "auto", options: ["auto": "Automatic - tidy links on Pushover, plain text elsewhere", "plain": "Always plain text", "html": "Always HTML"], submitOnChange: true
-                paragraph "<small><b>Automatic</b> sends Pushover devices the <code>[HTML]</code> marker its driver needs to render real links, and sends every other notifier plain URLs that the push client links itself. Pick <b>Always HTML</b> only if you have confirmed your notifier renders HTML without a marker; pick <b>Always plain text</b> if tags show up as literal markup.</small>"
+                input "feedbackLinkStyle", "enum", title: "How to put the links in the message", required: false, defaultValue: "plain", options: ["plain": "Plain text URLs - works everywhere", "pushover": "Pushover [HTML] marker - needs a 2020-09-23 or newer Pushover driver", "html": "Raw HTML - only if your notifier renders it unprompted"], submitOnChange: true
+                paragraph "<small><b>Plain text</b> is the default because every push client turns a bare URL into a tappable link by itself, with nothing to configure. The other two are tidier when they work and show raw markup when they don't, so change this only after a test alert renders the way you expect. If you pick the Pushover option and the alert arrives still showing <code>[HTML]</code>, your installed driver is older than that feature - update it from <b>Drivers Code</b> or switch back to plain.</small>"
+                if (notifyDevices) {
+                    // Which driver is actually installed decides whether the
+                    // marker options can work at all, and it is not otherwise
+                    // visible from in here.
+                    String types = notifyDevices.collect { d ->
+                        String tn = "unknown"
+                        try { tn = (d.getTypeName() ?: "unknown") as String } catch (Exception ignored) { }
+                        "${esc(d.displayName as String)} &rarr; <code>${esc(tn)}</code>"
+                    }.join("<br>")
+                    paragraph "<small>Notifier drivers in use:<br>${types}</small>"
+                }
                 if (!state.accessToken) {
                     paragraph "<span style='color:#b00'><b>OAuth is not enabled yet.</b> Go to <b>Apps Code</b> &rarr; this app &rarr; <b>OAuth</b> &rarr; Enable, then come back and hit Done.</span>"
                 } else {
@@ -352,7 +363,7 @@ def uninstalled() {
 // defaultValue only applies to a setting that has never been set. So
 // without this, an existing install keeps running on its old values and
 // silently ignores the new defaults.
-private static String settingsVersion() { return "6" }
+private static String settingsVersion() { return "7" }
 
 private void migrateSettings() {
     if (state.settingsVersion == settingsVersion()) return
@@ -433,9 +444,15 @@ private void migrateSettings() {
     // that marker to Pushover devices and plain URLs to everything else.
     // Only v5's own fallback is overwritten here, and it shipped the same
     // day, so nobody chose "plain" deliberately yet.
-    if (feedbackLinkStyle == null || feedbackLinkStyle == "plain") {
-        app.updateSetting("feedbackLinkStyle", [value: "auto", type: "enum"])
-        changes << "feedbackLinkStyle=auto"
+    // v7 retires v6's "auto", which prepended Pushover's "[HTML]" marker on
+    // the strength of the driver's documentation. On a real hub the marker
+    // came through in the notification text verbatim - the installed driver
+    // was older than the feature - so the default is back to plain URLs,
+    // which need no cooperation from any driver. The marker is still
+    // available, now as a deliberate choice rather than an assumption.
+    if (feedbackLinkStyle == null || feedbackLinkStyle == "auto") {
+        app.updateSetting("feedbackLinkStyle", [value: "plain", type: "enum"])
+        changes << "feedbackLinkStyle=plain"
     }
 
     state.settingsVersion = settingsVersion()
@@ -625,9 +642,14 @@ private void startWasherCycle(Long ts, BigDecimal p) {
     if (txtEnable) log.info "Washer started (${p}W)${concurrentDryer ? ' - dryer is still running (second load)' : ''}"
     armDeadman("washer", ts)
     if (switchList) switchList*.on()
-    if (enableStartNotify) notify(washerStartMessage ?: "Washer started", "start", "washer", ts)
+    // The second-load message already says the washer started, so sending
+    // the plain start message alongside it is the same news twice. They are
+    // mutually exclusive: the more specific one wins when it applies, and
+    // turning it off falls back to the plain one.
     if (concurrentDryer && enableConcurrentLoadNotify) {
         notify(concurrentLoadMessage ?: "Washer started again - the dryer is still running the previous load", "concurrent", "washer", ts)
+    } else if (enableStartNotify) {
+        notify(washerStartMessage ?: "Washer started", "start", "washer", ts)
     }
 }
 
@@ -1077,19 +1099,20 @@ private void notify(String msg, String kind, String device, Long cycleTs) {
 }
 
 // Pushover does render HTML, but its Hubitat driver only asks the API for
-// that when the message carries a literal "[HTML]" marker; without it the
-// tags arrive as text. No other notifier understands that marker - it would
-// just show up verbatim - so the choice is made per device rather than baked
-// into the message.
+// that when the message carries a literal "[HTML]" marker, and only in
+// versions from 2020-09-23 on - an older driver passes the marker straight
+// through into the message text. No other notifier understands it at all, so
+// the choice is made per device rather than baked into the message.
 private String messageFor(dev, String plain, String html) {
     if (html == null) return plain
     switch (feedbackLinkStyle) {
         case "html":
             return html
-        case "plain":
-            return plain
-        default:
+        case "pushover":
             return isPushoverDevice(dev) ? "[HTML]${html}" : plain
+        default:
+            // "plain", the retired "auto", or never set.
+            return plain
     }
 }
 

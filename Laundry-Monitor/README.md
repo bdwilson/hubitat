@@ -209,7 +209,16 @@ you set afterwards is respected.
 | v4 | `dryerMinRunMin` -> 6 (if lower) | Loading the dryer produced a 3m50s continuous burst that the old 3-minute rule scored as a real cycle. |
 | v4 | `washerStopConfirmLateMin` -> 4 | Enables the adaptive stop timeout so back-to-back loads stop merging - see "Why the stop timeout adapts" above. |
 | v5 | `feedbackLinkStyle` -> `plain` | Superseded by v6 the same day; see below. |
-| v6 | `feedbackLinkStyle` -> `auto` (from `plain` or unset) | Pushover's driver does render HTML - it just needs a `[HTML]` marker on the message. `auto` sends that marker to Pushover and plain URLs to everything else. |
+| v6 | `feedbackLinkStyle` -> `auto` | Superseded by v7; the marker it added was not understood by the installed driver. |
+| v7 | `feedbackLinkStyle` -> `plain` (from `auto` or unset) | Plain URLs need no cooperation from any driver. The `[HTML]` marker is still selectable, but as a deliberate choice. |
+
+### Only one message per start
+
+The second-load alert ("Washer started again - the dryer is still running
+the previous load") replaces the plain "Washer started" rather than
+arriving next to it - it already says the washer started, so both together
+is the same news twice. Turn the second-load alert off and a second load
+just reports as an ordinary start.
 
 Feedback (optional, off by default)
 ---
@@ -220,9 +229,13 @@ right, at the one moment you know the answer.
 
 Turn on **Add feedback links to notifications** and each push gains:
 
-> Washer is done
->
-> Was this correct? **Yes** | **No**
+```
+Washer is done
+
+Was this correct?
+Yes: https://cloud.hubitat.com/api/<hub>/apps/<id>/f/142/y?access_token=<token>
+No:  https://cloud.hubitat.com/api/<hub>/apps/<id>/f/142/n?access_token=<token>
+```
 
 **Yes** is a single tap and needs nothing else - the link records the
 answer and returns a page saying so. **No** records it and then offers an
@@ -234,32 +247,36 @@ takes one more tap to correct rather than being stuck.
 
 ### How the links are formatted
 
-**How to put the links in the message** decides, and **Automatic** is the
-default and almost certainly what you want:
+**Plain text URLs** is the default, and is the only option that depends on
+nothing but the push client: every one of them turns a bare URL into a
+tappable link on its own.
 
 | Setting | What each notifier receives |
 | --- | --- |
-| **Automatic** | Pushover devices get `[HTML]` + real anchor tags; every other notifier gets plain URLs. |
-| **Always plain text** | Bare URLs everywhere. Ugly but universal. |
-| **Always HTML** | Anchor tags with no marker - only for a notifier you have confirmed renders HTML on its own. |
+| **Plain text URLs** | Bare URLs everywhere. Less tidy, universally works. |
+| **Pushover `[HTML]` marker** | Pushover devices get `[HTML]` + anchor tags; anything else still gets plain URLs. |
+| **Raw HTML** | Anchor tags, no marker - only for a notifier you have confirmed renders HTML unprompted. |
 
-The reason Automatic isn't just "send HTML": Pushover renders HTML only
-when the sender sets the API's `html=1` flag, and [Dan Ogorchock's Pushover
-driver](https://raw.githubusercontent.com/ogiewon/Hubitat/master/Drivers/pushover-notifications.src/pushover-notifications.groovy)
+The two tidy options are worth understanding before picking one. Pushover
+renders HTML only when the sender sets the API's `html=1` flag, and [Dan
+Ogorchock's Pushover driver](https://raw.githubusercontent.com/ogiewon/Hubitat/master/Drivers/pushover-notifications.src/pushover-notifications.groovy)
 - the one nearly everyone uses - sets that flag only when the message
-carries a literal `[HTML]` marker. Without it you get:
+carries a literal `[HTML]` marker, a feature added 2020-09-23. Send that
+marker to an **older** driver and it has no idea what it means, so it ends
+up in the message you receive:
 
 ```
-Washer is done<br><br>Was this correct? <a href="https://...">Yes</a>
+[HTML]Washer started<br><br>Was this correct? <a href="https://...">Yes</a>
 ```
 
-No other notifier understands that marker, so it is added per device
-(matched on the driver's type name) rather than baked into the message.
-Nothing needs changing in the Pushover driver itself.
+That is the tell: `[HTML]` visible in the notification means the marker
+reached a driver too old to strip it. Update the driver from **Drivers
+Code**, or go back to plain text. The settings page lists the driver type
+name behind each of your notifier devices so you can see what you actually
+have installed.
 
-Plain text is not a downgrade, just less tidy - every push client links a
-bare URL automatically. If your notifier shows tags as literal text and
-isn't Pushover, choose **Always plain text**.
+Nothing needs changing inside the Pushover driver either way - the marker
+is a documented input, not a missing feature.
 
 Setup, once:
 
