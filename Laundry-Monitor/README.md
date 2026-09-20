@@ -31,6 +31,32 @@ Devices
   in-line power monitor works well).
 - **Dryer**: any device exposing `capability.accelerationSensor` (reports
   `active`/`inactive`) - typically a vibration sensor stuck to the cabinet.
+- **Notifier** (optional): any device exposing `capability.notification`.
+  Nothing is sent unless you turn a notification on.
+
+### Pushover
+
+Any notifier works, but if you use Pushover, use **Dan Ogorchock's driver**
+and keep it reasonably current:
+
+```
+https://raw.githubusercontent.com/ogiewon/Hubitat/master/Drivers/pushover-notifications.src/pushover-notifications.groovy
+```
+
+Import it under **Drivers Code**. It is not in Hubitat Package Manager, so
+updates are a manual re-import: open the driver, **Import**, paste the URL,
+**Save**, then hit **Save Preferences** once on the device so it re-runs
+`initialize()`.
+
+A build from **2020-09-23 or newer** is required to use the feedback
+loop's *Pushover `[HTML]` marker* link style, which is when `[HTML]`
+support was added to that driver. Everything else in this app - including
+feedback links in their default plain-text form - works on any version and
+any notifier.
+
+To check what you have: **Devices** → your Pushover device → **State
+Variables** → `version`. The driver writes it on `initialize()`, so a
+missing `version` variable means it is older than that too.
 
 Install
 ---
@@ -270,10 +296,16 @@ up in the message you receive:
 ```
 
 That is the tell: `[HTML]` visible in the notification means the marker
-reached a driver too old to strip it. Update the driver from **Drivers
-Code**, or go back to plain text. The settings page lists the driver type
-name behind each of your notifier devices so you can see what you actually
-have installed.
+reached a driver too old to strip it - see [Pushover](#pushover) above for
+the version this needs and how to check yours. The settings page also
+lists the driver type name behind each of your notifier devices, so you
+can see what is actually wired up.
+
+One other thing that can quietly turn HTML off: the Pushover driver has a
+**Testing mode** preference that deliberately sends markup as plain text.
+It still strips `[HTML]` properly, so it is not the cause when the marker
+is visible - but it is worth checking if the marker disappears and the
+tags still do not render.
 
 Nothing needs changing inside the Pushover driver either way - the marker
 is a documented input, not a missing feature.
