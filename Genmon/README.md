@@ -93,6 +93,12 @@ After setup, you can configure options via the integration's **Configure** butto
 | Switch in Auto | Transfer switch in auto mode |
 | Update Available | Genmon update available |
 
+### Connectivity
+| Attribute | Values | Description |
+|-----------|--------|-------------|
+| `connectionStatus` | string | Transport state — `connected (ws)`, `connected (poll)`, `disconnected`, or an error string |
+| `healthStatus` | `online` / `offline` | Data freshness. Goes `offline` when no data has been received from genmon for longer than the configured threshold (driver preference, default 1 hour), and back `online` on the next update. Only fires an event on an actual transition, so it is safe to use in rules without flooding event history. |
+
 ### Controls
 | Entity | Type | Description |
 |--------|------|-------------|
