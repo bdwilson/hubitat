@@ -92,7 +92,7 @@ def mainPage() {
             input "washerStopW", "decimal", title: "Stop cycle when power (W) drops below", required: false, defaultValue: 3
             input "washerStopReadings", "number", title: "Stop after power is below threshold for this many sequential readings (fast path, if the meter keeps reporting)", required: false, defaultValue: 2
             input "washerStopMinutes", "number", title: "Also require this many continuous minutes below threshold before stopping (0 = off)", required: false, defaultValue: 0
-            input "washerStopConfirmMin", "number", title: "Also confirm stop after this many minutes with no reading back above the stop threshold, even without a second low reading (handles meters that stop reporting once idle; 0 = off)", required: false, defaultValue: 10
+            input "washerStopConfirmMin", "number", title: "Also confirm stop after this many minutes with no reading back above the stop threshold, even without a second low reading (handles meters that stop reporting once idle; needs to outlast a soak-cycle pause - see README; 0 = off)", required: false, defaultValue: 20
             input "washerStopConfirmLateMin", "number", title: "Shorter confirmation once the wash has already run about as long as a normal load (catches back-to-back loads; 0 = always use the value above)", required: false, defaultValue: 4
             input "washerIgnoreW", "decimal", title: "Ignore extraneous power (W) readings above (spike filter)", required: false, defaultValue: 1500
             input "washerDeadmanMin", "number", title: "Maximum cycle time in minutes (deadman timer, force-ends a stuck cycle)", required: false, defaultValue: 90
@@ -363,7 +363,7 @@ def uninstalled() {
 // defaultValue only applies to a setting that has never been set. So
 // without this, an existing install keeps running on its old values and
 // silently ignores the new defaults.
-private static String settingsVersion() { return "7" }
+private static String settingsVersion() { return "8" }
 
 private void migrateSettings() {
     if (state.settingsVersion == settingsVersion()) return
@@ -453,6 +453,23 @@ private void migrateSettings() {
     if (feedbackLinkStyle == null || feedbackLinkStyle == "auto") {
         app.updateSetting("feedbackLinkStyle", [value: "plain", type: "enum"])
         changes << "feedbackLinkStyle=plain"
+    }
+
+    // v8: a real front-loader soak phase held power below the stop
+    // threshold for longer than the 10-minute quiet timeout, so the app
+    // declared the wash done mid-cycle - then read the next agitation
+    // burst as a brand-new load and wrongly announced a second-load
+    // overlap with the dryer. Both wrong calls traced back to this one
+    // setting. The only bound the evidence gives is a floor (10 min
+    // wasn't enough); there's no pinned reading showing how long the
+    // gap actually ran, so this is a reasoned margin, not a measured one -
+    // watch for a repeat false "done" on a soak cycle and report it if one
+    // shows up. Every real cycle that finished early in this data (in
+    // particular one at 18 minutes) still ends correctly either way; it
+    // just gets its "done" notification up to 10 minutes later.
+    if ((washerStopConfirmMin ?: 0) < 20) {
+        app.updateSetting("washerStopConfirmMin", [value: "20", type: "number"])
+        changes << "washerStopConfirmMin=20"
     }
 
     state.settingsVersion = settingsVersion()
