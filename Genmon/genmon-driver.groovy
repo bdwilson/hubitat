@@ -28,9 +28,12 @@
  *                         ["offline","online"] driven by a scheduled staleness
  *                         check, which fires only on an actual health transition.
  *                         Threshold configurable (default 1 hour).
- *                         Added a resetAttributes command: clears stored attribute
+ *   - v2.5.0 - 22SEP26  - Added a resetAttributes command: clears stored attribute
  *                         values and re-polls, so fields dropped by a genmon-side
  *                         filter or toggle change stop lingering at a stale value.
+ *                         (The command shipped in the repo under 2.4.0 but after
+ *                         2.4.0 was published, so it is versioned here to make it
+ *                         reach existing installs through HPM.)
  *
  * Communicates directly with the Genmon REST/WebSocket API using the native
  * Genmon addon for Hubitat.  Home Assistant is NOT required.
