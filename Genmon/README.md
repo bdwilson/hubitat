@@ -110,6 +110,20 @@ After setup, you can configure options via the integration's **Configure** butto
 | Exercise Frequency | Select | Weekly/BiWeekly/Monthly |
 | Exercise Day of Week | Select | Day selection for exercise |
 | Exercise Hour/Minute | Number | Time of day for exercise |
+| Reset Attributes | Button | Clears stored attribute values and re-polls — see below |
+
+### Removing stale attributes
+
+Genmon decides which fields it sends, via its **Excluded Data Paths** blacklist
+and the **Include Monitor Stats** / **Include Weather** toggles. When you change
+one of those to drop a field, genmon simply stops sending it — there is no
+"removed" message — so the matching Hubitat attribute keeps whatever value it
+last held, which is misleading on a dashboard or in a rule.
+
+Press **Reset Attributes** after changing genmon-side filtering. It clears the
+stored values and immediately re-polls, so only what genmon is still sending
+comes back. `connectionStatus` and `healthStatus` are produced by the driver
+rather than by genmon, so they are left alone.
 
 ## Troubleshooting
 
