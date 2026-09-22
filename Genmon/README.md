@@ -4,6 +4,8 @@ A native Hubitat driver for monitoring and controlling Generac generators via [g
 
 This integration communicates with the **genhubitat** addon running on your genmon instance, providing real-time generator data through a REST + WebSocket API. It works alongside the existing MQTT-based integration — users can choose whichever fits their setup.
 
+Discussion and support: [Hubitat Community thread](https://community.hubitat.com/t/genmon-generator-monitor/164362).
+
 ## Features
 
 - **60+ sensors**: Battery voltage, RPM, output power, fuel level, run hours, weather, and more

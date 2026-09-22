@@ -1,12 +1,12 @@
 {
   "packageName": "Genmon Generator Monitor",
   "author": "Brian Wilson",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Genmon",
   "communityLink": "https://community.hubitat.com/t/genmon-generator-monitor/164362",
-  "dateReleased": "2026-09-20",
-  "releaseNotes": "2.4.0: Removed the lastUpdate attribute, which fired an event on every update (~2,880/day at the default 30s throttle) because its timestamp value always differed. Replaced with a healthStatus attribute (online/offline) driven by a scheduled staleness check, so it only fires on an actual health transition. Staleness threshold is configurable, default 1 hour. Also adds a resetAttributes command that clears stored attribute values and re-polls, so attributes dropped by a genmon-side filter or toggle change stop lingering at a stale value. Note: anything bound to lastUpdate (dashboard tiles, rules) must be updated.",
+  "dateReleased": "2026-09-22",
+  "releaseNotes": "2.5.0: Adds a resetAttributes command that clears stored attribute values and re-polls, so attributes dropped by a genmon-side filter or toggle change stop lingering at a stale value instead of showing whatever they last held. 2.4.0: Removed the lastUpdate attribute, which fired an event on every update (~2,880/day at the default 30s throttle) because its timestamp value always differed. Replaced with a healthStatus attribute (online/offline) driven by a scheduled staleness check, so it only fires on an actual health transition; threshold configurable, default 1 hour. Note: anything bound to lastUpdate (dashboard tiles, rules) must be updated.",
   "drivers": [
     {
       "id": "8f3c2c9e-4c0b-4c8e-9c3e-7b6d2e4f91ab",
@@ -14,7 +14,7 @@
       "namespace": "brianwilson-hubitat",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Genmon/genmon-driver.groovy",
       "required": true,
-      "version": "2.4.0"
+      "version": "2.5.0"
     }
   ]
 }
