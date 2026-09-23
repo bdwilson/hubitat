@@ -275,17 +275,35 @@ Turn on **Add feedback links to notifications** and each push gains:
 Washer is done
 
 Was this correct?
-Yes: https://cloud.hubitat.com/api/<hub>/apps/<id>/f/142/y?access_token=<token>
-No:  https://cloud.hubitat.com/api/<hub>/apps/<id>/f/142/n?access_token=<token>
+No: https://cloud.hubitat.com/api/<hub>/apps/<id>/f/142/n?access_token=<token>
 ```
 
-**Yes** is a single tap and needs nothing else - the link records the
-answer and returns a page saying so. **No** records it and then offers an
-optional note - "nothing was running, I was just emptying the dryer" is
-exactly the kind of label that no threshold could have inferred. Ignoring
-the question entirely is treated as *nothing said*, not as a yes. The Yes
-page also carries an "actually, that one was wrong" link, so a mis-tap
-takes one more tap to correct rather than being stuck.
+There is only a **No** link, because only wrong alerts need marking:
+silence counts as correct. That was already how learning worked - a cycle
+nobody objects to feeds the learned profile exactly as a confirmed one
+did - so a Yes link was a tap that changed nothing. Tapping **No** records
+the alert as wrong on the spot and then offers an optional note -
+"nothing was running, I was just emptying the dryer" is exactly the kind
+of label no threshold could have inferred.
+
+Alerts sent before the Yes link was removed still work if you tap Yes on
+one: it records as correct and offers an "actually, that one was wrong"
+link. Those older answers show up as CORRECT in the tuning report.
+
+### Sending a test
+
+**Send test notification** (in the Feedback section) pushes a message
+marked `[TEST]` through the same notifiers, link style, and URL as a real
+alert. Tap its **No** link and you get the real page and note form, with
+a banner saying it's a test - and nothing you enter is saved. The link
+carries `test` in place of an event id, so it never enters the
+notification index, and both handlers check for it before looking
+anything up. It's the way to check how an alert renders after changing
+the link style or updating the Pushover driver, without polluting the
+feedback log. The settings page shows when the last test went out and to
+how many devices.
+
+The test goes to notification devices only, not speech.
 
 ### How the links are formatted
 
@@ -308,7 +326,7 @@ marker to an **older** driver and it has no idea what it means, so it ends
 up in the message you receive:
 
 ```
-[HTML]Washer started<br><br>Was this correct? <a href="https://...">Yes</a>
+[HTML]Washer started<br><br>Was this correct? <a href="https://...">No</a>
 ```
 
 That is the tell: `[HTML]` visible in the notification means the marker
@@ -325,6 +343,13 @@ tags still do not render.
 
 Nothing needs changing inside the Pushover driver either way - the marker
 is a documented input, not a missing feature.
+
+The HTML form puts plain newlines in front of its `<br><br>`. The
+lock-screen/banner preview strips HTML, so with `<br>` alone the feedback
+line ran straight on from the message there, even though the full view in
+the Pushover app rendered it on its own line. The newlines are real
+newline characters, not a typed `\n` - the Pushover driver converts a
+literal `\n` into `<br>`, but leaves actual newlines alone.
 
 Setup, once:
 

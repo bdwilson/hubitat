@@ -64,9 +64,10 @@ definition(
 )
 
 mappings {
-    // Yes/No land straight from the notification - one tap. "No" then
-    // offers an optional note. Distinct path shapes so ":answer" can't
-    // swallow the note submission.
+    // "No" lands straight from the notification - one tap - then offers an
+    // optional note. (":answer" still accepts "y" for alerts sent before the
+    // Yes link was dropped.) ":id" is "test" for the test notification.
+    // Distinct path shapes so ":answer" can't swallow the note submission.
     path("/f/:id/:answer") { action: [GET: "feedbackAnswer"] }
     path("/fn/:id")        { action: [GET: "feedbackNote"] }
 }
@@ -138,7 +139,7 @@ def mainPage() {
         }
 
         section("<b>Feedback (off by default)</b>", hideable: true, hidden: !(enableFeedback as boolean)) {
-            paragraph "Adds <i>Was this correct? Yes / No</i> links to each notification. Yes is one tap; No offers an optional note. No answer is treated as nothing said - not as a yes. Answers are stored with the raw readings behind them so detection can be re-tuned from real labelled events instead of guesswork."
+            paragraph "Adds a <i>Was this correct? No</i> link to each notification. Tap it only when an alert was wrong - silence counts as correct, which is how learning has always treated it. No offers an optional note. Answers are stored with the raw readings behind them so detection can be re-tuned from real labelled events instead of guesswork."
             input "enableFeedback", "bool", title: "Add feedback links to notifications", required: false, defaultValue: false, submitOnChange: true
             if (enableFeedback) {
                 input "feedbackUrlMode", "enum", title: "Which URL to put in notifications", required: false, defaultValue: "cloud", options: ["cloud": "Cloud (works away from home)", "local": "Local (LAN only)"], submitOnChange: true
@@ -155,16 +156,22 @@ def mainPage() {
                     }.join("<br>")
                     paragraph "<small>Notifier drivers in use:<br>${types}</small>"
                 }
+                input "sendTestNotificationButton", "button", title: "Send test notification", submitOnChange: true
+                paragraph "<small>Sends a clearly-marked test through the same notifiers and link format as a real alert, so you can check how it renders and walk through the No link and note page end to end. Nothing you enter from a test is saved.</small>"
+                Map lastTest = (state.lastTestNotification instanceof Map) ? state.lastTestNotification : null
+                if (lastTest) {
+                    String when = new Date(lastTest.t as Long).format("MMM d h:mm a", location.timeZone)
+                    paragraph "<small>Last test: ${when} - ${esc(lastTest.r as String)}</small>"
+                }
                 if (!state.accessToken) {
                     paragraph "<span style='color:#b00'><b>OAuth is not enabled yet.</b> Go to <b>Apps Code</b> &rarr; this app &rarr; <b>OAuth</b> &rarr; Enable, then come back and hit Done.</span>"
                 } else {
-                    paragraph "Cloud: <code>${getFullApiServerUrl()}/f/&lt;id&gt;/y?access_token=${state.accessToken}</code>"
-                    paragraph "Local: <code>${getFullLocalApiServerUrl()}/f/&lt;id&gt;/y?access_token=${state.accessToken}</code>"
+                    paragraph "Cloud: <code>${getFullApiServerUrl()}/f/&lt;id&gt;/n?access_token=${state.accessToken}</code>"
+                    paragraph "Local: <code>${getFullLocalApiServerUrl()}/f/&lt;id&gt;/n?access_token=${state.accessToken}</code>"
                     paragraph "<small>Anyone with that token can submit feedback, so treat the link as mildly sensitive. It cannot read your logs, change settings, or control devices.</small>"
                 }
-                Integer answered = ((state.feedback instanceof List) ? state.feedback : []).size()
                 Integer wrong = ((state.feedback instanceof List) ? state.feedback : []).count { !(it.ok) } as Integer
-                paragraph "Answers so far: ${answered} (${wrong} marked not correct)"
+                paragraph "Alerts marked wrong so far: ${wrong}"
             }
         }
 
@@ -262,8 +269,11 @@ private String tuningPrompt() {
     }
 
     sb << "\nMY CORRECTIONS\n"
+    sb << "(Only wrong alerts get marked. Any alert not listed here as WRONG was\n"
+    sb << "correct - there is no separate confirmation for right calls. Older\n"
+    sb << "entries may show CORRECT from before that was the case.)\n"
     if (!fb) {
-        sb << "(none yet - answer the Yes/No links on notifications to build this up)\n"
+        sb << "(none yet - tap the No link on a wrong notification to build this up)\n"
     } else {
         fb.each { f ->
             Map n = idx.find { (it.i as Integer) == (f.i as Integer) }
@@ -563,6 +573,9 @@ def appButtonHandler(String btn) {
             if (state.dryerOn) endDryerCycle("manual reset", now())
             state.remove("dryerActiveSince")
             unschedule("dryerMinRunFired")
+            break
+        case "sendTestNotificationButton":
+            sendTestNotification()
             break
     }
 }
@@ -1005,6 +1018,7 @@ body{font-family:-apple-system,system-ui,sans-serif;background:#111;color:#eee;m
 .bad{color:#ff8a65;font-size:22px;font-weight:600}
 .ev{color:#aaa;margin:14px 0 22px}
 .link{color:#7aa7ff}
+.test{background:#4a3b00;color:#ffd54f;border-radius:8px;padding:10px 14px;font-weight:600;margin:0 0 18px}
 textarea{width:100%;box-sizing:border-box;min-height:110px;font-size:17px;padding:10px;border-radius:8px;border:1px solid #444;background:#1c1c1c;color:#eee}
 button{margin-top:14px;width:100%;padding:14px;font-size:18px;font-weight:600;border:0;border-radius:8px;background:#2f6fed;color:#fff}
 </style></head><body><div class="card">${bodyHtml}</div></body></html>"""
@@ -1028,28 +1042,50 @@ private String fbEventHtml(Map n) {
     return "<p class=\"ev\">${esc(n.m as String)}<br><small>${esc(n.k as String)} &middot; ${esc(n.d as String)}${when}</small></p>"
 }
 
+// Links from the test notification carry this in place of a numeric event
+// id. Every handler checks for it first and short-circuits before anything
+// is looked up or stored, so a test can never leak into the feedback log,
+// the learned profile, or the tuning report.
+private static String testFeedbackId() { return "test" }
+
+private String fbNoteForm(String id, String buttonLabel) {
+    return """<form action="${feedbackBaseUrl()}/fn/${id}" method="GET">
+<input type="hidden" name="access_token" value="${state.accessToken}">
+<label for="note">What actually happened? (optional)</label>
+<textarea id="note" name="note" placeholder="e.g. nothing was running, I was just emptying the dryer"></textarea>
+<button type="submit">${buttonLabel}</button></form>"""
+}
+
+private String fbTestBanner() {
+    return "<p class=\"test\">TEST &mdash; nothing entered here is saved</p>"
+}
+
 def feedbackAnswer() {
     try {
+        if ((params?.id as String) == testFeedbackId()) {
+            if (txtEnable) log.info "Laundry Monitor: test feedback link opened (not saved)"
+            return fbRender("""${fbTestBanner()}<p class="bad">This is where a wrong alert gets logged.</p>
+<p class="ev">On a real alert, opening this page has already recorded it as wrong. The note below is optional.</p>
+${fbNoteForm(testFeedbackId(), "Send test note")}""")
+        }
         Integer id = safeInt(params?.id)
         String answer = params?.answer
         Map n = id == null ? null : findNotification(id)
         if (n == null) {
             return fbRender("<p class=\"bad\">Event not found</p><p class=\"ev\">It may have aged out of the log.</p>")
         }
+        // New notifications only carry a No link. "y" is still honoured for
+        // alerts that went out before the Yes link was dropped, so tapping
+        // one of those still gets a proper page rather than a wrong answer.
         boolean ok = (answer == "y")
         storeFeedback(id, ok, null)
         String ev = fbEventHtml(n)
-        String base = feedbackBaseUrl()
         if (ok) {
-            String flip = "${base}/f/${id}/n?access_token=${state.accessToken}"
+            String flip = "${feedbackBaseUrl()}/f/${id}/n?access_token=${state.accessToken}"
             return fbRender("<p class=\"ok\">Thanks &mdash; logged as correct.</p>${ev}<p><a class=\"link\" href=\"${flip}\">Actually, that one was wrong</a></p>")
         }
         return fbRender("""<p class="bad">Logged as not correct.</p>${ev}
-<form action="${base}/fn/${id}" method="GET">
-<input type="hidden" name="access_token" value="${state.accessToken}">
-<label for="note">What actually happened? (optional)</label>
-<textarea id="note" name="note" placeholder="e.g. nothing was running, I was just emptying the dryer"></textarea>
-<button type="submit">Save note</button></form>
+${fbNoteForm(id.toString(), "Save note")}
 <p><small>The answer is already saved. The note is optional extra detail.</small></p>""")
     } catch (Exception e) {
         log.error "Laundry Monitor: feedback link failed - ${e}"
@@ -1059,13 +1095,20 @@ def feedbackAnswer() {
 
 def feedbackNote() {
     try {
+        String noteText = (params?.note ?: "") as String
+        if (noteText.length() > 500) noteText = noteText.substring(0, 500)
+        if ((params?.id as String) == testFeedbackId()) {
+            if (txtEnable) log.info "Laundry Monitor: test feedback note received (not saved)${noteText ? " - ${noteText}" : ''}"
+            String body = "${fbTestBanner()}<p class=\"ok\">Note received &mdash; and discarded.</p>"
+            body += noteText ? "<p class=\"ev\">&ldquo;${esc(noteText)}&rdquo;</p>" : "<p class=\"ev\">(no note entered)</p>"
+            body += "<p class=\"ev\">On a real alert this is where it would be saved alongside the raw readings.</p>"
+            return fbRender(body)
+        }
         Integer id = safeInt(params?.id)
         Map n = id == null ? null : findNotification(id)
         if (n == null) {
             return fbRender("<p class=\"bad\">Event not found</p>")
         }
-        String noteText = (params?.note ?: "") as String
-        if (noteText.length() > 500) noteText = noteText.substring(0, 500)
         storeFeedback(id, false, noteText)
         String body = "<p class=\"ok\">Thanks &mdash; noted.</p>" + fbEventHtml(n)
         if (noteText) body += "<p class=\"ev\">&ldquo;${esc(noteText)}&rdquo;</p>"
@@ -1089,30 +1132,68 @@ private Integer safeInt(v) {
 
 private void notify(String msg, String kind, String device, Long cycleTs) {
     if (!msg) return
-    String plain = msg
-    String html = null
+    Map forms = null
     if (enableFeedback && state.accessToken) {
         Integer id = recordNotification(msg, kind, device, cycleTs)
-        if (id != null) {
-            String base = feedbackBaseUrl()
-            if (base) {
-                String yes = "${base}/f/${id}/y?access_token=${state.accessToken}"
-                String no = "${base}/f/${id}/n?access_token=${state.accessToken}"
-                plain = "${msg}\n\nWas this correct?\nYes: ${yes}\nNo: ${no}"
-                html = "${msg}<br><br>Was this correct? <a href=\"${yes}\">Yes</a> | <a href=\"${no}\">No</a>"
-            }
-        }
+        if (id != null) forms = feedbackForms(msg, id.toString())
     }
+    deliver(forms?.plain ?: msg, forms?.html)
+    // Speech gets the plain subject line - nobody wants a URL read aloud.
+    if (speechDevices) speechDevices*.speak(msg)
+    if (txtEnable) log.info "notify: ${msg}"
+}
+
+// Only a No link: silence already counts as correct, so a Yes link added a
+// tap that changed nothing. The newlines ahead of the <br>s are for the
+// lock-screen/banner preview, which strips HTML - without them the
+// feedback line runs straight on from the message text there, even though
+// the full notification view renders the <br>s fine.
+private Map feedbackForms(String msg, String id) {
+    String base = feedbackBaseUrl()
+    if (!base || !state.accessToken) return null
+    String no = "${base}/f/${id}/n?access_token=${state.accessToken}"
+    return [
+        plain: "${msg}\n\nWas this correct?\nNo: ${no}",
+        html : "${msg}\n\n<br><br>Was this correct? <a href=\"${no}\">No</a>"
+    ]
+}
+
+private Integer deliver(String plain, String html) {
+    Integer sent = 0
     notifyDevices?.each { dev ->
         try {
             dev.deviceNotification(messageFor(dev, plain, html))
+            sent++
         } catch (Exception e) {
             log.warn "Laundry Monitor: ${dev} rejected the notification - ${e.message}"
         }
     }
-    // Speech gets the plain subject line - nobody wants a URL read aloud.
-    if (speechDevices) speechDevices*.speak(msg)
-    if (txtEnable) log.info "notify: ${msg}"
+    return sent
+}
+
+// Goes through exactly the same formatting and delivery as a real alert,
+// but its link carries testFeedbackId() instead of a recorded event id, so
+// nothing is added to the notification index and the handlers refuse to
+// store anything answered from it.
+private void sendTestNotification() {
+    String result
+    if (!notifyDevices) {
+        result = "not sent - no notification devices selected (turn on a start or done notification to pick them)"
+    } else {
+        String msg = "[TEST] Laundry Monitor test notification - nothing actually happened"
+        Map forms = (enableFeedback && state.accessToken) ? feedbackForms(msg, testFeedbackId()) : null
+        Integer sent = deliver(forms?.plain ?: msg, forms?.html)
+        result = "sent to ${sent} of ${notifyDevices.size()} device(s), "
+        if (forms) {
+            result += "with a No link (${feedbackLinkStyle ?: 'plain'} style)"
+        } else if (!state.accessToken) {
+            result += "without a No link - OAuth isn't enabled yet"
+        } else {
+            result += "without a No link - feedback links are off"
+        }
+    }
+    state.lastTestNotification = [t: now(), r: result]
+    if (txtEnable) log.info "Laundry Monitor: test notification ${result}"
 }
 
 // Pushover does render HTML, but its Hubitat driver only asks the API for
