@@ -143,8 +143,8 @@ def mainPage() {
             input "enableFeedback", "bool", title: "Add feedback links to notifications", required: false, defaultValue: false, submitOnChange: true
             if (enableFeedback) {
                 input "feedbackUrlMode", "enum", title: "Which URL to put in notifications", required: false, defaultValue: "cloud", options: ["cloud": "Cloud (works away from home)", "local": "Local (LAN only)"], submitOnChange: true
-                input "feedbackLinkStyle", "enum", title: "How to put the links in the message", required: false, defaultValue: "plain", options: ["plain": "Plain text URLs - works everywhere", "pushover": "Pushover [HTML] marker - needs a 2020-09-23 or newer Pushover driver", "html": "Raw HTML - only if your notifier renders it unprompted"], submitOnChange: true
-                paragraph "<small><b>Plain text</b> is the default because every push client turns a bare URL into a tappable link by itself, with nothing to configure. The other two are tidier when they work and show raw markup when they don't, so change this only after a test alert renders the way you expect. If you pick the Pushover option and the alert arrives still showing <code>[HTML]</code>, your installed driver is older than that feature - update it from <b>Drivers Code</b> or switch back to plain.</small>"
+                input "feedbackLinkStyle", "enum", title: "How to put the links in the message", required: false, defaultValue: "plain", options: ["plain": "Plain text URLs - works everywhere", "pushover": "Pushover - HTML link plus a No button (needs a 2021-11-16 or newer Pushover driver)", "html": "Raw HTML - only if your notifier renders it unprompted"], submitOnChange: true
+                paragraph "<small><b>Plain text</b> is the default because every push client turns a bare URL into a tappable link by itself, with nothing to configure. The other two are tidier when they work and show raw markup when they don't, so change this only after a test alert renders the way you expect. If you pick the Pushover option and the alert arrives still showing <code>[HTML]</code> or <code>&sect;</code>, your installed driver is too old for those markers - update it from <b>Drivers Code</b> or switch back to plain.</small>"
                 if (notifyDevices) {
                     // Which driver is actually installed decides whether the
                     // marker options can work at all, and it is not otherwise
@@ -1137,32 +1137,32 @@ private void notify(String msg, String kind, String device, Long cycleTs) {
         Integer id = recordNotification(msg, kind, device, cycleTs)
         if (id != null) forms = feedbackForms(msg, id.toString())
     }
-    deliver(forms?.plain ?: msg, forms?.html)
+    deliver(msg, forms)
     // Speech gets the plain subject line - nobody wants a URL read aloud.
     if (speechDevices) speechDevices*.speak(msg)
     if (txtEnable) log.info "notify: ${msg}"
 }
 
 // Only a No link: silence already counts as correct, so a Yes link added a
-// tap that changed nothing. The newlines ahead of the <br>s are for the
-// lock-screen/banner preview, which strips HTML - without them the
-// feedback line runs straight on from the message text there, even though
-// the full notification view renders the <br>s fine.
+// tap that changed nothing. Plain newlines separate the feedback line in
+// both forms - they break the line in the lock-screen preview, which strips
+// HTML, and Pushover's full view honours them too, so no <br> is needed.
 private Map feedbackForms(String msg, String id) {
     String base = feedbackBaseUrl()
     if (!base || !state.accessToken) return null
     String no = "${base}/f/${id}/n?access_token=${state.accessToken}"
     return [
         plain: "${msg}\n\nWas this correct?\nNo: ${no}",
-        html : "${msg}\n\n<br><br>Was this correct? <a href=\"${no}\">No</a>"
+        html : "${msg}\n\nWas this correct? <a href=\"${no}\">No</a>",
+        url  : no
     ]
 }
 
-private Integer deliver(String plain, String html) {
+private Integer deliver(String msg, Map forms) {
     Integer sent = 0
     notifyDevices?.each { dev ->
         try {
-            dev.deviceNotification(messageFor(dev, plain, html))
+            dev.deviceNotification(messageFor(dev, msg, forms))
             sent++
         } catch (Exception e) {
             log.warn "Laundry Monitor: ${dev} rejected the notification - ${e.message}"
@@ -1182,7 +1182,7 @@ private void sendTestNotification() {
     } else {
         String msg = "[TEST] Laundry Monitor test notification - nothing actually happened"
         Map forms = (enableFeedback && state.accessToken) ? feedbackForms(msg, testFeedbackId()) : null
-        Integer sent = deliver(forms?.plain ?: msg, forms?.html)
+        Integer sent = deliver(msg, forms)
         result = "sent to ${sent} of ${notifyDevices.size()} device(s), "
         if (forms) {
             result += "with a No link (${feedbackLinkStyle ?: 'plain'} style)"
@@ -1197,21 +1197,33 @@ private void sendTestNotification() {
 }
 
 // Pushover does render HTML, but its Hubitat driver only asks the API for
-// that when the message carries a literal "[HTML]" marker, and only in
-// versions from 2020-09-23 on - an older driver passes the marker straight
-// through into the message text. No other notifier understands it at all, so
-// the choice is made per device rather than baked into the message.
-private String messageFor(dev, String plain, String html) {
-    if (html == null) return plain
+// that when the message carries a literal "[HTML]" marker. The same driver
+// lifts a URL wrapped in section signs out of the text and sends it as the
+// message's supplementary URL, with a title wrapped in currency signs -
+// that's what gives the No link its own button rather than only a link
+// buried in the text. Markers need a 2021-11-16 or newer driver; an older
+// one passes them straight through into the message. No other notifier
+// understands them at all, so the choice is made per device rather than
+// baked into the message.
+private String messageFor(dev, String msg, Map forms) {
+    if (forms == null) return msg
     switch (feedbackLinkStyle) {
         case "html":
-            return html
+            return forms.html
         case "pushover":
-            return isPushoverDevice(dev) ? "[HTML]${html}" : plain
+            return isPushoverDevice(dev) ? "[HTML]${forms.html}${pushoverUrlMarker(forms.url as String)}" : forms.plain
         default:
             // "plain", the retired "auto", or never set.
-            return plain
+            return forms.plain
     }
+}
+
+// The legacy section-sign form rather than [URL=...]: identical in effect,
+// but the bracket form only arrived in the 2025-08-05 driver. Written as
+// escapes so the file stays plain ASCII through Hubitat's code editor.
+private static String pushoverUrlMarker(String url) {
+    if (!url) return ""
+    return "\u00A7${url}\u00A7\u00A4Mark this alert as wrong\u00A4"
 }
 
 private boolean isPushoverDevice(dev) {

@@ -48,9 +48,10 @@ updates are a manual re-import: open the driver, **Import**, paste the URL,
 **Save**, then hit **Save Preferences** once on the device so it re-runs
 `initialize()`.
 
-A build from **2020-09-23 or newer** is required to use the feedback
-loop's *Pushover `[HTML]` marker* link style, which is when `[HTML]`
-support was added to that driver. Everything else in this app - including
+A build from **2021-11-16 or newer** is required to use the feedback
+loop's *Pushover* link style, which relies on two of that driver's
+message markers: `[HTML]` (added 2020-09-23) and the supplementary-URL
+markers (added 2021-11-16). Everything else in this app - including
 feedback links in their default plain-text form - works on any version and
 any notifier.
 
@@ -314,24 +315,38 @@ tappable link on its own.
 | Setting | What each notifier receives |
 | --- | --- |
 | **Plain text URLs** | Bare URLs everywhere. Less tidy, universally works. |
-| **Pushover `[HTML]` marker** | Pushover devices get `[HTML]` + anchor tags; anything else still gets plain URLs. |
+| **Pushover** | Pushover devices get an HTML **No** link in the text plus the same URL as the message's own supplementary link, titled *Mark this alert as wrong*; anything else still gets plain URLs. |
 | **Raw HTML** | Anchor tags, no marker - only for a notifier you have confirmed renders HTML unprompted. |
 
 The two tidy options are worth understanding before picking one. Pushover
 renders HTML only when the sender sets the API's `html=1` flag, and [Dan
 Ogorchock's Pushover driver](https://raw.githubusercontent.com/ogiewon/Hubitat/master/Drivers/pushover-notifications.src/pushover-notifications.groovy)
 - the one nearly everyone uses - sets that flag only when the message
-carries a literal `[HTML]` marker, a feature added 2020-09-23. Send that
-marker to an **older** driver and it has no idea what it means, so it ends
-up in the message you receive:
+carries a literal `[HTML]` marker. The Pushover style also appends the No
+URL wrapped in `§...§` with a title in `¤...¤`; the driver lifts those out
+of the text and sends them as Pushover's `url` and `url_title`, so the No
+link gets its own entry under the message instead of only living inside
+the text. (The driver also accepts `[URL=...]`, but only since 2025-08-05;
+the `§` form works back to 2021-11-16.)
+
+Per Pushover's API description, that supplementary link is shown
+underneath the message, and when you tap a notification to expand it.
+Whether tapping the lock-screen banner opens the page straight away, or
+opens Pushover with the link one more tap away, is up to the Pushover
+client - the test notification is the quickest way to see what yours does.
+
+Send those markers to an **older** driver and it has no idea what they
+mean, so they end up in the message you receive:
 
 ```
-[HTML]Washer started<br><br>Was this correct? <a href="https://...">No</a>
+[HTML]Washer started
+
+Was this correct? <a href="https://...">No</a>§https://...§¤Mark this alert as wrong¤
 ```
 
-That is the tell: `[HTML]` visible in the notification means the marker
-reached a driver too old to strip it - see [Pushover](#pushover) above for
-the version this needs and how to check yours. The settings page also
+That is the tell: `[HTML]` or `§` visible in the notification means the
+markers reached a driver too old to strip them - see [Pushover](#pushover)
+above for the version this needs and how to check yours. The settings page also
 lists the driver type name behind each of your notifier devices, so you
 can see what is actually wired up.
 
@@ -344,12 +359,12 @@ tags still do not render.
 Nothing needs changing inside the Pushover driver either way - the marker
 is a documented input, not a missing feature.
 
-The HTML form puts plain newlines in front of its `<br><br>`. The
-lock-screen/banner preview strips HTML, so with `<br>` alone the feedback
-line ran straight on from the message there, even though the full view in
-the Pushover app rendered it on its own line. The newlines are real
-newline characters, not a typed `\n` - the Pushover driver converts a
-literal `\n` into `<br>`, but leaves actual newlines alone.
+Line breaks in both forms are plain newlines, not `<br>`. The
+lock-screen/banner preview strips HTML, so a `<br>` alone left the
+feedback line running straight on from the message there; Pushover's full
+view honours plain newlines in HTML messages too, so `<br>` added nothing.
+They are real newline characters, not a typed `\n` - the Pushover driver
+converts a literal `\n` into `<br>`, but leaves actual newlines alone.
 
 Setup, once:
 
