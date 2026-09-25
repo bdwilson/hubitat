@@ -49,9 +49,8 @@ updates are a manual re-import: open the driver, **Import**, paste the URL,
 `initialize()`.
 
 A build from **2021-11-16 or newer** is required to use the feedback
-loop's *Pushover* link style, which relies on two of that driver's
-message markers: `[HTML]` (added 2020-09-23) and the supplementary-URL
-markers (added 2021-11-16). Everything else in this app - including
+loop's *Pushover* link style, which relies on that driver's
+supplementary-URL markers, added then. Everything else in this app - including
 feedback links in their default plain-text form - works on any version and
 any notifier.
 
@@ -252,7 +251,7 @@ you set afterwards is respected.
 | v4 | `washerStopConfirmLateMin` -> 4 | Enables the adaptive stop timeout so back-to-back loads stop merging - see "Why the stop timeout adapts" above. |
 | v5 | `feedbackLinkStyle` -> `plain` | Superseded by v6 the same day; see below. |
 | v6 | `feedbackLinkStyle` -> `auto` | Superseded by v7; the marker it added was not understood by the installed driver. |
-| v7 | `feedbackLinkStyle` -> `plain` (from `auto` or unset) | Plain URLs need no cooperation from any driver. The `[HTML]` marker is still selectable, but as a deliberate choice. |
+| v7 | `feedbackLinkStyle` -> `plain` (from `auto` or unset) | Plain URLs need no cooperation from any driver. The Pushover style is still selectable, but as a deliberate choice. |
 | v8 | `washerStopConfirmMin` -> 20 (if lower) | A soak-phase pause outlasted the 10-minute quiet timeout, so the wash was declared done mid-cycle and the resumed agitation was then read as a false second-load start. See "Why the quiet timeout is 20 minutes, not 10" above. |
 
 ### Only one message per start
@@ -314,22 +313,29 @@ tappable link on its own.
 
 | Setting | What each notifier receives |
 | --- | --- |
-| **Plain text URLs** | Bare URLs everywhere. Less tidy, universally works. |
-| **Pushover** | Pushover devices get an HTML **No** link in the text plus the same URL as the message's own supplementary link, titled *Mark this alert as wrong*; anything else still gets plain URLs. |
-| **Raw HTML** | Anchor tags, no marker - only for a notifier you have confirmed renders HTML unprompted. |
+| **Plain text URLs** | The question and a bare No URL appended to the message, everywhere. Less tidy, universally works. |
+| **Pushover** | Pushover devices get the alert text exactly as written, with the No link as the notification's own link, titled *Click here to mark this alert as incorrect*. Anything else still gets plain URLs. |
+| **Raw HTML** | The question and an HTML **No** link, no marker - only for a notifier you have confirmed renders HTML unprompted. |
 
-The two tidy options are worth understanding before picking one. Pushover
-renders HTML only when the sender sets the API's `html=1` flag, and [Dan
-Ogorchock's Pushover driver](https://raw.githubusercontent.com/ogiewon/Hubitat/master/Drivers/pushover-notifications.src/pushover-notifications.groovy)
-- the one nearly everyone uses - sets that flag only when the message
-carries a literal `[HTML]` marker. The Pushover style also appends the No
-URL wrapped in `§...§` with a title in `¤...¤`; the driver lifts those out
-of the text and sends them as Pushover's `url` and `url_title`, so the No
-link gets its own entry under the message instead of only living inside
-the text. (The driver also accepts `[URL=...]`, but only since 2025-08-05;
-the `§` form works back to 2021-11-16.)
+The Pushover style leans on a Pushover feature rather than on formatting.
+Every Pushover message can carry one *supplementary URL* with a title,
+shown separately from the text. [Dan Ogorchock's Pushover
+driver](https://raw.githubusercontent.com/ogiewon/Hubitat/master/Drivers/pushover-notifications.src/pushover-notifications.groovy)
+- the one nearly everyone uses - fills it from a URL wrapped in `§...§`
+and a title wrapped in `¤...¤`, lifting both out of the text before it's
+sent. The app appends those to the alert, so what arrives is just:
 
-Per Pushover's API description, that supplementary link is shown
+```
+Washer is done
+[Click here to mark this alert as incorrect]
+```
+
+The link is the whole of the feedback, so the "Was this correct?"
+question and the in-text link are left off - they would only repeat it.
+(The driver also accepts `[URL=...]`, but only since 2025-08-05; the `§`
+form works back to 2021-11-16.)
+
+Per Pushover's API description, the supplementary link is shown
 underneath the message, and when you tap a notification to expand it.
 Whether tapping the lock-screen banner opens the page straight away, or
 opens Pushover with the link one more tap away, is up to the Pushover
@@ -339,32 +345,24 @@ Send those markers to an **older** driver and it has no idea what they
 mean, so they end up in the message you receive:
 
 ```
-[HTML]Washer started
-
-Was this correct? <a href="https://...">No</a>§https://...§¤Mark this alert as wrong¤
+Washer is done§https://...§¤Click here to mark this alert as incorrect¤
 ```
 
-That is the tell: `[HTML]` or `§` visible in the notification means the
+That is the tell: `§` and a raw URL in the notification text mean the
 markers reached a driver too old to strip them - see [Pushover](#pushover)
-above for the version this needs and how to check yours. The settings page also
-lists the driver type name behind each of your notifier devices, so you
-can see what is actually wired up.
+above for the version this needs and how to check yours. The settings page
+also lists the driver type name behind each of your notifier devices, so
+you can see what is actually wired up.
 
-One other thing that can quietly turn HTML off: the Pushover driver has a
-**Testing mode** preference that deliberately sends markup as plain text.
-It still strips `[HTML]` properly, so it is not the cause when the marker
-is visible - but it is worth checking if the marker disappears and the
-tags still do not render.
+Nothing needs changing inside the Pushover driver either way - the markers
+are a documented input, not a missing feature.
 
-Nothing needs changing inside the Pushover driver either way - the marker
-is a documented input, not a missing feature.
-
-Line breaks in both forms are plain newlines, not `<br>`. The
-lock-screen/banner preview strips HTML, so a `<br>` alone left the
-feedback line running straight on from the message there; Pushover's full
-view honours plain newlines in HTML messages too, so `<br>` added nothing.
-They are real newline characters, not a typed `\n` - the Pushover driver
-converts a literal `\n` into `<br>`, but leaves actual newlines alone.
+Where the question does appear (plain and raw HTML), it's separated from
+the message by plain newlines, not `<br>`. The lock-screen/banner preview
+strips HTML, so a `<br>` alone left the feedback line running straight on
+from the message there. They are real newline characters, not a typed
+`\n` - the Pushover driver converts a literal `\n` into `<br>`, but
+leaves actual newlines alone.
 
 Setup, once:
 
