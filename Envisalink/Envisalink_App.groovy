@@ -13,7 +13,7 @@
  *
  *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Version: 2.0.3
+ *  Version: 2.0.4
  */
 
 definition(
@@ -25,7 +25,7 @@ definition(
     iconUrl: "",
     iconX2Url: "",
     singleInstance: true,
-    importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Envisalink/Envisalink_App.groovy"
+    importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/claude/envisalink-tpi-hubitat-6B3B2/Envisalink/Envisalink_App.groovy"
 )
 
 preferences {
@@ -42,6 +42,9 @@ def mainPage() {
         }
         section("Security Panel") {
             input "securityCode", "password", title: "Security Code", description: "Arm/disarm code", required: true
+            input "statusPartition", "number", title: "Partition for arm status / HSM", range: "1..8", defaultValue: 1,
+                  description: "Leave at 1 unless you have a multi-partition panel. Only this partition's arm state " +
+                               "updates the Security Panel device and HSM; other partitions are ignored for status."
         }
         section("Zones") {
             href "zonesPage", title: "Configure Zones",
@@ -72,6 +75,8 @@ def zonesPage() {
                 input "zone${i}Num",  "number", title: "Zone Number (1–64)", required: false
                 input "zone${i}Type", "enum",   title: "Type",
                       options: ["Contact", "Motion", "Smoke", "Water", "CO"], required: false
+                input "zone${i}Partition", "number", title: "Partition (multi-partition panels only)",
+                      range: "1..8", defaultValue: 1, required: false
             }
         }
     }
@@ -98,6 +103,7 @@ def updated() {
     connDev.updateSetting("evlPort",      [value: settings.evlPort ?: 4025,         type: "number"])
     connDev.updateSetting("evlPassword",  [value: settings.evlPassword,             type: "password"])
     connDev.updateSetting("securityCode", [value: settings.securityCode,            type: "password"])
+    connDev.updateSetting("statusPartition", [value: settings.statusPartition ?: 1, type: "number"])
     connDev.updateSetting("logEnable",    [value: settings.logEnable ?: false,      type: "bool"])
 
     syncZones(connDev)
@@ -117,14 +123,15 @@ private syncZones(connDev) {
         def name = settings["zone${i}Name"]
         def zoneNum = settings["zone${i}Num"]
         def type = settings["zone${i}Type"]
-        if (name && zoneNum && type) zones << [num: zoneNum as int, name: name, type: type]
+        def partition = (settings["zone${i}Partition"] ?: 1) as int
+        if (name && zoneNum && type) zones << [num: zoneNum as int, name: name, type: type, partition: partition]
     }
 
     ifDebug("Syncing ${zones.size()} zone(s) — adding missing, preserving existing")
     // Ensure the partition device exists (addPartition is idempotent)
     connDev.addPartition()
     // Add any zones that don't exist yet (addZone is idempotent)
-    zones.each { z -> connDev.addZone(z.num, z.name, z.type) }
+    zones.each { z -> connDev.addZone(z.num, z.name, z.type, z.partition) }
     // Note: zones removed from config are NOT auto-deleted; delete them manually
     // in the Hubitat devices page if no longer needed.
 }

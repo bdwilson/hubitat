@@ -16,12 +16,12 @@
  *  License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
  *  either express or implied.
  *
- *  Version: 2.0.3
+ *  Version: 2.0.4
  */
 
 metadata {
     definition(name: "Envisalink Connection", namespace: "bdwilson", author: "bdwilson",
-               importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Envisalink/Envisalink_Connection.groovy") {
+               importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/claude/envisalink-tpi-hubitat-6B3B2/Envisalink/Envisalink_Connection.groovy") {
         capability "Initialize"
 
         command "connect"
@@ -43,6 +43,8 @@ metadata {
         input name: "evlPort",       type: "number",   title: "EnvisaLink Port",              defaultValue: 4025, required: true
         input name: "evlPassword",   type: "password", title: "EnvisaLink Network Password",  defaultValue: "user", required: true
         input name: "securityCode",  type: "password", title: "Panel Security Code",          required: true
+        input name: "statusPartition", type: "number", title: "Partition for arm status / HSM", range: "1..8", defaultValue: 1,
+              description: "Multi-partition panels: only this partition's arm state updates the Security Panel device and HSM"
         input name: "logEnable",     type: "bool",     title: "Enable Debug Logging",         defaultValue: false
     }
 }
@@ -178,25 +180,32 @@ private handleKeypadUpdate(String[] parts) {
 
     ifDebug("Keypad update: partition=${partitionNum} flags=${flagsHex} zone=${userOrZone} alpha='${alpha}' code=${dscCode} state=${partState}")
 
-    // Update partition child device
-    def partChild = getChildDevice("${device.id}_P1")
-    if (partChild) partChild.partition(partState, alpha)
+    // On multi-partition panels the EnvisaLink alternates %00 updates for each partition;
+    // only the tracked partition may drive the Security Panel device and HSM, otherwise
+    // status flaps between e.g. partition 1 "armed" and partition 2 "ready".
+    if (partitionNum == statusPartition()) {
+        def partChild = getChildDevice("${device.id}_P1")
+        if (partChild) partChild.partition(partState, alpha)
 
-    // Notify parent app for HSM sync — suppressed briefly after sending a command
-    // to avoid the re-arm feedback loop caused by panel state lag after disarm/arm
-    if (!state.cmdSentAt || (now() - (state.cmdSentAt as long)) >= 3000) {
-        parent?.updatePartitionState(partState, alpha)
+        // Suppressed briefly after sending a command to avoid the re-arm feedback loop
+        // caused by panel state lag after disarm/arm
+        if (!state.cmdSentAt || (now() - (state.cmdSentAt as long)) >= 3000) {
+            parent?.updatePartitionState(partState, alpha)
+        } else {
+            ifDebug("Suppressing partition update — cmd sent ${now() - (state.cmdSentAt as long)}ms ago")
+        }
     } else {
-        ifDebug("Suppressing partition update — cmd sent ${now() - (state.cmdSentAt as long)}ms ago")
+        ifDebug("Partition ${partitionNum} state '${partState}' not tracked (tracking partition ${statusPartition()})")
     }
 
     // Zone state machine
     def zoneNum = safeInt(userOrZone, 0)
 
     if (dscCode == "READY") {
-        // Panel is ready → close all known open zones
-        state.zoneTimers = [:]
+        // This partition is ready → close its open zones (other partitions' zones are untouched)
         new HashMap(state.zones).each { zn, zs ->
+            if (zonePartition(zn) != partitionNum) return
+            state.zoneTimers.remove(zn)
             if (zs != "closed") {
                 state.zones[zn] = "closed"
                 updateZoneChild(zn as int, "closed")
@@ -215,10 +224,10 @@ private handleKeypadUpdate(String[] parts) {
             if (state.zoneTimers[key] == 2) {
                 // Reset so the sweep can fire again on subsequent cycles
                 state.zoneTimers[key] = 0
-                // Increment timers for ALL other open zones; close those that have
-                // not been reported for 2+ sweeps (i.e. they stopped appearing in %00)
+                // Increment timers for other open zones in this partition; close those that
+                // have not been reported for 2+ sweeps (i.e. they stopped appearing in %00)
                 new HashMap(state.zones).each { zn, zs ->
-                    if (zs == "open" && zn != key) {
+                    if (zs == "open" && zn != key && zonePartition(zn) == partitionNum) {
                         state.zoneTimers[zn] = (state.zoneTimers[zn] ?: 0) + 1
                         if (state.zoneTimers[zn] >= 2) {
                             state.zones[zn] = "closed"
@@ -362,7 +371,9 @@ def healthCheck() {
 
 // ─── Child device management (called from app) ───────────────────────────────
 
-def addZone(int zoneNum, String zoneName, String zoneType) {
+def addZone(int zoneNum, String zoneName, String zoneType, int partition) {
+    if (state.zonePartitions == null) state.zonePartitions = [:]
+    state.zonePartitions[zoneNum.toString()] = partition
     def dni = "${device.id}_Z${zoneNum}"
     if (getChildDevice(dni)) {
         ifDebug("Zone ${zoneNum} device already exists (${dni})")
@@ -408,6 +419,15 @@ private updateZoneChild(int zoneNum, String zoneState) {
         ifDebug("Zone ${zoneNum} → ${zoneState}")
         child.zone(zoneState)
     }
+}
+
+private int statusPartition() {
+    return (settings.statusPartition ?: 1) as int
+}
+
+private int zonePartition(zoneKey) {
+    def p = state.zonePartitions?.get(zoneKey.toString())
+    return p ? (p as int) : 1
 }
 
 private int safeInt(String s, int fallback) {
