@@ -21,7 +21,7 @@
 
 metadata {
     definition(name: "Envisalink Connection", namespace: "bdwilson", author: "bdwilson",
-               importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/claude/envisalink-tpi-hubitat-6B3B2/Envisalink/Envisalink_Connection.groovy") {
+               importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Envisalink/Envisalink_Connection.groovy") {
         capability "Initialize"
 
         command "connect"
