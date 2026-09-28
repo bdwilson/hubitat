@@ -149,11 +149,14 @@ def parse(String msg) {
         case "^00":
             ifDebug("Poll response — connection alive")
             break
-        case "%01":
         case "%02":
+            // Partition State Change — exposed as attributes only; arm state/HSM still come from %00
+            if (parts.length >= 2) handlePartitionStateChange(parts[1])
+            break
+        case "%01":
         case "%03":
-            // Zone state change, partition state change, and CID events are intentionally
-            // not processed — all state is derived from %00, matching the STNP plugin behaviour
+            // Zone state change and CID events are intentionally not processed —
+            // zone state is derived from %00, matching the STNP plugin behaviour
             break
         default:
             ifDebug("Unrecognised TPI code: ${code}")
@@ -264,6 +267,36 @@ private handleZoneTimerDump(String data) {
             updateZoneChild(zoneNum, zoneState)
         }
     }
+}
+
+private handlePartitionStateChange(String data) {
+    // 16 chars: 8 partitions × 2-digit decimal state code, partition 1 first
+    int p = statusPartition()
+    if (data.length() < p * 2) return
+    int code = safeInt(data[(p - 1) * 2..p * 2 - 1], -1)
+    def name = partitionStateNames()[code]
+    if (name == null) {
+        log.warn "EnvisaLink: unknown partition ${p} state code in %02: ${data}"
+        return
+    }
+    ifDebug("Partition ${p} state (%02): ${code} ${name}")
+    getChildDevice("${device.id}_P1")?.partitionStateCode(code, name)
+}
+
+private Map partitionStateNames() {
+    [
+        0: "Not Used",
+        1: "Ready",
+        2: "Ready (Zones Bypassed)",
+        3: "Not Ready",
+        4: "Armed Stay",
+        5: "Armed Away",
+        6: "Armed Instant",
+        7: "Exit Delay",
+        8: "Alarm",
+        9: "Alarm Memory",
+        10: "Armed Max"
+    ]
 }
 
 // ─── Flag and state helpers ──────────────────────────────────────────────────

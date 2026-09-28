@@ -10,12 +10,12 @@
  *
  *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Version: 2.0.3
+ *  Version: 2.0.4
  */
 
 metadata {
     definition(name: "Envisalink Partition", namespace: "bdwilson", author: "bdwilson",
-               importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Envisalink/Envisalink_Partition.groovy") {
+               importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/claude/envisalink-tpi-hubitat-6B3B2/Envisalink/Envisalink_Partition.groovy") {
         capability "Alarm"
         capability "Sensor"
         capability "Actuator"
@@ -35,6 +35,8 @@ metadata {
 
         attribute "dscpartition", "String"
         attribute "panelStatus",  "String"
+        attribute "partitionStateName",  "String"
+        attribute "partitionStateValue", "Number"
     }
 
     preferences {
@@ -53,6 +55,12 @@ def installed() {
 def partition(String partState, String alpha) {
     sendEvent(name: "dscpartition", value: partState, descriptionText: alpha)
     sendEvent(name: "panelStatus",  value: alpha, displayed: false)
+}
+
+// Called by parent connection driver with the panel's own %02 state code for this partition
+def partitionStateCode(int code, String name) {
+    sendEvent(name: "partitionStateValue", value: code, descriptionText: "${device.displayName}: ${name}")
+    sendEvent(name: "partitionStateName",  value: name, descriptionText: "${device.displayName}: ${name}")
 }
 
 // ─── Commands → forwarded to parent connection driver ─────────────────────────

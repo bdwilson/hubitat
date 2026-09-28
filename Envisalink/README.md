@@ -80,6 +80,25 @@ Envisalink Security (App)
 
 The **Security Panel** device has arm/disarm/chime/bypass buttons. Zone devices expose standard Hubitat capabilities (Contact Sensor, Motion Sensor, etc.) so they work with all existing rules and dashboards.
 
+### Partition State Attributes
+
+The Security Panel device also exposes the panel's own partition state code, taken from the TPI `%02` Partition State Change message for the tracked partition (see **Partition for arm status / HSM**). Use these in rules instead of matching keypad text in `panelStatus`:
+
+| `partitionStateValue` | `partitionStateName` |
+|---|---|
+| 1 | Ready |
+| 2 | Ready (Zones Bypassed) |
+| 3 | Not Ready |
+| 4 | Armed Stay |
+| 5 | Armed Away |
+| 6 | Armed Instant |
+| 7 | Exit Delay |
+| 8 | Alarm |
+| 9 | Alarm Memory |
+| 10 | Armed Max |
+
+For example, "disarmed" is `partitionStateValue` ≤ 3, and "armed" is 4, 5, 6 or 10. The panel only sends `%02` when a partition's state changes, so these attributes stay empty after installing or reconnecting until the next arm, disarm or fault change.
+
 ## Arm/Disarm Keystrokes
 
 | Action | TPI sequence |
