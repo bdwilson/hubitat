@@ -21,7 +21,7 @@
 
 metadata {
     definition(name: "Envisalink Connection", namespace: "bdwilson", author: "bdwilson",
-               importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/claude/envisalink-tpi-hubitat-6B3B2/Envisalink/Envisalink_Connection.groovy") {
+               importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Envisalink/Envisalink_Connection.groovy") {
         capability "Initialize"
 
         command "connect"
@@ -43,8 +43,6 @@ metadata {
         input name: "evlPort",       type: "number",   title: "EnvisaLink Port",              defaultValue: 4025, required: true
         input name: "evlPassword",   type: "password", title: "EnvisaLink Network Password",  defaultValue: "user", required: true
         input name: "securityCode",  type: "password", title: "Panel Security Code",          required: true
-        input name: "statusPartition", type: "number", title: "Partition for arm status / HSM", range: "1..8", defaultValue: 1,
-              description: "Multi-partition panels: only this partition's arm state updates the Security Panel device and HSM"
         input name: "logEnable",     type: "bool",     title: "Enable Debug Logging",         defaultValue: false
     }
 }
@@ -130,9 +128,8 @@ def parse(String msg) {
 
     if (!msg.startsWith("%") && !msg.startsWith("^")) return
 
-    // Strip the trailing checksum character that the EnvisaLink appends to every TPI message
-    // (e.g. the '$' visible at the end of %00 alpha text in debug logs)
-    if (msg.length() > 1) msg = msg[0..-2]
+    // Every TPI message ends with a '$' terminator
+    if (msg.endsWith('$')) msg = msg[0..-2]
 
     def parts = msg.split(",")
     def code  = parts[0]
@@ -149,14 +146,11 @@ def parse(String msg) {
         case "^00":
             ifDebug("Poll response — connection alive")
             break
-        case "%02":
-            // Partition State Change — exposed as attributes only; arm state/HSM still come from %00
-            if (parts.length >= 2) handlePartitionStateChange(parts[1])
-            break
         case "%01":
+        case "%02":
         case "%03":
-            // Zone state change and CID events are intentionally not processed —
-            // zone state is derived from %00, matching the STNP plugin behaviour
+            // Zone state change, partition state change, and CID events are intentionally
+            // not processed — all state is derived from %00, matching the STNP plugin behaviour
             break
         default:
             ifDebug("Unrecognised TPI code: ${code}")
@@ -164,12 +158,12 @@ def parse(String msg) {
 }
 
 private handleKeypadUpdate(String[] parts) {
-    // %00,<partition>,<flagsHex>,<userOrZone>,<beep>,<alphaText>,<checksum>
+    // %00,<partition>,<flagsHex>,<userOrZone>,<beep>,<alphaText>
     def partitionNum = safeInt(parts[1], 1)
     def flagsHex     = parts[2]
     def userOrZone   = parts[3].trim()
-    def alpha        = (parts.length > 5) ? parts[5].trim() : ""
-    // parts[-1] is checksum — ignored
+    // Alpha text can contain commas, so rejoin everything after the beep field
+    def alpha        = parts[5..-1].join(",").trim()
 
     def flagInt = 0
     try { flagInt = Integer.parseInt(flagsHex, 16) } catch (e) {
@@ -183,10 +177,10 @@ private handleKeypadUpdate(String[] parts) {
 
     ifDebug("Keypad update: partition=${partitionNum} flags=${flagsHex} zone=${userOrZone} alpha='${alpha}' code=${dscCode} state=${partState}")
 
-    // On multi-partition panels the EnvisaLink alternates %00 updates for each partition;
-    // only the tracked partition may drive the Security Panel device and HSM, otherwise
-    // status flaps between e.g. partition 1 "armed" and partition 2 "ready".
-    if (partitionNum == statusPartition()) {
+    // Only partition 1 drives the Security Panel device and HSM. Keystroke commands go to the
+    // EnvisaLink's default partition (1), and on multi-partition panels the EnvisaLink
+    // alternates %00 updates per partition, which would otherwise flap the arm state.
+    if (partitionNum == 1) {
         def partChild = getChildDevice("${device.id}_P1")
         if (partChild) partChild.partition(partState, alpha)
 
@@ -197,26 +191,26 @@ private handleKeypadUpdate(String[] parts) {
         } else {
             ifDebug("Suppressing partition update — cmd sent ${now() - (state.cmdSentAt as long)}ms ago")
         }
-    } else {
-        ifDebug("Partition ${partitionNum} state '${partState}' not tracked (tracking partition ${statusPartition()})")
     }
 
     // Zone state machine
     def zoneNum = safeInt(userOrZone, 0)
 
     if (dscCode == "READY") {
-        // This partition is ready → close its open zones (other partitions' zones are untouched)
+        // This partition is ready → close its open zones; other partitions' zones are untouched
         new HashMap(state.zones).each { zn, zs ->
-            if (zonePartition(zn) != partitionNum) return
+            if (!inPartition(zn, partitionNum)) return
             state.zoneTimers.remove(zn)
             if (zs != "closed") {
                 state.zones[zn] = "closed"
+                state.zonePartition?.remove(zn.toString())
                 updateZoneChild(zn as int, "closed")
             }
         }
     } else if (dscCode == "" && zoneNum > 0) {
         // A zone is being reported open/faulted
         def key = "${zoneNum}"
+        setZonePartition(key, partitionNum)
         if (state.zones[key] != "open") {
             state.zoneTimers[key] = 0
             state.zones[key] = "open"
@@ -230,11 +224,12 @@ private handleKeypadUpdate(String[] parts) {
                 // Increment timers for other open zones in this partition; close those that
                 // have not been reported for 2+ sweeps (i.e. they stopped appearing in %00)
                 new HashMap(state.zones).each { zn, zs ->
-                    if (zs == "open" && zn != key && zonePartition(zn) == partitionNum) {
+                    if (zs == "open" && zn != key && inPartition(zn, partitionNum)) {
                         state.zoneTimers[zn] = (state.zoneTimers[zn] ?: 0) + 1
                         if (state.zoneTimers[zn] >= 2) {
                             state.zones[zn] = "closed"
                             state.zoneTimers.remove(zn)
+                            state.zonePartition?.remove(zn.toString())
                             updateZoneChild(zn as int, "closed")
                         }
                     }
@@ -243,6 +238,7 @@ private handleKeypadUpdate(String[] parts) {
         }
     } else if (dscCode == "IN_ALARM" && zoneNum > 0) {
         def key = "${zoneNum}"
+        setZonePartition(key, partitionNum)
         if (state.zones[key] != "alarm") {
             state.zones[key] = "alarm"
             updateZoneChild(zoneNum, "alarm")
@@ -267,36 +263,6 @@ private handleZoneTimerDump(String data) {
             updateZoneChild(zoneNum, zoneState)
         }
     }
-}
-
-private handlePartitionStateChange(String data) {
-    // 16 chars: 8 partitions × 2-digit decimal state code, partition 1 first
-    int p = statusPartition()
-    if (data.length() < p * 2) return
-    int code = safeInt(data[(p - 1) * 2..p * 2 - 1], -1)
-    def name = partitionStateNames()[code]
-    if (name == null) {
-        log.warn "EnvisaLink: unknown partition ${p} state code in %02: ${data}"
-        return
-    }
-    ifDebug("Partition ${p} state (%02): ${code} ${name}")
-    getChildDevice("${device.id}_P1")?.partitionStateCode(code, name)
-}
-
-private Map partitionStateNames() {
-    [
-        0: "Not Used",
-        1: "Ready",
-        2: "Ready (Zones Bypassed)",
-        3: "Not Ready",
-        4: "Armed Stay",
-        5: "Armed Away",
-        6: "Armed Instant",
-        7: "Exit Delay",
-        8: "Alarm",
-        9: "Alarm Memory",
-        10: "Armed Max"
-    ]
 }
 
 // ─── Flag and state helpers ──────────────────────────────────────────────────
@@ -404,9 +370,7 @@ def healthCheck() {
 
 // ─── Child device management (called from app) ───────────────────────────────
 
-def addZone(int zoneNum, String zoneName, String zoneType, int partition) {
-    if (state.zonePartitions == null) state.zonePartitions = [:]
-    state.zonePartitions[zoneNum.toString()] = partition
+def addZone(int zoneNum, String zoneName, String zoneType) {
     def dni = "${device.id}_Z${zoneNum}"
     if (getChildDevice(dni)) {
         ifDebug("Zone ${zoneNum} device already exists (${dni})")
@@ -454,13 +418,16 @@ private updateZoneChild(int zoneNum, String zoneState) {
     }
 }
 
-private int statusPartition() {
-    return (settings.statusPartition ?: 1) as int
+// A zone belongs to whichever partition's %00 last reported it. Zones with no record (e.g. open
+// before upgrading) match every partition, which is the original single-partition behaviour.
+private boolean inPartition(zoneKey, int partitionNum) {
+    def p = state.zonePartition?.get(zoneKey.toString())
+    return p == null || (p as int) == partitionNum
 }
 
-private int zonePartition(zoneKey) {
-    def p = state.zonePartitions?.get(zoneKey.toString())
-    return p ? (p as int) : 1
+private setZonePartition(zoneKey, int partitionNum) {
+    if (state.zonePartition == null) state.zonePartition = [:]
+    state.zonePartition[zoneKey.toString()] = partitionNum
 }
 
 private int safeInt(String s, int fallback) {
