@@ -87,7 +87,7 @@ def mainPage() {
 
         section("<b>Washer - Power Thresholds</b>", hideable: true, hidden: false) {
             paragraph "Defaults below come from a calibration pass against ~30 days of real usage. See the README before changing them."
-            input "washerStartWaitMin", "number", title: "Time (minutes) to wait before counting the power threshold (helps with brief startup blips)", required: false, defaultValue: 4
+            input "washerStartWaitMin", "number", title: "Time (minutes) power must hold before a start counts (filters idle-noise blips; see README)", required: false, defaultValue: 10
             input "washerStartW", "decimal", title: "Start cycle when power (W) rises above", required: false, defaultValue: 5
             input "washerMinEndMin", "number", title: "Minimum minutes after start before end detection begins", required: false, defaultValue: 10
             input "washerStopW", "decimal", title: "Stop cycle when power (W) drops below", required: false, defaultValue: 3
@@ -242,7 +242,7 @@ private String tuningPrompt() {
 
     sb << "CURRENT SETTINGS\n"
     sb << "washer start threshold: ${washerStartW ?: 5} W\n"
-    sb << "washer start wait: ${washerStartWaitMin ?: 4} min\n"
+    sb << "washer start wait: ${washerStartWaitMin ?: 10} min\n"
     sb << "washer stop threshold: ${washerStopW ?: 3} W\n"
     sb << "washer min minutes before end detection: ${washerMinEndMin ?: 10}\n"
     sb << "washer stop - sequential low readings: ${washerStopReadings ?: 2}\n"
@@ -373,7 +373,7 @@ def uninstalled() {
 // defaultValue only applies to a setting that has never been set. So
 // without this, an existing install keeps running on its old values and
 // silently ignores the new defaults.
-private static String settingsVersion() { return "8" }
+private static String settingsVersion() { return "9" }
 
 private void migrateSettings() {
     if (state.settingsVersion == settingsVersion()) return
@@ -470,16 +470,29 @@ private void migrateSettings() {
     // declared the wash done mid-cycle - then read the next agitation
     // burst as a brand-new load and wrongly announced a second-load
     // overlap with the dryer. Both wrong calls traced back to this one
-    // setting. The only bound the evidence gives is a floor (10 min
-    // wasn't enough); there's no pinned reading showing how long the
-    // gap actually ran, so this is a reasoned margin, not a measured one -
-    // watch for a repeat false "done" on a soak cycle and report it if one
-    // shows up. Every real cycle that finished early in this data (in
-    // particular one at 18 minutes) still ends correctly either way; it
-    // just gets its "done" notification up to 10 minutes later.
+    // setting. The pinned readings for that load show the two soak gaps
+    // ran 13.5 and 10.5 minutes, so 20 clears the longer by 6.5 minutes.
+    // Every real cycle that finished early in this data (in particular one
+    // at 18 minutes) still ends correctly either way; it just gets its
+    // "done" notification up to 10 minutes later.
     if ((washerStopConfirmMin ?: 0) < 20) {
         app.updateSetting("washerStopConfirmMin", [value: "20", type: "number"])
         changes << "washerStopConfirmMin=20"
+    }
+
+    // v9: four overnight false "washer started" alerts in a week, all idle
+    // noise. The noise blips now chain together for up to 6.0 minutes
+    // without dipping below the stop threshold (it was 3.0 when v3 chose
+    // 4), while every real load recorded holds above it for at least 34.5
+    // minutes from its first reading. Wattage can't separate them - real
+    // loads open at 15-16W and noise reaches 19W - but duration can, by
+    // more than 5x. 10 sits 1.67x above the worst noise and 3.45x below the
+    // shortest real start. Replayed against all 12 raw-logged real loads:
+    // every one still detected, logged start times unchanged; the start
+    // alert just lands about 10.5-12 minutes in instead of 4.5-6.
+    if ((washerStartWaitMin ?: 0) < 10) {
+        app.updateSetting("washerStartWaitMin", [value: "10", type: "number"])
+        changes << "washerStartWaitMin=10"
     }
 
     state.settingsVersion = settingsVersion()
