@@ -1,5 +1,7 @@
 # Envisalink Security (Native TPI)
 
+Support / discussion: [Hubitat Community thread](https://community.hubitat.com/t/native-honeywell-vista-envisalink-tpi-alarm-driver/164482)
+
 Native Hubitat integration for Honeywell/Ademco Vista panels via EnvisaLink EVL-3/EVL-4.
 
 **No SmartThings Node Proxy required.** This integration connects directly from your Hubitat hub to your EnvisaLink device over TCP/TPI.
@@ -57,6 +59,18 @@ Zone types: `Contact`, `Motion`, `Smoke`, `Water`, `CO`
 
 Zones not listed in the app config are silently ignored — you don't need to list every zone if you only want to monitor some.
 
+## Multi-Partition Panels
+
+The integration controls and reports **partition 1** only, but works correctly on multi-partition panels.
+
+When a Vista partition is armed, the panel stops reporting faults on that partition's non-alarm zones (e.g. interior motion detectors when armed Stay). A common workaround is to put sensors you want active at all times — like motion detectors that drive lighting — in a second partition that is never armed.
+
+On a multi-partition panel the EnvisaLink sends keypad updates for each partition in turn (roughly every 10 seconds). The driver handles this as follows:
+
+- **Arm status and HSM** — only partition 1's updates change the **Security Panel** device and HSM, so the state no longer flaps between partition 1 "armed" and partition 2 "ready".
+- **Zones** — each zone belongs to whichever partition reported it open, and a partition's "Ready" update only closes that partition's zones. Nothing to configure.
+- **Arm/disarm** — keystrokes go to the EnvisaLink's default partition (partition 1). Other partitions can't be armed, disarmed or monitored for arm state from Hubitat.
+
 ## Device Hierarchy
 
 ```
@@ -75,7 +89,7 @@ The **Security Panel** device has arm/disarm/chime/bypass buttons. Zone devices 
 | Arm Away | `{code}2` |
 | Arm Stay | `{code}3` |
 | Arm Instant | `{code}7` |
-| Disarm | `{code}1` (sent twice for Vista reliability) |
+| Disarm | `{code}1` |
 | Chime toggle | `{code}9` |
 | Bypass zones | `{code}6{zero-padded zones}` |
 | Trigger output 17 | `{code}#717` → off after 2s |
@@ -90,9 +104,14 @@ The **Security Panel** device has arm/disarm/chime/bypass buttons. Zone devices 
 
 ## Known Limitations
 
-- Single partition only
+- Controls and reports arm state for partition 1 only (see [Multi-Partition Panels](#multi-partition-panels))
+- A partition's non-alarm zones don't report while that partition is armed — this is how Vista panels work, not a driver limitation
 - No siren/strobe capability (Vista panels don't expose this easily via TPI keystrokes)
 - Trigger output commands (#717/#718) — may need adjustment depending on your Vista model and output programming
+
+## Support
+
+Questions and bug reports: [Hubitat Community thread](https://community.hubitat.com/t/native-honeywell-vista-envisalink-tpi-alarm-driver/164482) or a GitHub issue.
 
 ## Credits
 

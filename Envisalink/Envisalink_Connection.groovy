@@ -16,7 +16,7 @@
  *  License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
  *  either express or implied.
  *
- *  Version: 2.0.3
+ *  Version: 2.0.4
  */
 
 metadata {
@@ -128,9 +128,8 @@ def parse(String msg) {
 
     if (!msg.startsWith("%") && !msg.startsWith("^")) return
 
-    // Strip the trailing checksum character that the EnvisaLink appends to every TPI message
-    // (e.g. the '$' visible at the end of %00 alpha text in debug logs)
-    if (msg.length() > 1) msg = msg[0..-2]
+    // Every TPI message ends with a '$' terminator
+    if (msg.endsWith('$')) msg = msg[0..-2]
 
     def parts = msg.split(",")
     def code  = parts[0]
@@ -159,12 +158,12 @@ def parse(String msg) {
 }
 
 private handleKeypadUpdate(String[] parts) {
-    // %00,<partition>,<flagsHex>,<userOrZone>,<beep>,<alphaText>,<checksum>
+    // %00,<partition>,<flagsHex>,<userOrZone>,<beep>,<alphaText>
     def partitionNum = safeInt(parts[1], 1)
     def flagsHex     = parts[2]
     def userOrZone   = parts[3].trim()
-    def alpha        = (parts.length > 5) ? parts[5].trim() : ""
-    // parts[-1] is checksum — ignored
+    // Alpha text can contain commas, so rejoin everything after the beep field
+    def alpha        = parts[5..-1].join(",").trim()
 
     def flagInt = 0
     try { flagInt = Integer.parseInt(flagsHex, 16) } catch (e) {
@@ -178,33 +177,40 @@ private handleKeypadUpdate(String[] parts) {
 
     ifDebug("Keypad update: partition=${partitionNum} flags=${flagsHex} zone=${userOrZone} alpha='${alpha}' code=${dscCode} state=${partState}")
 
-    // Update partition child device
-    def partChild = getChildDevice("${device.id}_P1")
-    if (partChild) partChild.partition(partState, alpha)
+    // Only partition 1 drives the Security Panel device and HSM. Keystroke commands go to the
+    // EnvisaLink's default partition (1), and on multi-partition panels the EnvisaLink
+    // alternates %00 updates per partition, which would otherwise flap the arm state.
+    if (partitionNum == 1) {
+        def partChild = getChildDevice("${device.id}_P1")
+        if (partChild) partChild.partition(partState, alpha)
 
-    // Notify parent app for HSM sync — suppressed briefly after sending a command
-    // to avoid the re-arm feedback loop caused by panel state lag after disarm/arm
-    if (!state.cmdSentAt || (now() - (state.cmdSentAt as long)) >= 3000) {
-        parent?.updatePartitionState(partState, alpha)
-    } else {
-        ifDebug("Suppressing partition update — cmd sent ${now() - (state.cmdSentAt as long)}ms ago")
+        // Suppressed briefly after sending a command to avoid the re-arm feedback loop
+        // caused by panel state lag after disarm/arm
+        if (!state.cmdSentAt || (now() - (state.cmdSentAt as long)) >= 3000) {
+            parent?.updatePartitionState(partState, alpha)
+        } else {
+            ifDebug("Suppressing partition update — cmd sent ${now() - (state.cmdSentAt as long)}ms ago")
+        }
     }
 
     // Zone state machine
     def zoneNum = safeInt(userOrZone, 0)
 
     if (dscCode == "READY") {
-        // Panel is ready → close all known open zones
-        state.zoneTimers = [:]
+        // This partition is ready → close its open zones; other partitions' zones are untouched
         new HashMap(state.zones).each { zn, zs ->
+            if (!inPartition(zn, partitionNum)) return
+            state.zoneTimers.remove(zn)
             if (zs != "closed") {
                 state.zones[zn] = "closed"
+                state.zonePartition?.remove(zn.toString())
                 updateZoneChild(zn as int, "closed")
             }
         }
     } else if (dscCode == "" && zoneNum > 0) {
         // A zone is being reported open/faulted
         def key = "${zoneNum}"
+        setZonePartition(key, partitionNum)
         if (state.zones[key] != "open") {
             state.zoneTimers[key] = 0
             state.zones[key] = "open"
@@ -215,14 +221,15 @@ private handleKeypadUpdate(String[] parts) {
             if (state.zoneTimers[key] == 2) {
                 // Reset so the sweep can fire again on subsequent cycles
                 state.zoneTimers[key] = 0
-                // Increment timers for ALL other open zones; close those that have
-                // not been reported for 2+ sweeps (i.e. they stopped appearing in %00)
+                // Increment timers for other open zones in this partition; close those that
+                // have not been reported for 2+ sweeps (i.e. they stopped appearing in %00)
                 new HashMap(state.zones).each { zn, zs ->
-                    if (zs == "open" && zn != key) {
+                    if (zs == "open" && zn != key && inPartition(zn, partitionNum)) {
                         state.zoneTimers[zn] = (state.zoneTimers[zn] ?: 0) + 1
                         if (state.zoneTimers[zn] >= 2) {
                             state.zones[zn] = "closed"
                             state.zoneTimers.remove(zn)
+                            state.zonePartition?.remove(zn.toString())
                             updateZoneChild(zn as int, "closed")
                         }
                     }
@@ -231,6 +238,7 @@ private handleKeypadUpdate(String[] parts) {
         }
     } else if (dscCode == "IN_ALARM" && zoneNum > 0) {
         def key = "${zoneNum}"
+        setZonePartition(key, partitionNum)
         if (state.zones[key] != "alarm") {
             state.zones[key] = "alarm"
             updateZoneChild(zoneNum, "alarm")
@@ -408,6 +416,18 @@ private updateZoneChild(int zoneNum, String zoneState) {
         ifDebug("Zone ${zoneNum} → ${zoneState}")
         child.zone(zoneState)
     }
+}
+
+// A zone belongs to whichever partition's %00 last reported it. Zones with no record (e.g. open
+// before upgrading) match every partition, which is the original single-partition behaviour.
+private boolean inPartition(zoneKey, int partitionNum) {
+    def p = state.zonePartition?.get(zoneKey.toString())
+    return p == null || (p as int) == partitionNum
+}
+
+private setZonePartition(zoneKey, int partitionNum) {
+    if (state.zonePartition == null) state.zonePartition = [:]
+    state.zonePartition[zoneKey.toString()] = partitionNum
 }
 
 private int safeInt(String s, int fallback) {
