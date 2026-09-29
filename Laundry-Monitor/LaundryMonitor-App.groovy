@@ -485,11 +485,12 @@ private void migrateSettings() {
     // without dipping below the stop threshold (it was 3.0 when v3 chose
     // 4), while every real load recorded holds above it for at least 34.5
     // minutes from its first reading. Wattage can't separate them - real
-    // loads open at 15-16W and noise reaches 19W - but duration can, by
+    // loads open at 15-16W and noise has reached 31W - but duration can, by
     // more than 5x. 10 sits 1.67x above the worst noise and 3.45x below the
-    // shortest real start. Replayed against all 12 raw-logged real loads:
-    // every one still detected, logged start times unchanged; the start
-    // alert just lands about 10.5-12 minutes in instead of 4.5-6.
+    // shortest real start. Replayed against 24 real loads (9/6-9/27) and 19
+    // days of continuous raw readings: every load still detected with the
+    // same start and end, all five phantom starts in that span gone; the
+    // start alert just lands about 6 minutes later than it did.
     if ((washerStartWaitMin ?: 0) < 10) {
         app.updateSetting("washerStartWaitMin", [value: "10", type: "number"])
         changes << "washerStartWaitMin=10"
