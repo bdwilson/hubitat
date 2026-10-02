@@ -25,7 +25,7 @@ definition(
     iconUrl: "",
     iconX2Url: "",
     singleInstance: true,
-    importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/claude/envisalink-tpi-hubitat-6B3B2/Envisalink/Envisalink_App.groovy"
+    importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Envisalink/Envisalink_App.groovy"
 )
 
 preferences {
