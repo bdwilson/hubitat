@@ -13,7 +13,7 @@
  *
  *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Version: 2.0.3
+ *  Version: 2.0.5
  */
 
 definition(
@@ -25,7 +25,7 @@ definition(
     iconUrl: "",
     iconX2Url: "",
     singleInstance: true,
-    importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Envisalink/Envisalink_App.groovy"
+    importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/claude/envisalink-tpi-hubitat-6B3B2/Envisalink/Envisalink_App.groovy"
 )
 
 preferences {
@@ -42,6 +42,8 @@ def mainPage() {
         }
         section("Security Panel") {
             input "securityCode", "password", title: "Security Code", description: "Arm/disarm code", required: true
+            input "statusPartition", "number", title: "Partition for arm/disarm, status and HSM", range: "1..8", defaultValue: 1,
+                  description: "Leave at 1 unless you have a multi-partition panel"
         }
         section("Zones") {
             href "zonesPage", title: "Configure Zones",
@@ -98,6 +100,7 @@ def updated() {
     connDev.updateSetting("evlPort",      [value: settings.evlPort ?: 4025,         type: "number"])
     connDev.updateSetting("evlPassword",  [value: settings.evlPassword,             type: "password"])
     connDev.updateSetting("securityCode", [value: settings.securityCode,            type: "password"])
+    connDev.updateSetting("statusPartition", [value: settings.statusPartition ?: 1, type: "number"])
     connDev.updateSetting("logEnable",    [value: settings.logEnable ?: false,      type: "bool"])
 
     syncZones(connDev)
