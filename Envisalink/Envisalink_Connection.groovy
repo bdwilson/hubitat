@@ -16,12 +16,20 @@
  *  License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
  *  either express or implied.
  *
- *  Version: 2.0.4
+ *  Version: 2.0.5
  */
+
+import groovy.transform.Field
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
+
+// Per-device keystroke queue for ^03 partition keypresses (in memory: replies arrive in separate executions)
+@Field static final ConcurrentHashMap<String, ConcurrentLinkedQueue<String>> keyQueues = new ConcurrentHashMap<>()
+@Field static final ConcurrentHashMap<String, Map> keyInFlight = new ConcurrentHashMap<>()
 
 metadata {
     definition(name: "Envisalink Connection", namespace: "bdwilson", author: "bdwilson",
-               importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Envisalink/Envisalink_Connection.groovy") {
+               importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/claude/envisalink-tpi-hubitat-6B3B2/Envisalink/Envisalink_Connection.groovy") {
         capability "Initialize"
 
         command "connect"
@@ -43,6 +51,7 @@ metadata {
         input name: "evlPort",       type: "number",   title: "EnvisaLink Port",              defaultValue: 4025, required: true
         input name: "evlPassword",   type: "password", title: "EnvisaLink Network Password",  defaultValue: "user", required: true
         input name: "securityCode",  type: "password", title: "Panel Security Code",          required: true
+        input name: "statusPartition", type: "number", title: "Partition for arm/disarm, status and HSM", range: "1..8", defaultValue: 1
         input name: "logEnable",     type: "bool",     title: "Enable Debug Logging",         defaultValue: false
     }
 }
@@ -68,6 +77,7 @@ def initialize() {
 
 def connect() {
     ifDebug("Connecting to ${settings.evlAddress}:${settings.evlPort}")
+    if (keyInFlight.containsKey(queueKey())) abortKeys("connection reset")
     try { telnetClose() } catch (e) { /* ignore */ }
     pauseExecution(2000)
     try {
@@ -88,6 +98,7 @@ def disconnect() {
 
 def telnetStatus(String status) {
     log.warn "EnvisaLink telnet status: ${status}"
+    if (keyInFlight.containsKey(queueKey())) abortKeys("connection lost")
     state.loginState = "disconnected"
     sendEvent(name: "connectionStatus", value: "disconnected")
     if (status != "transmit error") {
@@ -146,6 +157,15 @@ def parse(String msg) {
         case "^00":
             ifDebug("Poll response — connection alive")
             break
+        case "^03":
+            // Reply to a partition keystroke we sent
+            handleKeyResponse(parts.length > 1 ? parts[1] : "")
+            break
+        case "^0C":
+            // Invalid command — EnvisaLink firmware doesn't understand what we sent
+            if (keyInFlight.get(queueKey())?.cmd) abortKeys("EnvisaLink rejected the partition keystroke command (^0C)")
+            else ifDebug("EnvisaLink reported an invalid command (^0C)")
+            break
         case "%01":
         case "%02":
         case "%03":
@@ -177,10 +197,10 @@ private handleKeypadUpdate(String[] parts) {
 
     ifDebug("Keypad update: partition=${partitionNum} flags=${flagsHex} zone=${userOrZone} alpha='${alpha}' code=${dscCode} state=${partState}")
 
-    // Only partition 1 drives the Security Panel device and HSM. Keystroke commands go to the
-    // EnvisaLink's default partition (1), and on multi-partition panels the EnvisaLink
-    // alternates %00 updates per partition, which would otherwise flap the arm state.
-    if (partitionNum == 1) {
+    // Only the configured partition drives the Security Panel device and HSM — the same partition
+    // keystrokes go to. On multi-partition panels the EnvisaLink alternates %00 updates per
+    // partition, which would otherwise flap the arm state.
+    if (partitionNum == statusPartition()) {
         def partChild = getChildDevice("${device.id}_P1")
         if (partChild) partChild.partition(partState, alpha)
 
@@ -313,52 +333,129 @@ private sendCommand(String cmd) {
 
 def armAway() {
     state.cmdSentAt = now()
-    sendCommand("${settings.securityCode}2")
+    sendKeys("${settings.securityCode}2")
 }
 
 def armStay() {
     state.cmdSentAt = now()
-    sendCommand("${settings.securityCode}3")
+    sendKeys("${settings.securityCode}3")
 }
 
 def armInstant() {
     state.cmdSentAt = now()
-    sendCommand("${settings.securityCode}7")
+    sendKeys("${settings.securityCode}7")
 }
 
 def disarm() {
     state.cmdSentAt = now()
-    sendCommand("${settings.securityCode}1")
+    sendKeys("${settings.securityCode}1")
 }
 
 def chime() {
-    sendCommand("${settings.securityCode}9")
+    sendKeys("${settings.securityCode}9")
 }
 
 def trigger1() {
     // Relay output 17: key on then off
-    sendCommand("${settings.securityCode}#717")
+    sendKeys("${settings.securityCode}#717")
     runIn(2, "trigger1Off")
 }
 
 def trigger1Off() {
-    sendCommand("${settings.securityCode}#817")
+    sendKeys("${settings.securityCode}#817")
 }
 
 def trigger2() {
-    sendCommand("${settings.securityCode}#718")
+    sendKeys("${settings.securityCode}#718")
     runIn(2, "trigger2Off")
 }
 
 def trigger2Off() {
-    sendCommand("${settings.securityCode}#818")
+    sendKeys("${settings.securityCode}#818")
 }
 
 def bypass(String zones) {
     if (!zones) return
     // Zero-pad each zone number to 2 digits and concatenate
     def zoneStr = zones.tokenize(",").collect { it.trim().padLeft(2, "0") }.join("")
-    sendCommand("${settings.securityCode}6${zoneStr}")
+    sendKeys("${settings.securityCode}6${zoneStr}")
+}
+
+// ─── Keystroke routing ───────────────────────────────────────────────────────
+
+// Partition 1 uses plain keystrokes (the EnvisaLink's default partition), exactly as before.
+// Other partitions use ^03,<partition>,<key>$ one key at a time, each waiting for the
+// EnvisaLink's ^03 reply — the same approach as pyenvisalink.
+private sendKeys(String keys) {
+    int p = statusPartition()
+    if (p == 1) {
+        sendCommand(keys)
+        return
+    }
+    keyQueues.putIfAbsent(queueKey(), new ConcurrentLinkedQueue<String>())
+    def q = keyQueues.get(queueKey())
+    keys.each { q.add("^03,${p},${it}\$".toString()) }
+    // putIfAbsent claims the sender slot atomically so two commands can't interleave keys
+    if (keyInFlight.putIfAbsent(queueKey(), [cmd: null, attempts: 0]) == null) sendNextKey()
+}
+
+private sendNextKey() {
+    def q = keyQueues.get(queueKey())
+    def cmd = q?.poll()
+    if (cmd == null) {
+        keyInFlight.remove(queueKey())
+        unschedule("keyTimeout")
+        // Keys queued by a command that arrived as we were finishing would otherwise be stranded
+        if (q && !q.isEmpty() && keyInFlight.putIfAbsent(queueKey(), [cmd: null, attempts: 0]) == null) sendNextKey()
+        return
+    }
+    keyInFlight.put(queueKey(), [cmd: cmd, attempts: 1])
+    sendCommand(cmd)
+    runIn(3, "keyTimeout")
+}
+
+private handleKeyResponse(String rc) {
+    def inFlight = keyInFlight.get(queueKey())
+    if (inFlight?.cmd == null) {
+        ifDebug("^03 reply '${rc}' with no keystroke pending")
+        return
+    }
+    switch (rc) {
+        case "00":
+            sendNextKey()
+            break
+        case "01":   // receive buffer overrun — EnvisaLink was busy, retry
+        case "04":   // receive buffer overflow — retry
+            if (inFlight.attempts >= 3) {
+                abortKeys("EnvisaLink busy (reply ${rc}) after 3 attempts")
+            } else {
+                inFlight.attempts = inFlight.attempts + 1
+                unschedule("keyTimeout")
+                runInMillis(500 * inFlight.attempts, "resendKey")
+            }
+            break
+        default:
+            abortKeys("EnvisaLink rejected keystroke (reply ${rc})")
+    }
+}
+
+def resendKey() {
+    def inFlight = keyInFlight.get(queueKey())
+    if (inFlight?.cmd == null) return
+    sendCommand(inFlight.cmd)
+    runIn(3, "keyTimeout")
+}
+
+def keyTimeout() {
+    if (keyInFlight.get(queueKey())?.cmd) abortKeys("no reply from EnvisaLink within 3 seconds")
+}
+
+private abortKeys(String reason) {
+    log.error "EnvisaLink: ${reason} — command to partition ${statusPartition()} was not completed"
+    keyQueues.get(queueKey())?.clear()
+    keyInFlight.remove(queueKey())
+    unschedule("keyTimeout")
+    unschedule("resendKey")
 }
 
 def healthCheck() {
@@ -385,6 +482,11 @@ def addZone(int zoneNum, String zoneName, String zoneType) {
     } catch (e) {
         log.error "Failed to create zone device ${zoneNum} '${zoneName}': ${e}"
     }
+}
+
+// Interim 2.0.4 app builds from the development branch passed a zone partition; it isn't needed
+def addZone(int zoneNum, String zoneName, String zoneType, int partition) {
+    addZone(zoneNum, zoneName, zoneType)
 }
 
 def addPartition() {
@@ -428,6 +530,14 @@ private boolean inPartition(zoneKey, int partitionNum) {
 private setZonePartition(zoneKey, int partitionNum) {
     if (state.zonePartition == null) state.zonePartition = [:]
     state.zonePartition[zoneKey.toString()] = partitionNum
+}
+
+private int statusPartition() {
+    return (settings.statusPartition ?: 1) as int
+}
+
+private String queueKey() {
+    return device.id.toString()
 }
 
 private int safeInt(String s, int fallback) {

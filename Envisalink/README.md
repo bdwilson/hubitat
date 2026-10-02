@@ -51,6 +51,7 @@ In the **Envisalink Security** app:
 | EnvisaLink Port | Default `4025` |
 | Network Password | EVL network password (default `user`) |
 | Security Code | Your panel arm/disarm code |
+| Partition for arm/disarm, status and HSM | Default `1`. Only change this on a multi-partition panel — see [Multi-Partition Panels](#multi-partition-panels) |
 | Number of zone slots | How many zone config rows to show |
 | Zone Name / Zone Number / Type | One row per zone you want to monitor |
 | Integrate with HSM | Bi-directional sync with Hubitat Safety Monitor |
@@ -61,15 +62,16 @@ Zones not listed in the app config are silently ignored — you don't need to li
 
 ## Multi-Partition Panels
 
-The integration controls and reports **partition 1** only, but works correctly on multi-partition panels.
+The integration controls and reports **one** partition — partition 1 by default, or the one set in **Partition for arm/disarm, status and HSM** in the app — and works correctly on multi-partition panels.
 
 When a Vista partition is armed, the panel stops reporting faults on that partition's non-alarm zones (e.g. interior motion detectors when armed Stay). A common workaround is to put sensors you want active at all times — like motion detectors that drive lighting — in a second partition that is never armed.
 
 On a multi-partition panel the EnvisaLink sends keypad updates for each partition in turn (roughly every 10 seconds). The driver handles this as follows:
 
-- **Arm status and HSM** — only partition 1's updates change the **Security Panel** device and HSM, so the state no longer flaps between partition 1 "armed" and partition 2 "ready".
+- **Arm status and HSM** — only the selected partition's updates change the **Security Panel** device and HSM, so the state doesn't flap between e.g. partition 1 "armed" and partition 2 "ready".
 - **Zones** — each zone belongs to whichever partition reported it open, and a partition's "Ready" update only closes that partition's zones. Nothing to configure.
-- **Arm/disarm** — keystrokes go to the EnvisaLink's default partition (partition 1). Other partitions can't be armed, disarmed or monitored for arm state from Hubitat.
+- **Arm/disarm** — keystrokes always go to the same partition the status comes from. For partition 1 they're sent as plain keystrokes, exactly as in earlier versions. For any other partition each key is sent with the EnvisaLink's "keystroke to partition" command (`^03`), one key at a time, waiting for the EnvisaLink to accept each one. If a key is rejected or gets no reply within 3 seconds, the rest of the command is cancelled and an error is logged.
+- Partitions other than the selected one can't be armed, disarmed or monitored for arm state from Hubitat.
 
 ## Device Hierarchy
 
@@ -97,6 +99,7 @@ The **Security Panel** device has arm/disarm/chime/bypass buttons. Zone devices 
 
 ## Troubleshooting
 
+- **App shows a Partition field on each zone slot, or an `addZone` error mentioning 4 arguments** — you have an interim development build of the app. Update the app and Connection driver together (HPM **Repair**, or import both from `master`). Zone partitions are detected automatically; there's nothing to set per zone.
 - **`connectionStatus` shows `login failed`** — check your EnvisaLink network password in app/device settings.
 - **Zones never open/close** — enable debug logging on the Envisalink Connection device and watch logs during a zone trigger. If `%00` messages appear but zones don't update, check that zone numbers in the app match your actual panel zone numbers.
 - **Arm Away becomes Arm Stay** — this is a Vista panel feature ("Auto-Stay"). If no entry/exit door opens during the exit delay, the panel converts Arm Away to Arm Stay. [See this FAQ](https://www.alarmgrid.com/faq/how-do-i-disable-auto-stay-arming-on-a-honeywell-vista-system).
@@ -104,7 +107,7 @@ The **Security Panel** device has arm/disarm/chime/bypass buttons. Zone devices 
 
 ## Known Limitations
 
-- Controls and reports arm state for partition 1 only (see [Multi-Partition Panels](#multi-partition-panels))
+- Controls and reports arm state for one partition (see [Multi-Partition Panels](#multi-partition-panels))
 - A partition's non-alarm zones don't report while that partition is armed — this is how Vista panels work, not a driver limitation
 - No siren/strobe capability (Vista panels don't expose this easily via TPI keystrokes)
 - Trigger output commands (#717/#718) — may need adjustment depending on your Vista model and output programming
