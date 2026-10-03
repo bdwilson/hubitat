@@ -2,6 +2,89 @@
 
 Not yet implemented. Tracked here so they survive across sessions.
 
+## ~~36. Wait for the battery instead of ending the trip~~ — DONE (1.33.0)
+
+Follow-on from #35. Once the prediction was fixed it was clear that wasn't what
+left the house uncleaned on 10/2: at 68% a room that really needs ~90% is still
+declined, the 1.30.0 gate ends the sweep, and nothing in the app starts another
+run after the vacuum recharges. The documented answer was a Rule Machine rule.
+User asked how to write one in the Visual Rules Builder with an "X hours or X
+rooms" cap, and whether it should instead live in the app given the "it turns off
+when charging" problem.
+
+**The "turns off when charging" problem, precisely.** A battery skip ended the
+sweep, so nothing outstanding remained and `switch` went off at the next poll
+(up to 15 min later). Two consequences: arrival's `off()` had nothing to cancel,
+and any rule had to infer from the battery alone whether anything was left.
+
+**Why in-app rather than a rule.** (1) The app already holds what a rule would
+have to guess: its own per-room prediction (a rule only has a blunt 95%), what
+is due, the trip's room count. (2) A rule can cap hours and *restarts* but cannot
+count rooms -- each restart is a whole sweep. (3) Hubitat's Visual Rules Builder
+reportedly has no branching or conditional expressions, so the counter and cancel
+pattern probably needs Rule Machine (couldn't confirm: Hubitat's docs and forum
+are blocked from this container; the claim came from search summaries). (4) It
+resolves the earlier objection that the app can't know who's home: it doesn't
+have to. The sweep only waits while the switch is on, and `off()`/`dock()`
+already end it (`dockVacuum` -> `endRotationSweep`), so presence stays in the
+user's rules.
+
+User chose: build it, with a cap of N rooms or until nothing is due, **not
+hours**.
+
+Implementation. `cleanNextRooms()`: on a battery skip, if `waitForCharge_${mac}`
+is on and the vacuum is Docked, set `state.rotationSweepWaitingSince[mac]` and
+leave the sweep alive instead of ending it -- `hasWorkPending()` already treats
+an active sweep as outstanding work, so the switch stays on with no change
+there. `checkSweepWaiting()` runs each status poll and evaluates quietly
+(`roomsBatteryCanCover(..., quiet=true)`, so a wait doesn't log a "won't cover"
+line every 15 minutes); when the next room fits it schedules
+`continueSweepDispatch` via `runIn(2, ...)`, not a direct call, because this is
+an async poll callback and `venusControl` posts synchronously (the 1.5.1
+hub-load shape). `finishActiveCleanRun()` counts credited rooms into
+`state.rotationSweepRooms` only while a sweep is active, so a hand-run
+`cleanRooms()` isn't part of a trip. `continueSweepIfNeeded()` ends the trip at
+the cap. The cap counts the whole trip including rooms cleaned before any wait.
+
+**Safety net the user did not ask for, and why.** A single wait gives up after 6
+hours (`WAIT_FOR_CHARGE_GIVE_UP_HOURS`), with a notification. Charging from empty
+takes ~3 hours, so 6 only trips when the vacuum isn't actually charging. Without
+it, a vacuum off its dock or offline would hold the switch on indefinitely --
+exactly the 1.29.1 latched-switch bug, and #31's lesson was that anything reading
+as "work outstanding" has to end by itself. It's per wait, not per trip, so a
+legitimate three-room trip with two recharges is unaffected. `checkOrphanedSweep`
+also had to learn that a waiting sweep is not an orphan, or its 2-minute net
+would have cleared every wait.
+
+Other behavior worth knowing: it won't *start* waiting for a vacuum that isn't
+Docked (a stranded one won't gain charge), and a wait ends if the vacuum starts
+cleaning, pauses or errors, or if nothing is due any more. The room limit and the
+wait toggle are treated as off when the battery check is off, rather than acting
+invisibly behind a hidden setting.
+
+Also hardened: `continueSweepDispatch` now returns if a run is already underway.
+Previously a duplicate continuation would pick the *next* room (the in-progress
+one is excluded from selection) and dispatch a second room on top of the first.
+Not reachable with 15-minute polling, but this feature adds a second scheduler
+for that same method.
+
+Tested by extracting the real methods (`cleanNextRooms`, `checkSweepWaiting`,
+`finishActiveCleanRun`, `continueSweepIfNeeded`, `dispatchRoomClean`, the battery
+gate and prediction, among 23) into a harness with only I/O stubbed. Replaying
+10/2 with the toggle on: Hallway, then at 69% Living Room waits with the switch
+still on; 78% and 94% keep waiting; 100% (the 4:30 PM reading) dispatches it;
+Kitchen then waits at 12% and goes at 70%; the trip ends at three rooms. Also: a
+cap of 2 ends the trip with Living Room still due; arrival's `off()` cancels the
+wait and nothing restarts even at 100%; the 6-hour give-up notifies; a wait is
+dropped when something else starts the vacuum or nothing is due; the orphan net
+leaves a waiting sweep alone; toggle off reproduces 1.32.0 exactly; a one-off
+clean doesn't count toward the cap; a duplicate continuation is ignored.
+
+**Open:** resume latency is bounded by the idle poll interval (15 min). Fast
+polling during a wait was considered and rejected -- ~3 hours of 1-minute polls
+to save a few minutes, and `rotationSweepActive` is deliberately not part of the
+poll-cadence predicate (it's the one flag that has actually been stranded).
+
 ## ~~35. Battery check refused Living Room at "130%" -- flat %/min model~~ — DONE (1.32.0)
 
 "We were gone all evening last night. Why did you only clean the hallway?"
