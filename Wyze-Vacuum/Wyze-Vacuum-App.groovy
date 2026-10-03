@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.31.1 - Brian Wilson / bubba@bubba.org
+ * 1.33.1 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -61,6 +61,30 @@ import java.util.zip.Inflater
 // whose estimated need exceeds a full charge, so it gets started at the best
 // moment available instead of being skipped forever (see roomsBatteryCanCover).
 @Field static final Integer NEARLY_FULL_BATTERY_PCT = 95
+// Battery model (1.32.0). Cleaning doesn't drain linearly from a standing start:
+// the first stretch after leaving the dock costs a fixed chunk, then it settles
+// into a steady %/min. Fitting both of this vacuum's real full-battery runs
+// (Living Room: 100% -> 19% in 36 min, 100% -> 10% in 37 min) together with a
+// 10-minute Hallway run (100% -> 69%) gives about 10% fixed + about 2%/min.
+// A single flat %/min can't describe that -- learned from short runs it comes
+// out near 3.3%/min and wildly overstates a long room (130% predicted for a room
+// that really uses ~85-90%), which is exactly what blocked Living Room on 10/2.
+@Field static final Integer BATTERY_STARTUP_PCT = 10
+@Field static final Double  BATTERY_DEFAULT_PCT_PER_MIN = 2.1
+// Margin kept on top of the predicted use so the vacuum isn't finishing right at
+// Wyze's own ~8% return-to-dock threshold.
+@Field static final Integer BATTERY_RESERVE_PCT = 10
+// A per-room figure is only recorded from a run that began on a nearly-full
+// battery: from partway down the curve the startup drop is smaller, so such a run
+// would understate what the same room costs when started from a fresh charge.
+@Field static final Integer BATTERY_MEASURE_MIN_START_PCT = 85
+// Waiting for a recharge (1.33.0) gives up after this long in one go. Charging
+// from empty takes about 3 hours, so six means the vacuum isn't actually charging
+// -- it's off its dock, unplugged, or offline. This is a safety net, not a
+// feature: any state that reads as "work outstanding" has to be able to end by
+// itself, or the switch latches on (the 1.29.1 bug). The limits that matter to
+// the user are the room count and "nothing left due".
+@Field static final Integer WAIT_FOR_CHARGE_GIVE_UP_HOURS = 6
 
 definition(
     name: "Wyze Vacuum Connect",
@@ -225,25 +249,47 @@ def mainPage() {
                                     def nextUp = previewNextRooms(mac)
                                     def drain = batteryDrainPerMin(mac)
                                     def learned = state.batteryDrainPerMin?.getAt(mac) != null
+                                    def nextIds = nextUp.collect { it.id as Integer }
+                                    def allMeasured = nextIds && nextIds.every { batteryUseIsMeasured(mac, it) }
                                     def detail = nextUp
-                                        ? "Next up is ${nextUp.collect { it.name }.join(', ')}, needing about ${batteryNeededFor(mac, nextUp.collect { it.id as Integer })}% " +
-                                          "(battery is currently ${getChildDevice(mac)?.currentValue('battery') ?: '?'}%)."
+                                        ? "Next up is ${nextUp.collect { it.name }.join(', ')}, needing about ${batteryNeededFor(mac, nextIds)}% " +
+                                          "(${allMeasured ? 'based on what it actually used last time' : 'an estimate — no full-battery run recorded for it yet'}; " +
+                                          "battery is currently ${getChildDevice(mac)?.currentValue('battery') ?: '?'}%)."
                                         : "Nothing is queued right now."
                                     // Rooms too big to finish on one charge are worth calling out -- they
                                     // behave differently (started near-full and finished after a recharge)
                                     // and it's the clearest signal that a room wants splitting in the Wyze app.
                                     def bigRooms = (settings["rotationRooms_${mac}"] ?: []).collect { it as Integer }.findAll {
-                                        batteryNeededFor(mac, [it]) > 100
+                                        batteryNeededFor(mac, [it]) > NEARLY_FULL_BATTERY_PCT
                                     }
                                     def bigNote = bigRooms
-                                        ? " <b>${roomNamesFor(mac, bigRooms).join(', ')}</b> needs more than a full charge, so it's started once the battery is at least " +
+                                        ? " <b>${roomNamesFor(mac, bigRooms).join(', ')}</b> needs close to a full charge, so it's started once the battery is at least " +
                                           "${NEARLY_FULL_BATTERY_PCT}% and the vacuum charges and resumes partway through. Splitting it into smaller zones in the Wyze app would avoid that."
                                         : ""
-                                    paragraph "Uses ${String.format('%.1f', drain)}% of battery per minute of cleaning" +
-                                              (learned ? ", measured from this vacuum's own runs" : " (starting estimate — replaced once a few real runs are recorded)") +
-                                              ", plus a 10% reserve so it isn't finishing right at Wyze's own return-to-dock threshold. ${detail}${bigNote} " +
+                                    paragraph "A room it has cleaned on its own from a full battery is predicted from what it really used. Anything else is estimated as " +
+                                              "${BATTERY_STARTUP_PCT}% to get going plus ${String.format('%.1f', drain)}% per minute" +
+                                              (learned ? " (measured from this vacuum's own runs)" : " (starting estimate — replaced as real runs are recorded)") +
+                                              ", with a further ${BATTERY_RESERVE_PCT}% kept in hand so it isn't finishing right at Wyze's own return-to-dock threshold. ${detail}${bigNote} " +
                                               "This only decides whether to <i>start</i> a rotation room — it never overrides the vacuum's own low-battery return, and " +
                                               "cleanRooms()/room buttons/Learning Mode always run regardless."
+
+                                    input "waitForCharge_${mac}", "bool",
+                                        title: "If the battery can't cover the next room, wait for it to charge and carry on with whatever is still due. The switch stays on while it waits, so turning it off (or docking it) cancels the rest",
+                                        defaultValue: false, required: false, submitOnChange: true
+
+                                    if (settings["waitForCharge_${mac}"]) {
+                                        input "waitForChargeMaxRooms_${mac}", "number",
+                                            title: "Stop after this many rooms per trip, counting the ones cleaned before it had to wait. It also stops as soon as nothing is due any more",
+                                            defaultValue: 3, required: true
+
+                                        if (state.rotationSweepWaitingSince?.getAt(mac)) {
+                                            def waitingFor = previewNextRooms(mac)
+                                            paragraph "<b>Waiting for the battery right now</b>" +
+                                                      (waitingFor ? " to cover ${waitingFor.collect { it.name }.join(', ')} (needs about ${batteryNeededFor(mac, waitingFor.collect { it.id as Integer })}%, " +
+                                                                    "battery is ${getChildDevice(mac)?.currentValue('battery') ?: '?'}%)" : "") +
+                                                      " — ${sweepRoomsDone(mac)} of ${sweepRoomCap(mac)} rooms done this trip. Switching the vacuum off cancels it."
+                                        }
+                                    }
                                 }
 
                                 def pending = pendingRoomCount(mac)
@@ -863,6 +909,7 @@ def handleVacuumStatusResponse(resp, data) {
 
     state.lastKnownStatus[mac] = newStatus
     rescheduleDynamicPoll()
+    checkSweepWaiting(mac)
     checkStaleActiveCleanRun(mac)
 
     // pollVacuum() fires the props and status polls as two independent async
@@ -951,6 +998,89 @@ private void endRotationSweep(String mac) {
     state.rotationSweepActive?.put(mac, false)
     state.rotationSweepPending?.put(mac, false)
     state.rotationSweepStartedAt?.remove(mac)
+    state.rotationSweepWaitingSince?.remove(mac)
+    state.rotationSweepRooms?.remove(mac)
+}
+
+// "Wait for charge" only means anything alongside the battery check -- with that
+// check off there is never a skip to wait out, so the toggle (and the room
+// limit that rides along with it) is treated as off rather than left acting
+// invisibly behind a hidden setting.
+private boolean waitForChargeEnabled(String mac) {
+    return settings["waitForCharge_${mac}"] == true && settings["requireBatteryForRoom_${mac}"] != false
+}
+
+private int sweepRoomCap(String mac) {
+    return Math.max(1, (settings["waitForChargeMaxRooms_${mac}"] ?: 3) as Integer)
+}
+
+private int sweepRoomsDone(String mac) {
+    return (state.rotationSweepRooms?.getAt(mac) ?: 0) as Integer
+}
+
+// Rooms credited since this trip began, including those cleaned before it ever
+// had to wait -- the limit is on the whole trip, not just the part after a
+// recharge.
+private boolean sweepRoomCapReached(String mac) {
+    return waitForChargeEnabled(mac) && sweepRoomsDone(mac) >= sweepRoomCap(mac)
+}
+
+// Whether the sweep still has anything to do. In continuous mode that's any
+// room at all; otherwise only rooms that are actually due.
+private boolean sweepHasWork(String mac) {
+    boolean continuous = (settings["rotationContinuousMode_${mac}"] ?: false) as boolean
+    return continuous ? !previewNextRooms(mac).isEmpty() : pendingRoomCount(mac) > 0
+}
+
+// Called every status poll. While a sweep is waiting for the battery, decide
+// whether to keep waiting, carry on, or stop -- evaluated quietly so a wait
+// doesn't write a "won't cover" line every poll. Presence never comes into it:
+// the sweep only waits while the switch is on, and turning the switch off
+// (dock() -> endRotationSweep) ends it, so arrival stays in the user's rules.
+private void checkSweepWaiting(String mac) {
+    def since = state.rotationSweepWaitingSince?.getAt(mac)
+    if (!since) return
+
+    if (!state.rotationSweepActive?.getAt(mac)) { // cancelled while waiting
+        state.rotationSweepWaitingSince.remove(mac)
+        return
+    }
+
+    // It's meant to be sitting on the dock. If something else has started it or
+    // stopped it, the wait is moot.
+    def status = state.lastKnownStatus?.getAt(mac)
+    if (status in ["Cleaning", "Paused", "Error"]) {
+        ifDebug("checkSweepWaiting(${mac}): status is ${status} -- no longer waiting")
+        endRotationSweep(mac)
+        return
+    }
+
+    double hours = (now() - (since as Long)) / 3600000.0
+    if (hours >= WAIT_FOR_CHARGE_GIVE_UP_HOURS) {
+        log.warn "Wyze Vacuum ${mac}: waited ${String.format('%.1f', hours)}h for the battery to recover and it hasn't -- giving up on this trip"
+        sendVacuumNotification("${getChildDevice(mac)?.displayName ?: mac} gave up waiting to charge after ${String.format('%.0f', hours)} hours -- worth checking it's actually on its dock and charging.")
+        endRotationSweep(mac)
+        return
+    }
+
+    if (sweepRoomCapReached(mac)) {
+        log.info "Wyze Vacuum ${mac}: reached the ${sweepRoomCap(mac)}-room limit for this trip -- not waiting any longer (anything still due waits for the next trigger)"
+        endRotationSweep(mac)
+        return
+    }
+    if (!sweepHasWork(mac)) {
+        log.info "Wyze Vacuum ${mac}: nothing is due any more -- no longer waiting for the battery"
+        endRotationSweep(mac)
+        return
+    }
+
+    def next = previewNextRooms(mac)
+    if (next && roomsBatteryCanCover(mac, next, false, true)) {
+        log.info "Wyze Vacuum ${mac}: battery has recovered enough for ${next.collect { it.name }} -- carrying on"
+        // runIn, not a direct call: this is an async poll callback and
+        // venusControl posts synchronously (the 1.5.1 hub-load shape).
+        runIn(2, "continueSweepDispatch", [data: [mac: mac], overwrite: false])
+    }
 }
 
 // Safety net for any path that abandons work without going through
@@ -965,6 +1095,7 @@ private void checkOrphanedSweep(String mac) {
     boolean sweeping = state.rotationSweepActive?.getAt(mac)
     boolean busy = state.activeCleanRun?.containsKey(mac) ||
                    state.rotationSweepPending?.getAt(mac) ||
+                   state.rotationSweepWaitingSince?.getAt(mac) ||
                    state.lastKnownStatus?.getAt(mac) == "Cleaning"
     if (!sweeping || busy) {
         state.sweepIdleSince.remove(mac)
@@ -1189,7 +1320,7 @@ private void checkLowBatteryAutoDock(String mac, Integer batteryPct) {
         if (!state.lowBatteryDockTriggered[mac]) {
             log.warn "Wyze Vacuum ${mac}: battery ${batteryPct}% below ${threshold}% threshold while cleaning — sending back to dock"
             state.lowBatteryDockTriggered[mac] = true
-            dockVacuum(mac)
+            dockVacuum(mac, "the low-battery dock threshold")
         }
     } else {
         // Reset once no longer cleaning or battery has recovered, so the
@@ -1360,7 +1491,7 @@ def cancelAutoResumeDock(data) {
         return
     }
     log.info "Wyze Vacuum ${mac}: vacuum restarted an unfinished job on its own -- docking it (auto-resume is turned off for this vacuum)"
-    dockVacuum(mac)
+    dockVacuum(mac, "auto-resume is turned off")
     // Marked silent so the run's end doesn't also announce "was docked N min
     // into cleaning" -- the start-side notification already explained this.
     // Still counts as an interruption, so the room keeps its pending status
@@ -1422,7 +1553,10 @@ private void handleCleaningSessionEnd(String mac, def reportedCleanTimeMinutes, 
     }
 
     accumulateBinHours(mac, elapsedMin)
-    if (!willResume) learnBatteryDrain(mac, elapsedMin, d)
+    if (!willResume) {
+        recordRoomBatteryUse(mac, run, elapsedMin, d, newStatus, interrupt != null)
+        learnBatteryDrain(mac, elapsedMin, d)
+    }
 
     // Same reasoning -- don't tell the user it "finished" when it's really
     // just pausing to resume the same job; the eventual genuine finish
@@ -1493,13 +1627,19 @@ private void continueSweepIfNeeded(String mac, String newStatus) {
             if (elapsedMin >= maxMinutes) {
                 ifDebug("continueSweepIfNeeded(${mac}): continuous sweep hit its ${maxMinutes}-minute limit (${elapsedMin} min elapsed), docking")
                 endRotationSweep(mac)
-                dockVacuum(mac)
+                dockVacuum(mac, "the continuous-sweep time limit")
                 return
             }
         }
     }
 
-    boolean somethingToDispatch = continuous ? !previewNextRooms(mac).isEmpty() : pendingRoomCount(mac) > 0
+    if (sweepRoomCapReached(mac)) {
+        log.info "Wyze Vacuum ${mac}: reached the ${sweepRoomCap(mac)}-room limit for this trip -- ending the sweep (anything still due waits for the next trigger)"
+        endRotationSweep(mac)
+        return
+    }
+
+    boolean somethingToDispatch = sweepHasWork(mac)
     if (!somethingToDispatch) {
         ifDebug("continueSweepIfNeeded(${mac}): ${continuous ? 'nothing left to clean' : 'nothing else due'}, sweep finished")
         endRotationSweep(mac)
@@ -1541,6 +1681,10 @@ private void continueSweepIfNeeded(String mac, String newStatus) {
 def continueSweepDispatch(data) {
     def mac = data?.mac
     if (!mac || !(state.rotationSweepActive?.getAt(mac))) return
+    // A run already underway means this is a duplicate continuation. Dispatching
+    // anyway would pick the *next* room (the in-progress one is excluded from
+    // selection) and start a second one on top of it.
+    if (state.activeCleanRun?.containsKey(mac)) return
     cleanNextRooms(mac)
 }
 
@@ -1619,8 +1763,24 @@ private boolean modeSignalsResume(def modeCode) {
 
 // =================== Commands from Driver ===================
 
+// One info line for every start/pause/dock that reaches the app, saying what it
+// actually changed. Until 1.33.1 these were debug-only, so when a vacuum did
+// something unexpected the first question -- did the command ever arrive? --
+// could only be inferred from poll timing (9/14: an arrival that appeared to send
+// nothing, with no way to be sure). Commands are rare, so this costs nothing.
+// `reason` is set when the app sent the command to itself rather than a rule.
+private void logCommand(String mac, String command, String reason = null) {
+    def effects = []
+    if (state.rotationSweepWaitingSince?.getAt(mac)) effects << "cancelled the wait for the battery"
+    else if (state.rotationSweepActive?.getAt(mac)) effects << "ended the rotation sweep"
+    if (state.pausedForResumeAt?.getAt(mac)) effects << "cancelled a job paused for charging"
+    def what = reason ? "${command} sent by the app (${reason})" : "${command} received"
+    log.info "Wyze Vacuum ${mac}: ${what} -- ${effects ? effects.join(' and ') : 'nothing outstanding to cancel'}"
+}
+
 def startVacuum(String mac) {
     ifDebug("startVacuum: ${mac}")
+    logCommand(mac, "start()")
     endRotationSweep(mac) // whole-house start is a different mode than room rotation
     state.pausedForResumeAt?.remove(mac) // an explicit start is a new run, not a resume of the old one
     state.resumeCancelled?.remove(mac)   // and a deliberate start overrides an earlier cancellation
@@ -1635,6 +1795,7 @@ def startVacuum(String mac) {
 
 def pauseVacuum(String mac) {
     ifDebug("pauseVacuum: ${mac}")
+    logCommand(mac, "pause()")
     endRotationSweep(mac) // explicit stop -- don't auto-continue to the next room
     state.appWholeHouseStartAt?.remove(mac)
     markCommandInterrupt(mac, "paused")
@@ -1643,8 +1804,9 @@ def pauseVacuum(String mac) {
     pollVacuum(mac)
 }
 
-def dockVacuum(String mac) {
+def dockVacuum(String mac, String reason = null) {
     ifDebug("dockVacuum: ${mac}")
+    logCommand(mac, "dock()", reason)
     endRotationSweep(mac) // explicit stop -- don't auto-continue to the next room
     state.appWholeHouseStartAt?.remove(mac)
     markCommandInterrupt(mac, "docked")
@@ -1720,15 +1882,33 @@ def cleanNextRooms(String mac) {
     // continueSweepIfNeeded) is measured from when the whole sweep began,
     // not from the most recent batch.
     if (freshSweepStart) {
+        log.info "Wyze Vacuum ${mac}: cleanNextRooms() received -- starting a trip"
         state.rotationSweepStartedAt = state.rotationSweepStartedAt ?: [:]
         state.rotationSweepStartedAt[mac] = now()
+        // A new trip starts its room count and any wait from scratch.
+        state.rotationSweepRooms = state.rotationSweepRooms ?: [:]
+        state.rotationSweepRooms[mac] = 0
+        state.rotationSweepWaitingSince?.remove(mac)
     }
 
     def chosen = previewNextRooms(mac)
     if (!chosen) { ifDebug("cleanNextRooms(${mac}): nothing to clean"); return }
 
-    chosen = roomsBatteryCanCover(mac, chosen)
+    // Waiting only makes sense for a vacuum that is on its dock charging --
+    // one stranded elsewhere isn't going to get any more battery by waiting.
+    boolean canWait = waitForChargeEnabled(mac) && state.lastKnownStatus?.getAt(mac) == "Docked"
+
+    chosen = roomsBatteryCanCover(mac, chosen, canWait)
     if (!chosen) {
+        if (canWait) {
+            // Keep the sweep alive instead of ending it. That is what keeps the
+            // switch on while it charges (see hasWorkPending), so the arrival
+            // automation's off() still has something to cancel. The room stays due.
+            state.rotationSweepWaitingSince = state.rotationSweepWaitingSince ?: [:]
+            if (!state.rotationSweepWaitingSince[mac]) state.rotationSweepWaitingSince[mac] = now()
+            state.rotationSweepPending?.put(mac, false)
+            return
+        }
         // Nothing here is worth dispatching on the charge available. Ending
         // the sweep rather than leaving it set matters -- an active sweep flag
         // reads as outstanding work (see hasWorkPending), and the rooms stay
@@ -1755,7 +1935,7 @@ def cleanNextRooms(String mac) {
 //
 // Rooms are dropped from the end of the batch (least overdue first) until what
 // remains fits, so a partial run still happens when it can.
-private List roomsBatteryCanCover(String mac, List rooms) {
+private List roomsBatteryCanCover(String mac, List rooms, boolean willWait = false, boolean quiet = false) {
     // Deliberately an explicit false check, not `?: true` -- Groovy Truth
     // treats false as falsy, so the elvis would hand back the `true` default
     // for a setting the user had explicitly turned off, making the opt-out do
@@ -1770,24 +1950,24 @@ private List roomsBatteryCanCover(String mac, List rooms) {
     while (candidates) {
         def needed = batteryNeededFor(mac, candidates.collect { it.id as Integer })
         if (battery >= needed) {
-            if (candidates.size() < rooms.size()) {
+            if (candidates.size() < rooms.size() && !quiet) {
                 def dropped = rooms.findAll { !(it in candidates) }.collect { it.name }
                 log.info "Wyze Vacuum ${mac}: battery ${battery}% covers ${candidates.collect { it.name }} but not ${dropped} -- those stay due for next time"
             }
             return candidates
         }
 
-        // A single room needing more than a full charge can never satisfy this
-        // check, so refusing it would drop it out of rotation permanently and
-        // silently -- the room would just sit on "already due" forever with
-        // nothing but a log line. Not hypothetical: Living Room needs ~90% at
-        // the drain rate learned so far, and crosses 100% if that rate rises
-        // about 13%, which one carpeted run at high suction could do. Take it
-        // on a nearly-full battery instead and let the vacuum's own
-        // charge-and-resume finish the job -- that firmware behavior exists
-        // for precisely this case.
-        if (candidates.size() == 1 && needed > 100 && battery >= NEARLY_FULL_BATTERY_PCT) {
-            log.info "Wyze Vacuum ${mac}: '${candidates[0].name}' needs about ${needed}% for its ${Math.round(roomEstimateMinutes(mac, candidates[0].id as Integer))} min, which is more than one charge -- starting it at ${battery}% anyway and letting the vacuum charge and resume, rather than never cleaning it"
+        // A single room needing more than a nearly-full battery can never be
+        // satisfied by waiting for a fuller one, so refusing it would drop it out
+        // of rotation permanently and silently -- the room would just sit on
+        // "already due" forever with nothing but a log line. Take it once the
+        // battery is nearly full and let the vacuum's own charge-and-resume finish
+        // the job -- that firmware behavior exists for precisely this case. The
+        // cutoff is the nearly-full mark rather than 100% so there isn't a cliff
+        // where a room needing 98% is refused at 97% yet one needing 102% starts
+        // at 95%.
+        if (candidates.size() == 1 && needed > NEARLY_FULL_BATTERY_PCT && battery >= NEARLY_FULL_BATTERY_PCT) {
+            if (!quiet) log.info "Wyze Vacuum ${mac}: '${candidates[0].name}' needs about ${needed}% for its ${Math.round(roomEstimateMinutes(mac, candidates[0].id as Integer))} min, which is close to a full charge -- starting it at ${battery}% and letting the vacuum charge and resume if it has to, rather than never cleaning it"
             return candidates
         }
 
@@ -1801,8 +1981,9 @@ private List roomsBatteryCanCover(String mac, List rooms) {
 
     def first = rooms[0]
     def needed = batteryNeededFor(mac, [first.id as Integer])
-    def oneCharge = needed > 100 ? " -- more than one charge, so it waits for a nearly-full battery" : ""
-    log.info "Wyze Vacuum ${mac}: battery ${battery}% won't cover '${first.name}' (needs about ${needed}% for its ${Math.round(roomEstimateMinutes(mac, first.id as Integer))} min)${oneCharge} -- not starting it, it stays due for the next trigger"
+    def oneCharge = needed > NEARLY_FULL_BATTERY_PCT ? " -- close to a full charge, so it waits for a nearly-full battery" : ""
+    def outcome = willWait ? " -- waiting for it to charge" : "${oneCharge} -- not starting it, it stays due for the next trigger"
+    if (!quiet) log.info "Wyze Vacuum ${mac}: battery ${battery}% won't cover '${first.name}' (needs about ${needed}% for its ${Math.round(roomEstimateMinutes(mac, first.id as Integer))} min)${outcome}"
     return []
 }
 
@@ -1810,8 +1991,34 @@ private List roomsBatteryCanCover(String mac, List rooms) {
 // the dock. The reserve sits above Wyze's own ~8% return threshold so the
 // vacuum isn't asked to finish right at the edge of it.
 private Integer batteryNeededFor(String mac, List roomIds) {
-    double minutes = (roomIds ?: []).sum { id -> roomEstimateMinutes(mac, id as Integer) } ?: 0.0
-    return Math.ceil(minutes * batteryDrainPerMin(mac) + 10) as Integer
+    def ids = (roomIds ?: []).collect { it as Integer }
+    return Math.ceil(predictedBatteryUse(mac, ids) + BATTERY_RESERVE_PCT) as Integer
+}
+
+// Battery these rooms are expected to use. A room this vacuum has actually
+// cleaned on its own is predicted from what it really used last time -- the
+// quantity being predicted, measured directly, with no per-minute extrapolation
+// across runs of different lengths. Only a room with no history falls back to
+// the fixed-startup-plus-per-minute model.
+private double predictedBatteryUse(String mac, List ids) {
+    def measuredFor = state.roomBatteryUsed?.getAt(mac) ?: [:]
+    double total = 0.0
+    ids.eachWithIndex { id, i ->
+        def measured = measuredFor[id.toString()]
+        double use = measured != null
+            ? (measured as Double)
+            : BATTERY_STARTUP_PCT + roomEstimateMinutes(mac, id as Integer) * batteryDrainPerMin(mac)
+        // The startup cost is paid once per run, not once per room, so rooms after
+        // the first don't carry it again.
+        if (i > 0) use -= BATTERY_STARTUP_PCT
+        total += Math.max(use, 0.0)
+    }
+    return total
+}
+
+// Where the number above came from, for the app page.
+private boolean batteryUseIsMeasured(String mac, Integer roomId) {
+    return state.roomBatteryUsed?.getAt(mac)?.getAt(roomId.toString()) != null
 }
 
 private double roomEstimateMinutes(String mac, Integer roomId) {
@@ -1824,10 +2031,54 @@ private double roomEstimateMinutes(String mac, Integer roomId) {
 // full-battery runs (100% -> 10% in 37 min, 100% -> 19% in 36 min); a few real
 // runs replace it with whatever a given vacuum and suction setting really do.
 private double batteryDrainPerMin(String mac) {
-    return (state.batteryDrainPerMin?.getAt(mac) ?: 2.3) as Double
+    migrateBatteryModel()
+    return (state.batteryDrainPerMin?.getAt(mac) ?: BATTERY_DEFAULT_PCT_PER_MIN) as Double
+}
+
+// Rates learned under the old flat model are not comparable with the
+// startup-offset model: every sample was inflated by the fixed startup cost, and
+// the stored average had drifted to about 3.4%/min against a true steady rate of
+// about 2%/min. It would take many runs for the blend to forget that, so it's
+// discarded once, the first time anything reads it. Done lazily here rather than
+// in updated() because a package update doesn't call updated() until the app
+// page is next saved.
+private void migrateBatteryModel() {
+    if (state.batteryModel == 2) return
+    state.batteryDrainPerMin = [:]
+    state.batteryModel = 2
+}
+
+// What one specific room actually cost, from a run that cleaned only that room
+// and ran to a genuine finish. Anything else would record a number that isn't
+// the room's cost: a multi-room batch can't be split per room, a command-stopped
+// or paused run was cut short, and a run that charged partway through has a
+// battery delta that no longer covers the same stretch of cleaning.
+private void recordRoomBatteryUse(String mac, Map run, Integer elapsedMin, def d, String newStatus, boolean interrupted) {
+    if (!run || (run.roomIds ?: []).size() != 1) return
+    if (interrupted || newStatus == "Paused" || newStatus == "Error") return
+    if (run.pausedElapsedMin) return
+    if (!elapsedMin || elapsedMin < 5) return
+
+    def startPct = state.cleaningStartBattery?.getAt(mac)
+    def endPct = toInt(d?.currentValue("battery"))
+    if (startPct == null || endPct == null) return
+    if ((startPct as Integer) < BATTERY_MEASURE_MIN_START_PCT) return
+
+    double used = (startPct as Integer) - endPct
+    if (used <= 0 || used > 100) return
+
+    def key = run.roomIds[0].toString()
+    state.roomBatteryUsed = state.roomBatteryUsed ?: [:]
+    def perRoom = state.roomBatteryUsed[mac] ?: [:]
+    def prev = perRoom[key] as Double
+    // Same exponential blend the room-time estimates use.
+    perRoom[key] = prev ? (prev * 0.7 + used * 0.3) : used
+    state.roomBatteryUsed[mac] = perRoom
+    ifDebug("recordRoomBatteryUse(${mac}): room ${key} used ${used}% this run -> ${String.format('%.0f', perRoom[key])}% average")
 }
 
 private void learnBatteryDrain(String mac, Integer elapsedMin, def d) {
+    migrateBatteryModel()
     if (!elapsedMin || elapsedMin < 5) return // too short to measure anything real
     def startPct = state.cleaningStartBattery?.getAt(mac)
     def endPct = toInt(d?.currentValue("battery"))
@@ -1835,7 +2086,12 @@ private void learnBatteryDrain(String mac, Integer elapsedMin, def d) {
 
     double used = (startPct as Integer) - endPct
     if (used <= 0) return // charged partway through (a mode-11 pause) -- not a clean sample
-    double rate = used / (elapsedMin as Double)
+    // The fixed startup cost comes off first: dividing the whole drop by the
+    // minutes made a 10-minute room look like 3.1%/min and a 37-minute one like
+    // 2.4%/min, so the "rate" depended on which kind of run happened last.
+    double running = used - BATTERY_STARTUP_PCT
+    if (running <= 0) return
+    double rate = running / (elapsedMin as Double)
     if (rate < 0.5 || rate > 10.0) return // implausible; ignore rather than poison the average
 
     state.batteryDrainPerMin = state.batteryDrainPerMin ?: [:]
@@ -1967,6 +2223,7 @@ private void dispatchRoomClean(String mac, List rooms) {
     state.activeCleanRun[mac] = [roomIds: ids, startedAt: now()]
     state.commandInterrupt?.remove(mac) // a new dispatch supersedes any earlier stop
     state.resumeCancelled?.remove(mac)  // ...as does it supersede an earlier cancellation
+    state.rotationSweepWaitingSince?.remove(mac) // a room is going out, so it's no longer waiting
     rescheduleDynamicPoll() // switch to fast polling immediately, don't wait on a poll to confirm "Cleaning" first
 
     venusControl(mac, 0, 1, ids) // GLOBAL_SWEEPING / START, scoped to rooms
@@ -2091,6 +2348,13 @@ private Map finishActiveCleanRun(String mac, Integer elapsedMin, String newStatu
     }
 
     markRoomsCleaned(mac, completed)
+
+    // Counted toward this trip's room limit, but only while a rotation sweep is
+    // actually running -- a one-off cleanRooms() isn't part of a trip.
+    if (completed && state.rotationSweepActive?.getAt(mac)) {
+        state.rotationSweepRooms = state.rotationSweepRooms ?: [:]
+        state.rotationSweepRooms[mac] = sweepRoomsDone(mac) + completed.size()
+    }
 
     if (incomplete.isEmpty() && rooms) {
         if (rooms.size() == 1) {

@@ -2,6 +2,198 @@
 
 Not yet implemented. Tracked here so they survive across sessions.
 
+## ~~37. No trace of whether a stop/start command reached the app~~ — DONE (1.33.1)
+
+Follow-up question after #36: "if someone arrives while it's charging to prepare
+to keep cleaning, it won't register that off/dock? If that's the case, do we need
+new button options for on/off that could work around this deficiency?"
+
+**Checked rather than assumed, by running the real driver `off()` into the real
+app `dockVacuum()`/`pauseVacuum()`** with the vacuum docked and waiting:
+`off()` [Dock], `off()` [Pause], a direct `dock()` and a direct `pause()` all end
+the wait, clear the work that keeps the switch on, and nothing restarts even at
+100% two hours later. The driver never checks its own switch attribute, so `off()`
+registers even when the switch already reads off. The device-level "dock is a
+no-op when already docked" is irrelevant, because `dockVacuum` ends the sweep
+itself (1.29.0) instead of waiting to observe the vacuum react.
+
+So there is no deficiency for new buttons to work around, and a new
+"cancel" command would be a synonym for what `dock()` already does unconditionally.
+
+**What genuinely isn't seen:** a stop made outside Hubitat (Wyze app, voice
+assistant talking to Wyze directly, the vacuum's button). The vacuum is already
+docked and charging so nothing observable changes. Reproduced in the test: the
+wait carries on and Living Room starts. Documented; no fix is possible without a
+signal from Wyze.
+
+**The real gap was visibility.** Every command path wrote only `ifDebug`, which is
+off by default. That is why on 9/14 the question "did the arrival command ever
+arrive?" had to be *inferred* from poll cadence (an unexplained absence of the
+off-schedule poll a command always produces), and why it still can't be answered
+for certain. `logCommand()` now writes one info line per start/pause/dock saying
+what it changed -- "cancelled the wait for the battery", "ended the rotation
+sweep", "cancelled a job paused for charging", or "nothing outstanding to cancel"
+-- and a new trip logs "cleanNextRooms() received -- starting a trip" (once; a
+continuation of the same trip doesn't). Commands the app sends itself (low-battery
+dock, cancelled auto-resume, the continuous-sweep time limit) pass a `reason` so
+they read "dock() sent by the app (...)" rather than looking like a rule.
+
+If the line is missing after an arrival, the fault is upstream of the app: the
+rule didn't fire or targeted a different device. That is the thing still unexplained
+from 9/14, and this makes it answerable the next time.
+
+Verified with the real methods: all 15 scenarios from #36 still pass, plus the
+four trace variants and the once-per-trip start line.
+
+## ~~36. Wait for the battery instead of ending the trip~~ — DONE (1.33.0)
+
+Follow-on from #35. Once the prediction was fixed it was clear that wasn't what
+left the house uncleaned on 10/2: at 68% a room that really needs ~90% is still
+declined, the 1.30.0 gate ends the sweep, and nothing in the app starts another
+run after the vacuum recharges. The documented answer was a Rule Machine rule.
+User asked how to write one in the Visual Rules Builder with an "X hours or X
+rooms" cap, and whether it should instead live in the app given the "it turns off
+when charging" problem.
+
+**The "turns off when charging" problem, precisely.** A battery skip ended the
+sweep, so nothing outstanding remained and `switch` went off at the next poll
+(up to 15 min later). Two consequences: arrival's `off()` had nothing to cancel,
+and any rule had to infer from the battery alone whether anything was left.
+
+**Why in-app rather than a rule.** (1) The app already holds what a rule would
+have to guess: its own per-room prediction (a rule only has a blunt 95%), what
+is due, the trip's room count. (2) A rule can cap hours and *restarts* but cannot
+count rooms -- each restart is a whole sweep. (3) Hubitat's Visual Rules Builder
+reportedly has no branching or conditional expressions, so the counter and cancel
+pattern probably needs Rule Machine (couldn't confirm: Hubitat's docs and forum
+are blocked from this container; the claim came from search summaries). (4) It
+resolves the earlier objection that the app can't know who's home: it doesn't
+have to. The sweep only waits while the switch is on, and `off()`/`dock()`
+already end it (`dockVacuum` -> `endRotationSweep`), so presence stays in the
+user's rules.
+
+User chose: build it, with a cap of N rooms or until nothing is due, **not
+hours**.
+
+Implementation. `cleanNextRooms()`: on a battery skip, if `waitForCharge_${mac}`
+is on and the vacuum is Docked, set `state.rotationSweepWaitingSince[mac]` and
+leave the sweep alive instead of ending it -- `hasWorkPending()` already treats
+an active sweep as outstanding work, so the switch stays on with no change
+there. `checkSweepWaiting()` runs each status poll and evaluates quietly
+(`roomsBatteryCanCover(..., quiet=true)`, so a wait doesn't log a "won't cover"
+line every 15 minutes); when the next room fits it schedules
+`continueSweepDispatch` via `runIn(2, ...)`, not a direct call, because this is
+an async poll callback and `venusControl` posts synchronously (the 1.5.1
+hub-load shape). `finishActiveCleanRun()` counts credited rooms into
+`state.rotationSweepRooms` only while a sweep is active, so a hand-run
+`cleanRooms()` isn't part of a trip. `continueSweepIfNeeded()` ends the trip at
+the cap. The cap counts the whole trip including rooms cleaned before any wait.
+
+**Safety net the user did not ask for, and why.** A single wait gives up after 6
+hours (`WAIT_FOR_CHARGE_GIVE_UP_HOURS`), with a notification. Charging from empty
+takes ~3 hours, so 6 only trips when the vacuum isn't actually charging. Without
+it, a vacuum off its dock or offline would hold the switch on indefinitely --
+exactly the 1.29.1 latched-switch bug, and #31's lesson was that anything reading
+as "work outstanding" has to end by itself. It's per wait, not per trip, so a
+legitimate three-room trip with two recharges is unaffected. `checkOrphanedSweep`
+also had to learn that a waiting sweep is not an orphan, or its 2-minute net
+would have cleared every wait.
+
+Other behavior worth knowing: it won't *start* waiting for a vacuum that isn't
+Docked (a stranded one won't gain charge), and a wait ends if the vacuum starts
+cleaning, pauses or errors, or if nothing is due any more. The room limit and the
+wait toggle are treated as off when the battery check is off, rather than acting
+invisibly behind a hidden setting.
+
+Also hardened: `continueSweepDispatch` now returns if a run is already underway.
+Previously a duplicate continuation would pick the *next* room (the in-progress
+one is excluded from selection) and dispatch a second room on top of the first.
+Not reachable with 15-minute polling, but this feature adds a second scheduler
+for that same method.
+
+Tested by extracting the real methods (`cleanNextRooms`, `checkSweepWaiting`,
+`finishActiveCleanRun`, `continueSweepIfNeeded`, `dispatchRoomClean`, the battery
+gate and prediction, among 23) into a harness with only I/O stubbed. Replaying
+10/2 with the toggle on: Hallway, then at 69% Living Room waits with the switch
+still on; 78% and 94% keep waiting; 100% (the 4:30 PM reading) dispatches it;
+Kitchen then waits at 12% and goes at 70%; the trip ends at three rooms. Also: a
+cap of 2 ends the trip with Living Room still due; arrival's `off()` cancels the
+wait and nothing restarts even at 100%; the 6-hour give-up notifies; a wait is
+dropped when something else starts the vacuum or nothing is due; the orphan net
+leaves a waiting sweep alone; toggle off reproduces 1.32.0 exactly; a one-off
+clean doesn't count toward the cap; a duplicate continuation is ignored.
+
+**Open:** resume latency is bounded by the idle poll interval (15 min). Fast
+polling during a wait was considered and rejected -- ~3 hours of 1-minute polls
+to save a few minutes, and `rotationSweepActive` is deliberately not part of the
+poll-cadence predicate (it's the one flag that has actually been stranded).
+
+## ~~35. Battery check refused Living Room at "130%" -- flat %/min model~~ — DONE (1.32.0)
+
+"We were gone all evening last night. Why did you only clean the hallway?"
+10/2 log: Hallway dispatched at 100%, cleaned 3:15-3:25 (10 min), battery 69%.
+At 3:27 the sweep tried Living Room and the 1.30.0 gate declined it --
+"battery 68% won't cover 'Living Room' (needs about 130% for its 36 min)".
+The sweep then ended, the vacuum recharged to 100% by 4:30 PM, and sat idle
+on its dock for the rest of the evening.
+
+Two separate things went wrong, only one of them a bug:
+
+1. **The 130% was wrong (bug, mine).** Living Room had actually used 81% and
+   90% on its last two full-battery runs. `needed = ceil(minutes * rate + 10)`
+   with 36 min -> 130% implies a learned rate of 3.31-3.33%/min, and since the
+   Hallway sample (3.1%/min) had just been blended in at weight 0.3, the
+   stored rate before it must have been ~3.4 -- up from 2.2 on 9/16. Root
+   cause: `learnBatteryDrain` divided the *whole* battery drop by the minutes,
+   but cleaning has a fixed startup cost (the % falls quickly off a 100%
+   float-charge reading, then settles). So a 10-minute room looked like
+   3.1%/min and a 37-minute one like 2.4%/min -- the "rate" depended on which
+   length of run happened last, and small rooms dragged it up. Fitting the
+   three real runs gives ~9-12% fixed + 1.9-2.2%/min, which predicts Living
+   Room at ~86% (within ~7 points of both real runs) against 130% from the
+   flat rate. Three data points, so the shape is an inference, not proven.
+2. **Nothing restarts a run after a recharge (design, as documented).** Even
+   with a correct ~90% prediction, 68% is still not enough, so the outcome that
+   evening is unchanged. The battery check ends the sweep by design (1.30.0:
+   "stays due for the next trigger"), and the only thing that re-fires is the
+   Rule Machine rule documented in 1.31.0. No dispatch appears in the log after
+   3:27 PM, so the rule isn't in place (or didn't fire).
+
+User chose: fix the prediction, and build the Rule Machine rule themselves
+rather than adding an in-app "wait for charge and continue".
+
+Fix: `predictedBatteryUse()` -- a room cleaned alone from a full battery is
+predicted from what it *actually used* (`state.roomBatteryUsed[mac][roomId]`,
+EMA 0.7/0.3), measuring the thing being predicted instead of extrapolating a
+rate across run lengths. Only rooms with no history fall back to
+`BATTERY_STARTUP_PCT (10) + minutes * rate`, the rate now learned with the
+startup cost subtracted first, default 2.1. Startup is counted once per run,
+not once per room, in a batch. `recordRoomBatteryUse()` rejects runs that
+aren't a clean per-room sample: multi-room batches, command-stopped / paused /
+errored runs, runs with a mode-11 charge pause, runs under 5 minutes, and runs
+that started below 85% (the startup drop is smaller partway down the curve, so
+they'd understate a fresh-charge cost). `migrateBatteryModel()` discards the
+inflated stored rate once, lazily on first read, because a package update
+doesn't call `updated()` until the page is next saved.
+
+Also unified the "too big for one charge" cutoff: was `needed > 100`, now
+`needed > NEARLY_FULL_BATTERY_PCT (95)`. With the old cutoff a room needing
+98% was refused at 97% while one needing 102% started at 95% -- a cliff that
+this change would have made reachable, since Living Room now lands at ~96-98%.
+
+Tested by extracting the nine real methods out of the app file into a harness
+and replaying 10/2: the stored 3.4 discarded on migration, Living Room 96%
+(was 130%), still declined at 68% and 94%, started at 95% and at the 4:30 PM
+100%, Hallway recorded at 31% and Living Room at 90%/81% blending to 87%, and
+all eight non-qualifying sample types rejected. Short and long runs now
+produce the same steady rate (2.10 vs 2.16, was 3.10 vs 2.43).
+
+**Open, deliberately left:** per-room figures only start accumulating from the
+next full-battery run of each room, so until then every room uses the
+startup-plus-rate estimate. And the in-app alternative -- keep the sweep alive
+while waiting for charge, switch on, arrival `off()` cancels -- was offered and
+declined; revisit if the Rule Machine rule proves awkward.
+
 ## ~~34. A room too big for one charge was skipped forever~~ — DONE (1.31.0)
 
 Flaw in 1.30.0's own battery gate, spotted while answering a question about
