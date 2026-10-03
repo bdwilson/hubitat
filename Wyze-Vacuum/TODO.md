@@ -2,6 +2,49 @@
 
 Not yet implemented. Tracked here so they survive across sessions.
 
+## ~~37. No trace of whether a stop/start command reached the app~~ — DONE (1.33.1)
+
+Follow-up question after #36: "if someone arrives while it's charging to prepare
+to keep cleaning, it won't register that off/dock? If that's the case, do we need
+new button options for on/off that could work around this deficiency?"
+
+**Checked rather than assumed, by running the real driver `off()` into the real
+app `dockVacuum()`/`pauseVacuum()`** with the vacuum docked and waiting:
+`off()` [Dock], `off()` [Pause], a direct `dock()` and a direct `pause()` all end
+the wait, clear the work that keeps the switch on, and nothing restarts even at
+100% two hours later. The driver never checks its own switch attribute, so `off()`
+registers even when the switch already reads off. The device-level "dock is a
+no-op when already docked" is irrelevant, because `dockVacuum` ends the sweep
+itself (1.29.0) instead of waiting to observe the vacuum react.
+
+So there is no deficiency for new buttons to work around, and a new
+"cancel" command would be a synonym for what `dock()` already does unconditionally.
+
+**What genuinely isn't seen:** a stop made outside Hubitat (Wyze app, voice
+assistant talking to Wyze directly, the vacuum's button). The vacuum is already
+docked and charging so nothing observable changes. Reproduced in the test: the
+wait carries on and Living Room starts. Documented; no fix is possible without a
+signal from Wyze.
+
+**The real gap was visibility.** Every command path wrote only `ifDebug`, which is
+off by default. That is why on 9/14 the question "did the arrival command ever
+arrive?" had to be *inferred* from poll cadence (an unexplained absence of the
+off-schedule poll a command always produces), and why it still can't be answered
+for certain. `logCommand()` now writes one info line per start/pause/dock saying
+what it changed -- "cancelled the wait for the battery", "ended the rotation
+sweep", "cancelled a job paused for charging", or "nothing outstanding to cancel"
+-- and a new trip logs "cleanNextRooms() received -- starting a trip" (once; a
+continuation of the same trip doesn't). Commands the app sends itself (low-battery
+dock, cancelled auto-resume, the continuous-sweep time limit) pass a `reason` so
+they read "dock() sent by the app (...)" rather than looking like a rule.
+
+If the line is missing after an arrival, the fault is upstream of the app: the
+rule didn't fire or targeted a different device. That is the thing still unexplained
+from 9/14, and this makes it answerable the next time.
+
+Verified with the real methods: all 15 scenarios from #36 still pass, plus the
+four trace variants and the once-per-trip start line.
+
 ## ~~36. Wait for the battery instead of ending the trip~~ — DONE (1.33.0)
 
 Follow-on from #35. Once the prediction was fixed it was clear that wasn't what

@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.33.0 - Brian Wilson / bubba@bubba.org
+ * 1.33.1 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -1320,7 +1320,7 @@ private void checkLowBatteryAutoDock(String mac, Integer batteryPct) {
         if (!state.lowBatteryDockTriggered[mac]) {
             log.warn "Wyze Vacuum ${mac}: battery ${batteryPct}% below ${threshold}% threshold while cleaning — sending back to dock"
             state.lowBatteryDockTriggered[mac] = true
-            dockVacuum(mac)
+            dockVacuum(mac, "the low-battery dock threshold")
         }
     } else {
         // Reset once no longer cleaning or battery has recovered, so the
@@ -1491,7 +1491,7 @@ def cancelAutoResumeDock(data) {
         return
     }
     log.info "Wyze Vacuum ${mac}: vacuum restarted an unfinished job on its own -- docking it (auto-resume is turned off for this vacuum)"
-    dockVacuum(mac)
+    dockVacuum(mac, "auto-resume is turned off")
     // Marked silent so the run's end doesn't also announce "was docked N min
     // into cleaning" -- the start-side notification already explained this.
     // Still counts as an interruption, so the room keeps its pending status
@@ -1627,7 +1627,7 @@ private void continueSweepIfNeeded(String mac, String newStatus) {
             if (elapsedMin >= maxMinutes) {
                 ifDebug("continueSweepIfNeeded(${mac}): continuous sweep hit its ${maxMinutes}-minute limit (${elapsedMin} min elapsed), docking")
                 endRotationSweep(mac)
-                dockVacuum(mac)
+                dockVacuum(mac, "the continuous-sweep time limit")
                 return
             }
         }
@@ -1763,8 +1763,24 @@ private boolean modeSignalsResume(def modeCode) {
 
 // =================== Commands from Driver ===================
 
+// One info line for every start/pause/dock that reaches the app, saying what it
+// actually changed. Until 1.33.1 these were debug-only, so when a vacuum did
+// something unexpected the first question -- did the command ever arrive? --
+// could only be inferred from poll timing (9/14: an arrival that appeared to send
+// nothing, with no way to be sure). Commands are rare, so this costs nothing.
+// `reason` is set when the app sent the command to itself rather than a rule.
+private void logCommand(String mac, String command, String reason = null) {
+    def effects = []
+    if (state.rotationSweepWaitingSince?.getAt(mac)) effects << "cancelled the wait for the battery"
+    else if (state.rotationSweepActive?.getAt(mac)) effects << "ended the rotation sweep"
+    if (state.pausedForResumeAt?.getAt(mac)) effects << "cancelled a job paused for charging"
+    def what = reason ? "${command} sent by the app (${reason})" : "${command} received"
+    log.info "Wyze Vacuum ${mac}: ${what} -- ${effects ? effects.join(' and ') : 'nothing outstanding to cancel'}"
+}
+
 def startVacuum(String mac) {
     ifDebug("startVacuum: ${mac}")
+    logCommand(mac, "start()")
     endRotationSweep(mac) // whole-house start is a different mode than room rotation
     state.pausedForResumeAt?.remove(mac) // an explicit start is a new run, not a resume of the old one
     state.resumeCancelled?.remove(mac)   // and a deliberate start overrides an earlier cancellation
@@ -1779,6 +1795,7 @@ def startVacuum(String mac) {
 
 def pauseVacuum(String mac) {
     ifDebug("pauseVacuum: ${mac}")
+    logCommand(mac, "pause()")
     endRotationSweep(mac) // explicit stop -- don't auto-continue to the next room
     state.appWholeHouseStartAt?.remove(mac)
     markCommandInterrupt(mac, "paused")
@@ -1787,8 +1804,9 @@ def pauseVacuum(String mac) {
     pollVacuum(mac)
 }
 
-def dockVacuum(String mac) {
+def dockVacuum(String mac, String reason = null) {
     ifDebug("dockVacuum: ${mac}")
+    logCommand(mac, "dock()", reason)
     endRotationSweep(mac) // explicit stop -- don't auto-continue to the next room
     state.appWholeHouseStartAt?.remove(mac)
     markCommandInterrupt(mac, "docked")
@@ -1864,6 +1882,7 @@ def cleanNextRooms(String mac) {
     // continueSweepIfNeeded) is measured from when the whole sweep began,
     // not from the most recent batch.
     if (freshSweepStart) {
+        log.info "Wyze Vacuum ${mac}: cleanNextRooms() received -- starting a trip"
         state.rotationSweepStartedAt = state.rotationSweepStartedAt ?: [:]
         state.rotationSweepStartedAt[mac] = now()
         // A new trip starts its room count and any wait from scratch.

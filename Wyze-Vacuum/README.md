@@ -263,7 +263,20 @@ Without it, a battery skip ends the sweep and the vacuum sits idle until the nex
 - **It won't wait forever.** One safety net you didn't ask for, because the 1.29.1 latched-switch bug taught that anything reading as "work outstanding" has to be able to end by itself: if a single wait goes **6 hours** without the battery recovering (charging from empty takes about 3), it gives up, sends a notification, and ends the trip. That only happens if the vacuum isn't actually charging.
 - **It ends if something else takes over.** If the vacuum starts cleaning, pauses or errors while a wait is in progress, the wait is dropped.
 
-**The one real risk.** If your arrival `off()` doesn't reach the app, the vacuum will start the next room on its own once charged, because the app has no idea who's home. On 9/14 an arrival at 11:00 produced no `off()` or `dock()` at all. The room limit bounds how much a missed `off()` can cost; it can't prevent the first room.
+**The one real risk.** If your arrival `off()` doesn't reach the app, the vacuum will start the next room on its own once charged, because the app has no idea who's home. On 9/14 an arrival at 11:00 appeared to produce no `off()` or `dock()` at all. The room limit bounds how much a missed `off()` can cost; it can't prevent the first room.
+
+**What does and doesn't count as a stop.** Anything sent to the vacuum *device in Hubitat* ends a wait, and it works while the vacuum is already docked: `off()` (whether the driver's off action is Dock or Pause), `dock()`, `pause()`, and `start()`. The driver never checks its own switch attribute first, so `off()` registers even if the switch already reads off, and the app ends the sweep itself rather than relying on the vacuum reacting to a dock command it's already obeying. What it **cannot see** is a stop made outside Hubitat — the Wyze app, a voice assistant talking to Wyze directly, or the vacuum's own button. The vacuum is already docked and charging, so nothing observable changes, and the wait carries on. If someone docks it from the Wyze app, switch it off in Hubitat as well.
+
+**Checking whether a command arrived** (1.33.1). Every start, pause and dock that reaches the app now writes one line to the normal info logs saying what it changed, and each new trip logs when it starts:
+
+```
+Wyze Vacuum …: cleanNextRooms() received -- starting a trip
+Wyze Vacuum …: dock() received -- cancelled the wait for the battery
+Wyze Vacuum …: dock() received -- nothing outstanding to cancel
+Wyze Vacuum …: dock() sent by the app (the low-battery dock threshold) -- ended the rotation sweep
+```
+
+Before this, those were debug-only, so when a vacuum did something unexpected the first question — did my rule's command ever arrive? — could only be inferred from poll timing. If the line isn't there, the problem is upstream of the app: the rule didn't fire, or it targeted a different device.
 
 **Resume latency.** Polling stays at the idle interval while waiting, so a resume can lag the battery reaching the threshold by up to one poll interval (15 minutes by default).
 
