@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.31.1 - Brian Wilson / bubba@bubba.org
+ * 1.32.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -61,6 +61,23 @@ import java.util.zip.Inflater
 // whose estimated need exceeds a full charge, so it gets started at the best
 // moment available instead of being skipped forever (see roomsBatteryCanCover).
 @Field static final Integer NEARLY_FULL_BATTERY_PCT = 95
+// Battery model (1.32.0). Cleaning doesn't drain linearly from a standing start:
+// the first stretch after leaving the dock costs a fixed chunk, then it settles
+// into a steady %/min. Fitting both of this vacuum's real full-battery runs
+// (Living Room: 100% -> 19% in 36 min, 100% -> 10% in 37 min) together with a
+// 10-minute Hallway run (100% -> 69%) gives about 10% fixed + about 2%/min.
+// A single flat %/min can't describe that -- learned from short runs it comes
+// out near 3.3%/min and wildly overstates a long room (130% predicted for a room
+// that really uses ~85-90%), which is exactly what blocked Living Room on 10/2.
+@Field static final Integer BATTERY_STARTUP_PCT = 10
+@Field static final Double  BATTERY_DEFAULT_PCT_PER_MIN = 2.1
+// Margin kept on top of the predicted use so the vacuum isn't finishing right at
+// Wyze's own ~8% return-to-dock threshold.
+@Field static final Integer BATTERY_RESERVE_PCT = 10
+// A per-room figure is only recorded from a run that began on a nearly-full
+// battery: from partway down the curve the startup drop is smaller, so such a run
+// would understate what the same room costs when started from a fresh charge.
+@Field static final Integer BATTERY_MEASURE_MIN_START_PCT = 85
 
 definition(
     name: "Wyze Vacuum Connect",
@@ -225,23 +242,27 @@ def mainPage() {
                                     def nextUp = previewNextRooms(mac)
                                     def drain = batteryDrainPerMin(mac)
                                     def learned = state.batteryDrainPerMin?.getAt(mac) != null
+                                    def nextIds = nextUp.collect { it.id as Integer }
+                                    def allMeasured = nextIds && nextIds.every { batteryUseIsMeasured(mac, it) }
                                     def detail = nextUp
-                                        ? "Next up is ${nextUp.collect { it.name }.join(', ')}, needing about ${batteryNeededFor(mac, nextUp.collect { it.id as Integer })}% " +
-                                          "(battery is currently ${getChildDevice(mac)?.currentValue('battery') ?: '?'}%)."
+                                        ? "Next up is ${nextUp.collect { it.name }.join(', ')}, needing about ${batteryNeededFor(mac, nextIds)}% " +
+                                          "(${allMeasured ? 'based on what it actually used last time' : 'an estimate — no full-battery run recorded for it yet'}; " +
+                                          "battery is currently ${getChildDevice(mac)?.currentValue('battery') ?: '?'}%)."
                                         : "Nothing is queued right now."
                                     // Rooms too big to finish on one charge are worth calling out -- they
                                     // behave differently (started near-full and finished after a recharge)
                                     // and it's the clearest signal that a room wants splitting in the Wyze app.
                                     def bigRooms = (settings["rotationRooms_${mac}"] ?: []).collect { it as Integer }.findAll {
-                                        batteryNeededFor(mac, [it]) > 100
+                                        batteryNeededFor(mac, [it]) > NEARLY_FULL_BATTERY_PCT
                                     }
                                     def bigNote = bigRooms
-                                        ? " <b>${roomNamesFor(mac, bigRooms).join(', ')}</b> needs more than a full charge, so it's started once the battery is at least " +
+                                        ? " <b>${roomNamesFor(mac, bigRooms).join(', ')}</b> needs close to a full charge, so it's started once the battery is at least " +
                                           "${NEARLY_FULL_BATTERY_PCT}% and the vacuum charges and resumes partway through. Splitting it into smaller zones in the Wyze app would avoid that."
                                         : ""
-                                    paragraph "Uses ${String.format('%.1f', drain)}% of battery per minute of cleaning" +
-                                              (learned ? ", measured from this vacuum's own runs" : " (starting estimate — replaced once a few real runs are recorded)") +
-                                              ", plus a 10% reserve so it isn't finishing right at Wyze's own return-to-dock threshold. ${detail}${bigNote} " +
+                                    paragraph "A room it has cleaned on its own from a full battery is predicted from what it really used. Anything else is estimated as " +
+                                              "${BATTERY_STARTUP_PCT}% to get going plus ${String.format('%.1f', drain)}% per minute" +
+                                              (learned ? " (measured from this vacuum's own runs)" : " (starting estimate — replaced as real runs are recorded)") +
+                                              ", with a further ${BATTERY_RESERVE_PCT}% kept in hand so it isn't finishing right at Wyze's own return-to-dock threshold. ${detail}${bigNote} " +
                                               "This only decides whether to <i>start</i> a rotation room — it never overrides the vacuum's own low-battery return, and " +
                                               "cleanRooms()/room buttons/Learning Mode always run regardless."
                                 }
@@ -1422,7 +1443,10 @@ private void handleCleaningSessionEnd(String mac, def reportedCleanTimeMinutes, 
     }
 
     accumulateBinHours(mac, elapsedMin)
-    if (!willResume) learnBatteryDrain(mac, elapsedMin, d)
+    if (!willResume) {
+        recordRoomBatteryUse(mac, run, elapsedMin, d, newStatus, interrupt != null)
+        learnBatteryDrain(mac, elapsedMin, d)
+    }
 
     // Same reasoning -- don't tell the user it "finished" when it's really
     // just pausing to resume the same job; the eventual genuine finish
@@ -1777,17 +1801,17 @@ private List roomsBatteryCanCover(String mac, List rooms) {
             return candidates
         }
 
-        // A single room needing more than a full charge can never satisfy this
-        // check, so refusing it would drop it out of rotation permanently and
-        // silently -- the room would just sit on "already due" forever with
-        // nothing but a log line. Not hypothetical: Living Room needs ~90% at
-        // the drain rate learned so far, and crosses 100% if that rate rises
-        // about 13%, which one carpeted run at high suction could do. Take it
-        // on a nearly-full battery instead and let the vacuum's own
-        // charge-and-resume finish the job -- that firmware behavior exists
-        // for precisely this case.
-        if (candidates.size() == 1 && needed > 100 && battery >= NEARLY_FULL_BATTERY_PCT) {
-            log.info "Wyze Vacuum ${mac}: '${candidates[0].name}' needs about ${needed}% for its ${Math.round(roomEstimateMinutes(mac, candidates[0].id as Integer))} min, which is more than one charge -- starting it at ${battery}% anyway and letting the vacuum charge and resume, rather than never cleaning it"
+        // A single room needing more than a nearly-full battery can never be
+        // satisfied by waiting for a fuller one, so refusing it would drop it out
+        // of rotation permanently and silently -- the room would just sit on
+        // "already due" forever with nothing but a log line. Take it once the
+        // battery is nearly full and let the vacuum's own charge-and-resume finish
+        // the job -- that firmware behavior exists for precisely this case. The
+        // cutoff is the nearly-full mark rather than 100% so there isn't a cliff
+        // where a room needing 98% is refused at 97% yet one needing 102% starts
+        // at 95%.
+        if (candidates.size() == 1 && needed > NEARLY_FULL_BATTERY_PCT && battery >= NEARLY_FULL_BATTERY_PCT) {
+            log.info "Wyze Vacuum ${mac}: '${candidates[0].name}' needs about ${needed}% for its ${Math.round(roomEstimateMinutes(mac, candidates[0].id as Integer))} min, which is close to a full charge -- starting it at ${battery}% and letting the vacuum charge and resume if it has to, rather than never cleaning it"
             return candidates
         }
 
@@ -1801,7 +1825,7 @@ private List roomsBatteryCanCover(String mac, List rooms) {
 
     def first = rooms[0]
     def needed = batteryNeededFor(mac, [first.id as Integer])
-    def oneCharge = needed > 100 ? " -- more than one charge, so it waits for a nearly-full battery" : ""
+    def oneCharge = needed > NEARLY_FULL_BATTERY_PCT ? " -- close to a full charge, so it waits for a nearly-full battery" : ""
     log.info "Wyze Vacuum ${mac}: battery ${battery}% won't cover '${first.name}' (needs about ${needed}% for its ${Math.round(roomEstimateMinutes(mac, first.id as Integer))} min)${oneCharge} -- not starting it, it stays due for the next trigger"
     return []
 }
@@ -1810,8 +1834,34 @@ private List roomsBatteryCanCover(String mac, List rooms) {
 // the dock. The reserve sits above Wyze's own ~8% return threshold so the
 // vacuum isn't asked to finish right at the edge of it.
 private Integer batteryNeededFor(String mac, List roomIds) {
-    double minutes = (roomIds ?: []).sum { id -> roomEstimateMinutes(mac, id as Integer) } ?: 0.0
-    return Math.ceil(minutes * batteryDrainPerMin(mac) + 10) as Integer
+    def ids = (roomIds ?: []).collect { it as Integer }
+    return Math.ceil(predictedBatteryUse(mac, ids) + BATTERY_RESERVE_PCT) as Integer
+}
+
+// Battery these rooms are expected to use. A room this vacuum has actually
+// cleaned on its own is predicted from what it really used last time -- the
+// quantity being predicted, measured directly, with no per-minute extrapolation
+// across runs of different lengths. Only a room with no history falls back to
+// the fixed-startup-plus-per-minute model.
+private double predictedBatteryUse(String mac, List ids) {
+    def measuredFor = state.roomBatteryUsed?.getAt(mac) ?: [:]
+    double total = 0.0
+    ids.eachWithIndex { id, i ->
+        def measured = measuredFor[id.toString()]
+        double use = measured != null
+            ? (measured as Double)
+            : BATTERY_STARTUP_PCT + roomEstimateMinutes(mac, id as Integer) * batteryDrainPerMin(mac)
+        // The startup cost is paid once per run, not once per room, so rooms after
+        // the first don't carry it again.
+        if (i > 0) use -= BATTERY_STARTUP_PCT
+        total += Math.max(use, 0.0)
+    }
+    return total
+}
+
+// Where the number above came from, for the app page.
+private boolean batteryUseIsMeasured(String mac, Integer roomId) {
+    return state.roomBatteryUsed?.getAt(mac)?.getAt(roomId.toString()) != null
 }
 
 private double roomEstimateMinutes(String mac, Integer roomId) {
@@ -1824,10 +1874,54 @@ private double roomEstimateMinutes(String mac, Integer roomId) {
 // full-battery runs (100% -> 10% in 37 min, 100% -> 19% in 36 min); a few real
 // runs replace it with whatever a given vacuum and suction setting really do.
 private double batteryDrainPerMin(String mac) {
-    return (state.batteryDrainPerMin?.getAt(mac) ?: 2.3) as Double
+    migrateBatteryModel()
+    return (state.batteryDrainPerMin?.getAt(mac) ?: BATTERY_DEFAULT_PCT_PER_MIN) as Double
+}
+
+// Rates learned under the old flat model are not comparable with the
+// startup-offset model: every sample was inflated by the fixed startup cost, and
+// the stored average had drifted to about 3.4%/min against a true steady rate of
+// about 2%/min. It would take many runs for the blend to forget that, so it's
+// discarded once, the first time anything reads it. Done lazily here rather than
+// in updated() because a package update doesn't call updated() until the app
+// page is next saved.
+private void migrateBatteryModel() {
+    if (state.batteryModel == 2) return
+    state.batteryDrainPerMin = [:]
+    state.batteryModel = 2
+}
+
+// What one specific room actually cost, from a run that cleaned only that room
+// and ran to a genuine finish. Anything else would record a number that isn't
+// the room's cost: a multi-room batch can't be split per room, a command-stopped
+// or paused run was cut short, and a run that charged partway through has a
+// battery delta that no longer covers the same stretch of cleaning.
+private void recordRoomBatteryUse(String mac, Map run, Integer elapsedMin, def d, String newStatus, boolean interrupted) {
+    if (!run || (run.roomIds ?: []).size() != 1) return
+    if (interrupted || newStatus == "Paused" || newStatus == "Error") return
+    if (run.pausedElapsedMin) return
+    if (!elapsedMin || elapsedMin < 5) return
+
+    def startPct = state.cleaningStartBattery?.getAt(mac)
+    def endPct = toInt(d?.currentValue("battery"))
+    if (startPct == null || endPct == null) return
+    if ((startPct as Integer) < BATTERY_MEASURE_MIN_START_PCT) return
+
+    double used = (startPct as Integer) - endPct
+    if (used <= 0 || used > 100) return
+
+    def key = run.roomIds[0].toString()
+    state.roomBatteryUsed = state.roomBatteryUsed ?: [:]
+    def perRoom = state.roomBatteryUsed[mac] ?: [:]
+    def prev = perRoom[key] as Double
+    // Same exponential blend the room-time estimates use.
+    perRoom[key] = prev ? (prev * 0.7 + used * 0.3) : used
+    state.roomBatteryUsed[mac] = perRoom
+    ifDebug("recordRoomBatteryUse(${mac}): room ${key} used ${used}% this run -> ${String.format('%.0f', perRoom[key])}% average")
 }
 
 private void learnBatteryDrain(String mac, Integer elapsedMin, def d) {
+    migrateBatteryModel()
     if (!elapsedMin || elapsedMin < 5) return // too short to measure anything real
     def startPct = state.cleaningStartBattery?.getAt(mac)
     def endPct = toInt(d?.currentValue("battery"))
@@ -1835,7 +1929,12 @@ private void learnBatteryDrain(String mac, Integer elapsedMin, def d) {
 
     double used = (startPct as Integer) - endPct
     if (used <= 0) return // charged partway through (a mode-11 pause) -- not a clean sample
-    double rate = used / (elapsedMin as Double)
+    // The fixed startup cost comes off first: dividing the whole drop by the
+    // minutes made a 10-minute room look like 3.1%/min and a 37-minute one like
+    // 2.4%/min, so the "rate" depended on which kind of run happened last.
+    double running = used - BATTERY_STARTUP_PCT
+    if (running <= 0) return
+    double rate = running / (elapsedMin as Double)
     if (rate < 0.5 || rate > 10.0) return // implausible; ignore rather than poison the average
 
     state.batteryDrainPerMin = state.batteryDrainPerMin ?: [:]

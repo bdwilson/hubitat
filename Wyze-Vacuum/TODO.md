@@ -2,6 +2,72 @@
 
 Not yet implemented. Tracked here so they survive across sessions.
 
+## ~~35. Battery check refused Living Room at "130%" -- flat %/min model~~ — DONE (1.32.0)
+
+"We were gone all evening last night. Why did you only clean the hallway?"
+10/2 log: Hallway dispatched at 100%, cleaned 3:15-3:25 (10 min), battery 69%.
+At 3:27 the sweep tried Living Room and the 1.30.0 gate declined it --
+"battery 68% won't cover 'Living Room' (needs about 130% for its 36 min)".
+The sweep then ended, the vacuum recharged to 100% by 4:30 PM, and sat idle
+on its dock for the rest of the evening.
+
+Two separate things went wrong, only one of them a bug:
+
+1. **The 130% was wrong (bug, mine).** Living Room had actually used 81% and
+   90% on its last two full-battery runs. `needed = ceil(minutes * rate + 10)`
+   with 36 min -> 130% implies a learned rate of 3.31-3.33%/min, and since the
+   Hallway sample (3.1%/min) had just been blended in at weight 0.3, the
+   stored rate before it must have been ~3.4 -- up from 2.2 on 9/16. Root
+   cause: `learnBatteryDrain` divided the *whole* battery drop by the minutes,
+   but cleaning has a fixed startup cost (the % falls quickly off a 100%
+   float-charge reading, then settles). So a 10-minute room looked like
+   3.1%/min and a 37-minute one like 2.4%/min -- the "rate" depended on which
+   length of run happened last, and small rooms dragged it up. Fitting the
+   three real runs gives ~9-12% fixed + 1.9-2.2%/min, which predicts Living
+   Room at ~86% (within ~7 points of both real runs) against 130% from the
+   flat rate. Three data points, so the shape is an inference, not proven.
+2. **Nothing restarts a run after a recharge (design, as documented).** Even
+   with a correct ~90% prediction, 68% is still not enough, so the outcome that
+   evening is unchanged. The battery check ends the sweep by design (1.30.0:
+   "stays due for the next trigger"), and the only thing that re-fires is the
+   Rule Machine rule documented in 1.31.0. No dispatch appears in the log after
+   3:27 PM, so the rule isn't in place (or didn't fire).
+
+User chose: fix the prediction, and build the Rule Machine rule themselves
+rather than adding an in-app "wait for charge and continue".
+
+Fix: `predictedBatteryUse()` -- a room cleaned alone from a full battery is
+predicted from what it *actually used* (`state.roomBatteryUsed[mac][roomId]`,
+EMA 0.7/0.3), measuring the thing being predicted instead of extrapolating a
+rate across run lengths. Only rooms with no history fall back to
+`BATTERY_STARTUP_PCT (10) + minutes * rate`, the rate now learned with the
+startup cost subtracted first, default 2.1. Startup is counted once per run,
+not once per room, in a batch. `recordRoomBatteryUse()` rejects runs that
+aren't a clean per-room sample: multi-room batches, command-stopped / paused /
+errored runs, runs with a mode-11 charge pause, runs under 5 minutes, and runs
+that started below 85% (the startup drop is smaller partway down the curve, so
+they'd understate a fresh-charge cost). `migrateBatteryModel()` discards the
+inflated stored rate once, lazily on first read, because a package update
+doesn't call `updated()` until the page is next saved.
+
+Also unified the "too big for one charge" cutoff: was `needed > 100`, now
+`needed > NEARLY_FULL_BATTERY_PCT (95)`. With the old cutoff a room needing
+98% was refused at 97% while one needing 102% started at 95% -- a cliff that
+this change would have made reachable, since Living Room now lands at ~96-98%.
+
+Tested by extracting the nine real methods out of the app file into a harness
+and replaying 10/2: the stored 3.4 discarded on migration, Living Room 96%
+(was 130%), still declined at 68% and 94%, started at 95% and at the 4:30 PM
+100%, Hallway recorded at 31% and Living Room at 90%/81% blending to 87%, and
+all eight non-qualifying sample types rejected. Short and long runs now
+produce the same steady rate (2.10 vs 2.16, was 3.10 vs 2.43).
+
+**Open, deliberately left:** per-room figures only start accumulating from the
+next full-battery run of each room, so until then every room uses the
+startup-plus-rate estimate. And the in-app alternative -- keep the sweep alive
+while waiting for charge, switch on, arrival `off()` cancels -- was offered and
+declined; revisit if the Rule Machine rule proves awkward.
+
 ## ~~34. A room too big for one charge was skipped forever~~ — DONE (1.31.0)
 
 Flaw in 1.30.0's own battery gate, spotted while answering a question about

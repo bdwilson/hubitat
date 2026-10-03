@@ -188,15 +188,23 @@ The case for asking it, confirmed live: a rotation sweep finished a 37-minute ro
 So before dispatching, rotation now checks whether the charge covers the job:
 
 ```
-needed % = (that room's learned clean time) × (measured % drain per minute) + 10% reserve
+needed % = what that room is expected to use + 10% reserve
+
+expected use = what it actually used last time          (once it's been cleaned alone from a full battery)
+             = 10% to get going + minutes × %/min         (until then)
 ```
 
-- **The drain rate is measured, not assumed** — learned from real runs exactly the way per-room clean times are, blended with an exponential average. It starts from 2.3%/min (what this vacuum actually showed across two full-battery runs) and is replaced by real numbers within a few cleans. Samples that can't be meaningful are discarded rather than averaged in: runs under 5 minutes, runs where the battery went *up* (a mode-11 charge pause partway through), and anything implausible outside 0.5–10%/min.
+- **A room it has cleaned on its own is predicted from what it really used** (1.32.0). That's the quantity being predicted, measured directly, so there is no per-minute extrapolation across runs of different lengths. It's recorded from a run that cleaned only that room, ran to a genuine finish, started from at least 85% battery and didn't charge partway through, then blended with an exponential average. Runs that don't qualify are discarded rather than averaged in: command-stopped, paused or errored runs, multi-room batches (which can't be split per room), runs under 5 minutes, and runs that started low (from partway down the curve the startup drop is smaller, so they'd understate the room's cost from a fresh charge).
+- **Until a room has history, it's estimated as a fixed startup cost plus a steady rate.** Cleaning doesn't drain linearly from a standing start: the first stretch after leaving the dock costs a fixed chunk (about 10%), then it settles to about 2%/min. A flat %/min can't describe that, and a rate learned from short runs overstates long rooms badly — see the 1.32.0 note below. The steady rate starts at 2.1%/min and is learned from real runs with the startup cost taken off first, under the same discard rules as above plus anything implausible outside 0.5–10%/min. The startup cost is counted once per run, not once per room.
 - **The 10% reserve sits above Wyze's own threshold**, so the vacuum isn't being asked to finish right at the edge of it.
 - **A skipped room isn't lost.** It stays due, nothing is credited, and the next trigger picks it up normally. The skip is an `log.info` line naming the room, what it needed, and what the battery actually was — no push notification, since this is working as intended rather than a fault.
 - **A multi-room batch is trimmed, not skipped.** Rooms are dropped from the end (least overdue first) until what's left fits, so a partial run still happens when it can.
 
-**A room too big for one charge still gets cleaned, as of 1.31.0.** If a room's estimate exceeds 100% — which is possible for a large room once the learned drain rate creeps up — it could never satisfy the check, so it would have dropped out of rotation permanently and silently, sitting on "already due" forever with nothing but a log line. Instead, a single room needing more than a full charge is started once the battery reaches 95%, and the vacuum's own charge-and-resume finishes it. That firmware behavior exists for exactly this case. The app page names any such room, since it's the clearest sign the room is worth splitting into smaller zones in the Wyze app.
+**A room too big for one charge still gets cleaned, as of 1.31.0.** A room whose predicted need is close to a full battery can't be satisfied by waiting for a fuller one, so refusing it would drop it out of rotation permanently and silently, sitting on "already due" forever with nothing but a log line. Instead, a single room needing more than 95% is started once the battery reaches 95%, and the vacuum's own charge-and-resume finishes it if it has to. That firmware behavior exists for exactly this case. The cutoff is 95% rather than 100% (changed in 1.32.0) so there's no cliff where a room needing 98% is refused at 97% while one needing 102% starts at 95%. The app page names any such room, since it's the clearest sign the room is worth splitting into smaller zones in the Wyze app.
+
+**Why the estimate changed in 1.32.0, found from a live miss.** On 10/2 the sweep cleaned the Hallway (10 min, battery 100% → 69%), then declined Living Room with `battery 68% won't cover 'Living Room' (needs about 130% …)`. Living Room had actually used 81% and 90% on its last two full-battery runs. Working back through the formula, the learned rate must have drifted to about 3.3%/min, up from 2.2 a few weeks earlier. The cause: the old model divided the *whole* drop by the minutes, so the fixed startup cost made a 10-minute room look like 3.1%/min and a 37-minute one like 2.4%/min. The stored "rate" therefore depended on which kind of run happened last, and short rooms dragged it up. Applied to a 36-minute room it overstated the need by 30–40 points. The new model fits all three runs to within about 7 points. The stored rate is discarded once on upgrade, since everything learned under the old model was inflated.
+
+That fix alone would not have changed the outcome that evening: at 68% a room that really needs ~90% is still declined. What left the house uncleaned for the rest of the evening was that nothing starts a new run once the battery has recovered — see [Re-cleaning after a recharge while you're away](#re-cleaning-after-a-recharge-while-youre-away).
 
 Trimming only ever drops rooms from the *end* of the batch, never the front. The list is ordered most-overdue-first, so the neediest room keeps its place and the sweep waits for charge rather than spending it on a lesser room — that's what stops a big room being starved by small ones that keep fitting.
 
@@ -209,6 +217,8 @@ The app page shows the current drain rate, whether it's measured or still the st
 A skipped room waits for the **next trigger** — it is never re-queued automatically. That's deliberate: "the battery recovered, so start again" has no idea whether anyone is home, and it's exactly how a vacuum ends up starting itself at 8:35pm with everyone in the living room.
 
 The cost is a wasted window. Confirmed live: away 10:07→12:21, the vacuum cleaned, docked at 10:56 on 48%, declined Living Room, and then sat **fully charged and idle for the last 85 minutes** of an empty house with the most overdue room untouched.
+
+It happened again on 10/2, and worse: away for the evening, the vacuum cleaned the Hallway (3:15–3:25 PM), declined Living Room at 68%, recharged to 100% by 4:30 PM, and then sat idle on its dock for the remaining seven-plus hours with the most overdue room untouched. No further dispatch appears in the log until the next morning, because nothing in the app starts one.
 
 Hubitat knows what the app doesn't — whether anyone is home — so the retry belongs in a rule:
 
