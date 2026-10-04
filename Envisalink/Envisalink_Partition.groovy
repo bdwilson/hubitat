@@ -28,6 +28,7 @@ metadata {
         command "trigger1"
         command "trigger2"
         command "bypass"
+        command "updateHsmStatus", [[name: "status*", type: "STRING", description: "disarmed, armedHome or armedAway (set by the Connection driver)"]]
         command "partition", [
             [name: "state*", type: "STRING"],
             [name: "alpha*", type: "STRING"]

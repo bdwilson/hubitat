@@ -334,13 +334,22 @@ private updatePanelHsmStatus(partChild, Map flags, String partState) {
     if (partState == "arming") return
     def status = flags.armed_stay ? "armedHome" : (flags.armed_away ? "armedAway" : "disarmed")
     try {
-        partChild.updateHsmStatus(status)
-    } catch (e) {
-        // Envisalink Partition driver older than 2.0.6 has no updateHsmStatus
-        if (!state.warnedOldPartitionDriver) {
-            state.warnedOldPartitionDriver = true
-            log.warn "EnvisaLink: update the Envisalink Partition driver to get the panelHSMStatus attribute"
+        // A Partition driver older than 2.0.6 doesn't declare updateHsmStatus. Calling a missing
+        // method makes the hub log an error on every update even when caught, so check first.
+        if (partChild.hasCommand("updateHsmStatus")) {
+            partChild.updateHsmStatus(status)
+        } else {
+            warnOnce("update the Envisalink Partition driver to get the panelHSMStatus attribute")
         }
+    } catch (e) {
+        warnOnce("panelHSMStatus unavailable: ${e.message}")
+    }
+}
+
+private warnOnce(String msg) {
+    if (!state.warnedPanelHsmStatus) {
+        state.warnedPanelHsmStatus = true
+        log.warn "EnvisaLink: ${msg}"
     }
 }
 
