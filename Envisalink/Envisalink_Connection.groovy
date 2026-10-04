@@ -16,7 +16,7 @@
  *  License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
  *  either express or implied.
  *
- *  Version: 2.0.5
+ *  Version: 2.0.6
  */
 
 import groovy.transform.Field
@@ -202,7 +202,10 @@ private handleKeypadUpdate(String[] parts) {
     // partition, which would otherwise flap the arm state.
     if (partitionNum == statusPartition()) {
         def partChild = getChildDevice("${device.id}_P1")
-        if (partChild) partChild.partition(partState, alpha)
+        if (partChild) {
+            partChild.partition(partState, alpha)
+            updatePanelHsmStatus(partChild, flags, partState)
+        }
 
         // Suppressed briefly after sending a command to avoid the re-arm feedback loop
         // caused by panel state lag after disarm/arm
@@ -322,6 +325,32 @@ private String getPartitionState(Map flags, String alpha) {
     if (flags.armed_away)                                              return "armedaway"
     if (flags.ready)                                                   return "ready"
     return "notready"
+}
+
+// Armed/disarmed straight from the panel's arm flags (not partState, where "alarmcleared"
+// can't tell an armed panel with alarm memory from a disarmed one). Exit delay keeps the
+// previous value, matching what HSM sync does.
+private updatePanelHsmStatus(partChild, Map flags, String partState) {
+    if (partState == "arming") return
+    def status = flags.armed_stay ? "armedHome" : (flags.armed_away ? "armedAway" : "disarmed")
+    try {
+        // A Partition driver older than 2.0.6 doesn't declare updateHsmStatus. Calling a missing
+        // method makes the hub log an error on every update even when caught, so check first.
+        if (partChild.hasCommand("updateHsmStatus")) {
+            partChild.updateHsmStatus(status)
+        } else {
+            warnOnce("update the Envisalink Partition driver to get the panelHSMStatus attribute")
+        }
+    } catch (e) {
+        warnOnce("panelHSMStatus unavailable: ${e.message}")
+    }
+}
+
+private warnOnce(String msg) {
+    if (!state.warnedPanelHsmStatus) {
+        state.warnedPanelHsmStatus = true
+        log.warn "EnvisaLink: ${msg}"
+    }
 }
 
 // ─── Command methods ─────────────────────────────────────────────────────────

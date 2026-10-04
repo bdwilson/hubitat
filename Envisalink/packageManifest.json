@@ -1,12 +1,12 @@
 {
   "packageName": "Envisalink Security (Native TPI)",
   "author": "Brian Wilson",
-  "version": "2.0.5",
+  "version": "2.0.6",
   "minimumHEVersion": "2.2.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Envisalink",
   "communityLink": "https://community.hubitat.com/t/native-honeywell-vista-envisalink-tpi-alarm-driver/164482",
-  "releaseNotes": "2.0.5: New \"Partition for arm/disarm, status and HSM\" setting (default 1) for multi-partition panels — status, HSM and arm/disarm keystrokes all use the selected partition. Partition 1 behaves exactly as before; other partitions send keys with the EnvisaLink partition keystroke command. Fixes an addZone error when an interim 2.0.4 development build of the app was paired with the released driver. 2.0.4: Multi-partition panels no longer flap arm status/HSM between partitions — only partition 1 drives the Security Panel and HSM, and a partition's Ready update only closes that partition's zones. Keypad text containing commas is no longer truncated. 2.0.3: Add description text logging preference to all zone drivers. 2.0.2: Fix HSM re-arm feedback loop after disarm via driver-level debounce. 2.0.1: Initial release — native EnvisaLink TPI integration, no SmartThings Node Proxy required.",
-  "dateReleased": "2026-10-02",
+  "releaseNotes": "2.0.6: New panelHSMStatus attribute on the Security Panel device (disarmed / armedHome / armedAway) so rules can follow the panel's arm state without HSM or keypad text matching; works whether or not the HSM integration is on. Update the Envisalink Connection and Envisalink Partition drivers together. 2.0.5: New \"Partition for arm/disarm, status and HSM\" setting (default 1) for multi-partition panels — status, HSM and arm/disarm keystrokes all use the selected partition. Partition 1 behaves exactly as before; other partitions send keys with the EnvisaLink partition keystroke command. Fixes an addZone error when an interim 2.0.4 development build of the app was paired with the released driver. 2.0.4: Multi-partition panels no longer flap arm status/HSM between partitions — only partition 1 drives the Security Panel and HSM, and a partition's Ready update only closes that partition's zones. Keypad text containing commas is no longer truncated. 2.0.3: Add description text logging preference to all zone drivers. 2.0.2: Fix HSM re-arm feedback loop after disarm via driver-level debounce. 2.0.1: Initial release — native EnvisaLink TPI integration, no SmartThings Node Proxy required.",
+  "dateReleased": "2026-10-04",
   "drivers": [
     {
       "id": "a1b2c3d4-0001-0001-0001-000000000001",
@@ -14,7 +14,7 @@
       "namespace": "bdwilson",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Envisalink/Envisalink_Connection.groovy",
       "required": true,
-      "version": "2.0.5"
+      "version": "2.0.6"
     },
     {
       "id": "a1b2c3d4-0001-0001-0001-000000000002",
@@ -22,7 +22,7 @@
       "namespace": "bdwilson",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Envisalink/Envisalink_Partition.groovy",
       "required": true,
-      "version": "2.0.3"
+      "version": "2.0.6"
     },
     {
       "id": "a1b2c3d4-0001-0001-0001-000000000003",
