@@ -15,7 +15,7 @@
 
 metadata {
     definition(name: "Envisalink Partition", namespace: "bdwilson", author: "bdwilson",
-               importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/claude/envisalink-tpi-hubitat-6B3B2/Envisalink/Envisalink_Partition.groovy") {
+               importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Envisalink/Envisalink_Partition.groovy") {
         capability "Alarm"
         capability "Sensor"
         capability "Actuator"
