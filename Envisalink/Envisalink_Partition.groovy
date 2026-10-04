@@ -10,12 +10,12 @@
  *
  *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Version: 2.0.3
+ *  Version: 2.0.6
  */
 
 metadata {
     definition(name: "Envisalink Partition", namespace: "bdwilson", author: "bdwilson",
-               importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Envisalink/Envisalink_Partition.groovy") {
+               importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/claude/envisalink-tpi-hubitat-6B3B2/Envisalink/Envisalink_Partition.groovy") {
         capability "Alarm"
         capability "Sensor"
         capability "Actuator"
@@ -35,6 +35,7 @@ metadata {
 
         attribute "dscpartition", "String"
         attribute "panelStatus",  "String"
+        attribute "panelHSMStatus", "String"
     }
 
     preferences {
@@ -53,6 +54,13 @@ def installed() {
 def partition(String partState, String alpha) {
     sendEvent(name: "dscpartition", value: partState, descriptionText: alpha)
     sendEvent(name: "panelStatus",  value: alpha, displayed: false)
+}
+
+// Called by parent connection driver: arm state in Hubitat Safety Monitor's vocabulary
+// (disarmed / armedHome / armedAway), whether or not the app's HSM integration is enabled
+def updateHsmStatus(String status) {
+    if (status == device.currentValue("panelHSMStatus")) return
+    sendEvent(name: "panelHSMStatus", value: status, descriptionText: "${device.displayName} is ${status}")
 }
 
 // ─── Commands → forwarded to parent connection driver ─────────────────────────

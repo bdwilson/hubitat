@@ -16,7 +16,7 @@
  *  License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
  *  either express or implied.
  *
- *  Version: 2.0.5
+ *  Version: 2.0.6
  */
 
 import groovy.transform.Field
@@ -29,7 +29,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 
 metadata {
     definition(name: "Envisalink Connection", namespace: "bdwilson", author: "bdwilson",
-               importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Envisalink/Envisalink_Connection.groovy") {
+               importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/claude/envisalink-tpi-hubitat-6B3B2/Envisalink/Envisalink_Connection.groovy") {
         capability "Initialize"
 
         command "connect"
@@ -202,7 +202,10 @@ private handleKeypadUpdate(String[] parts) {
     // partition, which would otherwise flap the arm state.
     if (partitionNum == statusPartition()) {
         def partChild = getChildDevice("${device.id}_P1")
-        if (partChild) partChild.partition(partState, alpha)
+        if (partChild) {
+            partChild.partition(partState, alpha)
+            updatePanelHsmStatus(partChild, flags, partState)
+        }
 
         // Suppressed briefly after sending a command to avoid the re-arm feedback loop
         // caused by panel state lag after disarm/arm
@@ -322,6 +325,23 @@ private String getPartitionState(Map flags, String alpha) {
     if (flags.armed_away)                                              return "armedaway"
     if (flags.ready)                                                   return "ready"
     return "notready"
+}
+
+// Armed/disarmed straight from the panel's arm flags (not partState, where "alarmcleared"
+// can't tell an armed panel with alarm memory from a disarmed one). Exit delay keeps the
+// previous value, matching what HSM sync does.
+private updatePanelHsmStatus(partChild, Map flags, String partState) {
+    if (partState == "arming") return
+    def status = flags.armed_stay ? "armedHome" : (flags.armed_away ? "armedAway" : "disarmed")
+    try {
+        partChild.updateHsmStatus(status)
+    } catch (e) {
+        // Envisalink Partition driver older than 2.0.6 has no updateHsmStatus
+        if (!state.warnedOldPartitionDriver) {
+            state.warnedOldPartitionDriver = true
+            log.warn "EnvisaLink: update the Envisalink Partition driver to get the panelHSMStatus attribute"
+        }
+    }
 }
 
 // ─── Command methods ─────────────────────────────────────────────────────────
