@@ -56,6 +56,38 @@ a mid-trip arrival stops it rolling on to the next room; and the hand-stop case
 sends no command and no alert, including at the old 10-minute mark. The 1.33.0 and
 1.33.1 suites still pass unchanged.
 
+**Correction (user pushback, same day).** "Are you sure that her returning will
+stop it? That was the bug I told you I thought it was but you said it wasn't."
+The user had suspected, on 10/3, that an arrival's off/dock wouldn't register
+while the vacuum is docked and charging. #37 answered "it registers, no deficiency"
+-- and that was overstated. What #37 actually proved is narrower: *given* a command
+reaching the driver, the app ends the wait (tested with the real driver and app
+code in a harness). It never proved the command reaches the driver on a real hub,
+and it couldn't. The 10/6 logs show no command reaching the app in a whole day, a
+third incident after 9/11 and 9/14 where arrival did not stop it. So the honest
+status is: **unknown which side is at fault**, and the user's suspicion is not
+ruled out.
+
+Two things done about that, rather than argue it:
+1. **The driver now logs (1.9.0).** Until now it wrote nothing at info level, so
+   "the rule never sent it" and "it reached the driver but the hand-off to the app
+   failed" were indistinguishable. Every command writes exactly one `dev:` line;
+   `on()`/`off()` call private `relay*()` methods so one command isn't two lines.
+   `dev:` absent + `app:` absent = upstream of the app; `dev:` present + `app:`
+   absent = a bug in the hand-off (mine); both = it worked. The device's Events tab
+   gives the same answer without the update: the driver emits `switch off` before
+   anything else, so an `off()` that reached it always leaves that event.
+2. **Restored the one-argument `dockVacuum(String mac)`** the driver calls. 1.33.1
+   had added `String reason = null`, which generates overloads, and how Hubitat
+   dispatches `parent.x()` from a child driver onto them can't be tested off-hub.
+   The internal callers that want to say why now use a private `dockVacuumFor()`.
+   This is risk removal, not a diagnosis: the 9/14 incident predates the change
+   and also showed no command, so it is unlikely to be the main cause.
+
+And the presence backstop (above) is the part that does not depend on any of this:
+it checks the sensors itself, so "her returning stops the *next* room" holds even
+if no stop command ever arrives. It does not stop a room already under way.
+
 **Still open, and not something I can fix from here:** why the arrival rule sends
 nothing. Check its trigger and conditions (anyone vs everyone), the target device,
 and the rule's own log at 10:52. The backstop makes the app safe without it, but

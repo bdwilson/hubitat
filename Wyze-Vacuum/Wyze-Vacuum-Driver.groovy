@@ -1,7 +1,7 @@
 /**
  * Wyze Robot Vacuum Driver
  *
- * 1.8.0 - Brian Wilson / bubba@bubba.org
+ * 1.9.0 - Brian Wilson / bubba@bubba.org
  *
  * Child driver for the Wyze Vacuum Connect App. All network calls happen in the
  * parent app (which owns the Wyze session); this driver just relays commands to it
@@ -90,33 +90,62 @@ def updated() {
 // switch (Alexa/Google routines, Rule Machine switch triggers, a plain
 // switch Dashboard tile) without a separate virtual device. Which real
 // action "on"/"off" perform is configurable above.
+// Every command that reaches this driver leaves a normal info-log line, not just a
+// debug one. The app logs what each command changed (1.33.1), but with nothing
+// here, "the rule never sent it" and "it arrived here and the handoff to the app
+// failed" are indistinguishable. A `dev:` line with no matching `app:` line means
+// the handoff; neither means the command never reached the device.
+private void logCommand(String command) {
+    log.info "Wyze Vacuum Driver [${device.displayName}]: ${command} received from Hubitat"
+}
+
 def on() {
     def action = switchOnAction ?: "cleanNextRooms"
+    logCommand("on() -> ${action}")
     ifDebug("on() called -> ${action}")
     sendEvent(name: "switch", value: "on")
-    if (action == "start") start() else cleanNextRooms()
+    if (action == "start") relayStart() else relayCleanNextRooms()
 }
 
 def off() {
     def action = switchOffAction ?: "dock"
+    logCommand("off() -> ${action}")
     ifDebug("off() called -> ${action}")
     sendEvent(name: "switch", value: "off")
-    if (action == "pause") pause() else dock()
+    if (action == "pause") relayPause() else relayDock()
 }
 
+// The public commands log once and hand off to a relay*() method. on()/off() call
+// the relays directly rather than the public commands, so a single command writes
+// a single line instead of "off()" followed by a "dock()" that looks like a second.
 def start() {
+    logCommand("start()")
+    relayStart()
+}
+
+def pause() {
+    logCommand("pause()")
+    relayPause()
+}
+
+def dock() {
+    logCommand("dock()")
+    relayDock()
+}
+
+private void relayStart() {
     ifDebug("start() called")
     sendEvent(name: "status", value: "Cleaning")
     parent.startVacuum(device.deviceNetworkId)
 }
 
-def pause() {
+private void relayPause() {
     ifDebug("pause() called")
     sendEvent(name: "status", value: "Paused")
     parent.pauseVacuum(device.deviceNetworkId)
 }
 
-def dock() {
+private void relayDock() {
     ifDebug("dock() called")
     sendEvent(name: "status", value: "Returning to charge")
     parent.dockVacuum(device.deviceNetworkId)
@@ -134,6 +163,11 @@ def cleanRooms(String roomNames) {
 }
 
 def cleanNextRooms() {
+    logCommand("cleanNextRooms()")
+    relayCleanNextRooms()
+}
+
+private void relayCleanNextRooms() {
     ifDebug("cleanNextRooms() called")
     sendEvent(name: "status", value: "Cleaning")
     parent.cleanNextRooms(device.deviceNetworkId)

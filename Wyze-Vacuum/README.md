@@ -265,20 +265,26 @@ Without it, a battery skip ends the sweep and the vacuum sits idle until the nex
 
 **The one real risk, and the optional backstop for it.** If your arrival `off()` doesn't reach the app, the vacuum will start the next room on its own once charged, because the app has no idea who's home — unless you [name your presence sensors](#presence-backstop). On 9/14 an arrival at 11:00 appeared to produce no `off()` or `dock()` at all. The room limit bounds how much a missed `off()` can cost; it can't prevent the first room.
 
-**What does and doesn't count as a stop.** Anything sent to the vacuum *device in Hubitat* ends a wait, and it works while the vacuum is already docked: `off()` (whether the driver's off action is Dock or Pause), `dock()`, `pause()`, and `start()`. The driver never checks its own switch attribute first, so `off()` registers even if the switch already reads off, and the app ends the sweep itself rather than relying on the vacuum reacting to a dock command it's already obeying. What it **cannot see** is a stop made outside Hubitat — the Wyze app, a voice assistant talking to Wyze directly, or the vacuum's own button. The vacuum is already docked and charging, so nothing observable changes, and the wait carries on. If someone docks it from the Wyze app, switch it off in Hubitat as well.
+**What does and doesn't count as a stop.** Anything that reaches the vacuum *device in Hubitat* ends a wait, and it works while the vacuum is already docked (this is verified against the app and driver code in a test harness, not on a live hub — whether your own rule's command actually reaches the device is what the log lines below are for): `off()` (whether the driver's off action is Dock or Pause), `dock()`, `pause()`, and `start()`. The driver never checks its own switch attribute first, so `off()` registers even if the switch already reads off, and the app ends the sweep itself rather than relying on the vacuum reacting to a dock command it's already obeying. What it **cannot see** is a stop made outside Hubitat — the Wyze app, a voice assistant talking to Wyze directly, or the vacuum's own button. The vacuum is already docked and charging, so nothing observable changes, and the wait carries on. If someone docks it from the Wyze app, switch it off in Hubitat as well.
+
+**Checking whether a command arrived** (1.33.1, driver side added in 1.9.0). A command now leaves up to two lines in the normal info logs, one from the driver and one from the app:
+
+```
+dev:  Wyze Vacuum Driver [First Floor Vacuum]: off() -> dock received from Hubitat
+app:  Wyze Vacuum …: dock() received -- cancelled the wait for the battery
+```
+
+The driver line means the command reached the device. The app line says what it then changed (`cancelled the wait for the battery`, `ended the rotation sweep`, `cancelled a job paused for charging`, or `nothing outstanding to cancel`). Each new trip also logs `cleanNextRooms() received -- starting a trip`, and commands the app sends itself say so, for example `dock() sent by the app (the low-battery dock threshold)`. What you see tells you where to look:
+
+| `dev:` line | `app:` line | Meaning |
+|---|---|---|
+| absent | absent | The command never reached the vacuum device. The fault is upstream — the rule didn't fire, was conditioned out, or targets a different device. |
+| present | absent | It reached the driver but not the app. That is a bug in the hand-off, not in your rule. |
+| present | present | It arrived and was acted on; the second line says what it changed. |
+
+Before these, the lines were debug-only, so when a vacuum did something unexpected the first question — did my rule's command ever arrive? — could only be inferred from poll timing.
 
 **A vacuum stopped by hand.** If someone pauses the vacuum (the button or the Wyze app) shortly after a dispatch, it shows as `Paused` off its dock. Before 1.34.0 the app read that as "never started": it re-sent the start command to a vacuum a person had just stopped on purpose, then sent a false "a room-clean command was sent but the vacuum never started" alert. Confirmed live on 10/6, with the retry firing while the status was `Paused`. A paused or errored vacuum now means the dispatch *did* take effect and was then stopped, so there's no retry, no alert, the room stays due, and the trip ends. A dispatch that really was ignored (the vacuum still sitting `Docked`) still gets its one retry and the alert, unchanged.
-
-**Checking whether a command arrived** (1.33.1). Every start, pause and dock that reaches the app now writes one line to the normal info logs saying what it changed, and each new trip logs when it starts:
-
-```
-Wyze Vacuum …: cleanNextRooms() received -- starting a trip
-Wyze Vacuum …: dock() received -- cancelled the wait for the battery
-Wyze Vacuum …: dock() received -- nothing outstanding to cancel
-Wyze Vacuum …: dock() sent by the app (the low-battery dock threshold) -- ended the rotation sweep
-```
-
-Before this, those were debug-only, so when a vacuum did something unexpected the first question — did my rule's command ever arrive? — could only be inferred from poll timing. If the line isn't there, the problem is upstream of the app: the rule didn't fire, or it targeted a different device.
 
 **Resume latency.** Polling stays at the idle interval while waiting, so a resume can lag the battery reaching the threshold by up to one poll interval (15 minutes by default).
 

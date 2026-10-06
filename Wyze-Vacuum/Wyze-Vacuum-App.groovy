@@ -1389,7 +1389,7 @@ private void checkLowBatteryAutoDock(String mac, Integer batteryPct) {
         if (!state.lowBatteryDockTriggered[mac]) {
             log.warn "Wyze Vacuum ${mac}: battery ${batteryPct}% below ${threshold}% threshold while cleaning — sending back to dock"
             state.lowBatteryDockTriggered[mac] = true
-            dockVacuum(mac, "the low-battery dock threshold")
+            dockVacuumFor(mac, "the low-battery dock threshold")
         }
     } else {
         // Reset once no longer cleaning or battery has recovered, so the
@@ -1560,7 +1560,7 @@ def cancelAutoResumeDock(data) {
         return
     }
     log.info "Wyze Vacuum ${mac}: vacuum restarted an unfinished job on its own -- docking it (auto-resume is turned off for this vacuum)"
-    dockVacuum(mac, "auto-resume is turned off")
+    dockVacuumFor(mac, "auto-resume is turned off")
     // Marked silent so the run's end doesn't also announce "was docked N min
     // into cleaning" -- the start-side notification already explained this.
     // Still counts as an interruption, so the room keeps its pending status
@@ -1696,7 +1696,7 @@ private void continueSweepIfNeeded(String mac, String newStatus) {
             if (elapsedMin >= maxMinutes) {
                 ifDebug("continueSweepIfNeeded(${mac}): continuous sweep hit its ${maxMinutes}-minute limit (${elapsedMin} min elapsed), docking")
                 endRotationSweep(mac)
-                dockVacuum(mac, "the continuous-sweep time limit")
+                dockVacuumFor(mac, "the continuous-sweep time limit")
                 return
             }
         }
@@ -1875,7 +1875,16 @@ def pauseVacuum(String mac) {
     pollVacuum(mac)
 }
 
-def dockVacuum(String mac, String reason = null) {
+// The driver's dock()/off() call this, so it keeps exactly the one-argument
+// signature it had before 1.33.1. Anything with a default parameter was avoided
+// on purpose: it generates overloads, and how Hubitat dispatches a parent.x()
+// call from a child driver onto them can't be tested off-hub. The internal
+// callers that want to say why use dockVacuumFor() instead.
+def dockVacuum(String mac) {
+    dockVacuumFor(mac, null)
+}
+
+private void dockVacuumFor(String mac, String reason) {
     ifDebug("dockVacuum: ${mac}")
     logCommand(mac, "dock()", reason)
     endRotationSweep(mac) // explicit stop -- don't auto-continue to the next room
