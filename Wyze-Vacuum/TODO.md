@@ -2,6 +2,65 @@
 
 Not yet implemented. Tracked here so they survive across sessions.
 
+## ~~38. A trip kept going after someone got home; a hand-stop was "retried"~~ — DONE (1.34.0)
+
+User: "Rachel came home yet the vacuum kept cleaning after charging. Coming home
+should turn the switch off." Notifications on 10/6: started Living Room 9:06,
+finished 9:42, Rachel entered Home 10:52, started Kitchen 12:15, finished 12:49,
+"never started" at 2:40. Then the app logs, and "the vacuum was stopped by hand by
+my wife".
+
+**What the logs proved.** (1) The 1.33.1 logging works -- `cleanNextRooms()
+received -- starting a trip` at 9:06:05 -- so the departure side is fine. (2)
+**No `dock()`, `pause()` or `start()` line anywhere from 9:06 to 2:33.** The
+arrival at 10:52 never sent a command to this vacuum. This is the second time
+(9/14 too), and it is upstream of the app: our code ends a wait whenever such a
+command arrives, tested with the real driver. The arrival rule's conditions are the
+likeliest culprit (e.g. one that needs *everyone* home would never fire for
+Rachel alone) but that can't be seen from here. (3) The wait did exactly what it
+was built to: waiting at 9:45 (11% vs Kitchen's 90%), "battery has recovered ...
+carrying on" at 12:15 (92%), waiting again at 12:52 (22% vs Master Bedroom's 73%),
+carrying on at 2:30 (75%). Its predictions were right; the cap of 3 rooms would
+have ended the trip after Master Bedroom. It simply had no way to know someone was
+home.
+
+**Fix 1 -- presence backstop.** Optional `tripPresenceSensors_${mac}`
+(capability.presenceSensor, multiple). `snapshotTripPresence()` records at trip
+start whether every named sensor was away; `endTripIfSomeoneHome()` is checked in
+`checkSweepWaiting()` (before resuming) and `continueSweepIfNeeded()` (before the
+next room) and ends the trip, logging who is home. Deliberately only for a trip
+that *started away*: a trip the user starts on purpose while home must not be
+cancelled the moment it needs a recharge. It does not stop a room already under
+way -- docking mid-clean remains the arrival rule's job. Inert with no sensors
+selected. In my earlier answers I said the app can't know who's home; it can, if
+told which sensors, and one missed arrival cost two unwanted rooms.
+
+**Fix 2 -- a latent bug the day exposed.** At 2:30:03 Master Bedroom was
+dispatched; at 2:31 the status was `mode=4 charge_state=0` -- `Paused`, off the
+dock, i.e. stopped by hand. At 2:33 `checkStaleActiveCleanRun` logged "never
+actually started cleaning -- retrying the command once" and **re-sent the start
+command to a vacuum a person had just stopped on purpose**, then at 2:40 sent the
+false "never started" alert. Cause: Cleaning was never *observed* (the vacuum went
+from the dock to Paused between two one-minute polls), so `everConfirmedCleaning`
+stayed false and the run looked like a dropped dispatch. Fix: a Paused or Error
+status after a dispatch means the dispatch took effect and was then stopped -- no
+retry, no alert, the run is cleared with the room left due, and the trip ends. A
+dispatch that was genuinely ignored (still Docked) is retried and reported exactly
+as before; that case is asserted in the same test as a control.
+
+Tested with the real methods (34 extracted) against the 10/6 timeline: with both
+people away at 9:06 and Rachel home by 12:15, Kitchen is not started and the trip
+ends with a log line naming her; with no sensors it resumes as before; with someone
+home at trip start the backstop is off and it resumes; with both away it resumes;
+a mid-trip arrival stops it rolling on to the next room; and the hand-stop case
+sends no command and no alert, including at the old 10-minute mark. The 1.33.0 and
+1.33.1 suites still pass unchanged.
+
+**Still open, and not something I can fix from here:** why the arrival rule sends
+nothing. Check its trigger and conditions (anyone vs everyone), the target device,
+and the rule's own log at 10:52. The backstop makes the app safe without it, but
+the vacuum is only sent home promptly if that rule works.
+
 ## ~~37. No trace of whether a stop/start command reached the app~~ — DONE (1.33.1)
 
 Follow-up question after #36: "if someone arrives while it's charging to prepare

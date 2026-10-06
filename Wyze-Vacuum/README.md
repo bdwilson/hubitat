@@ -263,9 +263,11 @@ Without it, a battery skip ends the sweep and the vacuum sits idle until the nex
 - **It won't wait forever.** One safety net you didn't ask for, because the 1.29.1 latched-switch bug taught that anything reading as "work outstanding" has to be able to end by itself: if a single wait goes **6 hours** without the battery recovering (charging from empty takes about 3), it gives up, sends a notification, and ends the trip. That only happens if the vacuum isn't actually charging.
 - **It ends if something else takes over.** If the vacuum starts cleaning, pauses or errors while a wait is in progress, the wait is dropped.
 
-**The one real risk.** If your arrival `off()` doesn't reach the app, the vacuum will start the next room on its own once charged, because the app has no idea who's home. On 9/14 an arrival at 11:00 appeared to produce no `off()` or `dock()` at all. The room limit bounds how much a missed `off()` can cost; it can't prevent the first room.
+**The one real risk, and the optional backstop for it.** If your arrival `off()` doesn't reach the app, the vacuum will start the next room on its own once charged, because the app has no idea who's home — unless you [name your presence sensors](#presence-backstop). On 9/14 an arrival at 11:00 appeared to produce no `off()` or `dock()` at all. The room limit bounds how much a missed `off()` can cost; it can't prevent the first room.
 
 **What does and doesn't count as a stop.** Anything sent to the vacuum *device in Hubitat* ends a wait, and it works while the vacuum is already docked: `off()` (whether the driver's off action is Dock or Pause), `dock()`, `pause()`, and `start()`. The driver never checks its own switch attribute first, so `off()` registers even if the switch already reads off, and the app ends the sweep itself rather than relying on the vacuum reacting to a dock command it's already obeying. What it **cannot see** is a stop made outside Hubitat — the Wyze app, a voice assistant talking to Wyze directly, or the vacuum's own button. The vacuum is already docked and charging, so nothing observable changes, and the wait carries on. If someone docks it from the Wyze app, switch it off in Hubitat as well.
+
+**A vacuum stopped by hand.** If someone pauses the vacuum (the button or the Wyze app) shortly after a dispatch, it shows as `Paused` off its dock. Before 1.34.0 the app read that as "never started": it re-sent the start command to a vacuum a person had just stopped on purpose, then sent a false "a room-clean command was sent but the vacuum never started" alert. Confirmed live on 10/6, with the retry firing while the status was `Paused`. A paused or errored vacuum now means the dispatch *did* take effect and was then stopped, so there's no retry, no alert, the room stays due, and the trip ends. A dispatch that really was ignored (the vacuum still sitting `Docked`) still gets its one retry and the alert, unchanged.
 
 **Checking whether a command arrived** (1.33.1). Every start, pause and dock that reaches the app now writes one line to the normal info logs saying what it changed, and each new trip logs when it starts:
 
@@ -279,6 +281,17 @@ Wyze Vacuum …: dock() sent by the app (the low-battery dock threshold) -- ende
 Before this, those were debug-only, so when a vacuum did something unexpected the first question — did my rule's command ever arrive? — could only be inferred from poll timing. If the line isn't there, the problem is upstream of the app: the rule didn't fire, or it targeted a different device.
 
 **Resume latency.** Polling stays at the idle interval while waiting, so a resume can lag the battery reaching the threshold by up to one poll interval (15 minutes by default).
+
+### Presence backstop
+
+Added in 1.34.0, optional, off until you pick sensors. Under `<vacuum> — Room Rotation`: **"Presence sensors"**. The app can't know who's home on its own, and it doesn't need to as long as your arrival rule turns the vacuum off. But that rule lives outside the app, and it can fail silently. Confirmed live on 10/6: a trip started at 9:06 with everyone out, someone arrived at 10:52, and the app never received a single stop command — no `dock()`, `pause()` or `start()` line in the logs from 9:06 to 2:33 — so the wait resumed itself at 12:15 and again at 2:30 with the house occupied, and a person had to stop it by hand.
+
+With sensors named, the app checks them itself at the two moments it would otherwise carry on unattended: **resuming after a wait for the battery**, and **rolling on to the next room**. If the trip **started with every named sensor away** and any of them is home at that point, the trip ends instead, the log says who, and anything still due waits for the next trigger.
+
+- **Only a trip that started away is guarded.** One you start on purpose while someone is home (`on()`, a button) is never cancelled just because it has to wait for a recharge, and the log notes that the backstop is off for that trip.
+- **It doesn't stop a room already underway.** Docking a vacuum that is mid-clean is your arrival rule's job; this only prevents the *next* room starting.
+- **It is a backstop, not a replacement.** Your arrival rule is still what sends the vacuum home promptly. If it never fires, fix that too — check the `dock() received` / `pause() received` lines described below to see whether it's reaching the app at all.
+- **Inert until configured.** With no sensors selected, behavior is exactly as before.
 
 ### Correcting rotation history manually
 
