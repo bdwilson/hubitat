@@ -2,6 +2,24 @@
 
 Not yet implemented. Tracked here so they survive across sessions.
 
+## ~~39. A vacuum left Paused off its dock ran flat unnoticed~~ — DONE (1.34.0)
+
+After the hand-stop on 10/6 (see #38) the vacuum stayed `Paused`, `charging false`,
+from 2:31 PM until at least 7:45 PM; battery 75% -> 42% (about 6%/h overall, 8-12%/h
+in the later quarter-hours). `checkPossiblyStuck` only covered `Standby`, so nothing
+was sent. `checkStrandedPaused()` (called from `checkPossiblyStuck`) alerts once
+per episode after `STRANDED_PAUSED_MINUTES` (30) of Paused + not charging, with the
+battery %, and re-arms when the status changes or it starts charging. Deliberately
+no auto-dock. Tested with the real extracted methods: no alert at 29 min, one at
+31, none repeated, a second episode alerts again, Paused-while-charging never
+alerts, and the Standby alert is unchanged.
+
+**Also checked on 10/6 (user: "when the vacuum docks the switch turns off"):** the
+device Events show `switch on` at 9:06:05 and **no** switch event until `switch
+off` at 2:42 PM, sourced by the app. The vacuum docked at 9:45 and 12:52 with the
+switch left on, which is the 1.29.0 behavior working. The 2:42 off is the
+hand-stop ending the trip.
+
 ## ~~38. A trip kept going after someone got home; a hand-stop was "retried"~~ — DONE (1.34.0)
 
 User: "Rachel came home yet the vacuum kept cleaning after charging. Coming home

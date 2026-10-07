@@ -86,6 +86,9 @@ import java.util.zip.Inflater
 // the user are the room count and "nothing left due".
 @Field static final Integer WAIT_FOR_CHARGE_GIVE_UP_HOURS = 6
 
+// A vacuum Paused, off its dock and not charging for this long is stranded (1.34.0).
+@Field static final Integer STRANDED_PAUSED_MINUTES = 30
+
 definition(
     name: "Wyze Vacuum Connect",
     namespace: "brianwilson-hubitat",
@@ -1207,6 +1210,35 @@ private void checkPossiblyStuck(String mac, String newStatus, boolean isCharging
     } else {
         state.standbyStartedAt.remove(mac)
         state.stuckNotified[mac] = false
+    }
+
+    checkStrandedPaused(mac, newStatus, isCharging, d)
+}
+
+// Confirmed live (10/6): a hand-stopped vacuum sat Paused, off its dock and not
+// charging, from 2:31 PM until at least 7:45 PM while the battery drained from
+// 75% to 42% -- and nothing said so, because the check above only knows
+// "Standby". A paused vacuum is just as stranded: it will not return to the
+// dock by itself, so left alone it runs flat wherever it stopped. Alert once per
+// episode (it does not dock the vacuum for you: the person who paused it may
+// have a reason, and it may be sitting somewhere a dock command can't help).
+private void checkStrandedPaused(String mac, String newStatus, boolean isCharging, def d) {
+    state.pausedStartedAt = state.pausedStartedAt ?: [:]
+    state.strandedNotified = state.strandedNotified ?: [:]
+
+    if (newStatus == "Paused" && !isCharging) {
+        if (!state.pausedStartedAt[mac]) state.pausedStartedAt[mac] = now()
+        double minutesPaused = (now() - (state.pausedStartedAt[mac] as Long)) / 60000.0
+        if (minutesPaused >= STRANDED_PAUSED_MINUTES && !state.strandedNotified[mac]) {
+            state.strandedNotified[mac] = true
+            def batt = d?.currentValue("battery")
+            def battText = (batt != null) ? " (battery ${batt}% and falling)" : ""
+            log.warn "Wyze Vacuum ${mac}: paused off its dock for ${Math.round(minutesPaused)} min${battText}"
+            sendVacuumNotification("${d?.displayName ?: mac} has been paused off its dock for over ${STRANDED_PAUSED_MINUTES} minutes${battText}. A paused vacuum doesn't go home by itself and will run flat where it stopped -- send it to the dock (dock() or the Wyze app) or resume it.")
+        }
+    } else {
+        state.pausedStartedAt.remove(mac)
+        state.strandedNotified[mac] = false
     }
 }
 

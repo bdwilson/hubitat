@@ -449,6 +449,10 @@ Added in 1.24.0. A healthy vacuum is always doing one of: cleaning, returning to
 
 This is deliberately distinct from a normal low-battery recharge cycle, which shows `charge_state` as charging and so never trips this check — only genuinely idle-and-not-charging counts. Confirmed live: a vacuum that lost its dispatch after 3 minutes sat at `Standby`, not charging, for over 7 hours (battery draining 42% → 6% the whole time) with no prior alert of any kind — this closes that gap.
 
+### Stranded-while-paused detection
+
+Added in 1.34.0. Stuck detection above only watched `Standby`. A vacuum that is `Paused`, off its dock and not charging is just as stranded: a paused vacuum doesn't go home by itself, so it runs flat wherever it stopped. Confirmed live on 10/6 — a vacuum stopped by hand at 2:31 PM stayed `Paused` off its dock for five-plus hours while the battery drained from 75% to 42%, with no alert of any kind. After 30 minutes of `Paused` and not charging you now get one notification per episode, with the battery level. The app does **not** dock the vacuum for you: whoever paused it may have meant to, and it may be sitting somewhere a dock command can't help. It re-arms once the vacuum is next seen docked or charging. This includes a pause you sent from Hubitat and forgot about.
+
 ---
 
 ## Multiple vacuums
