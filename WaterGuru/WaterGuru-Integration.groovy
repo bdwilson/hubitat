@@ -1,7 +1,7 @@
 /**
  * WaterGuru Integration App
  *
- * 2.4.2 - Brian Wilson / bubba@bubba.org
+ * 2.4.3 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration — no external Python/Flask server required.
  * Authenticates directly with AWS Cognito (SRP flow) and calls the
@@ -83,6 +83,24 @@
  *  - Quiet hours (2.4.2): saving the app no longer drops notifications held
  *    for the end of quiet hours (updated()'s unschedule() cancelled their
  *    delivery); the flush is re-armed.
+ *  - Incomplete samples (2.4.3): a sample without free chlorine or pH (on
+ *    a chlorine pool, or when the sanitizer isn't reported) no longer
+ *    advances LastMeasurement or LastMeasurementHuman. 2.4.2 keeps the last
+ *    value of a missing reading, so the previous sample's FC and pH stayed
+ *    on the device and a new LastMeasurement made them look like the new
+ *    sample's to anything that doses from them. A warning names the gap,
+ *    and the notification engine doesn't count that sample as new either.
+ *  - Refresh token (2.4.3): a token Cognito rejects three polls in a row
+ *    (NotAuthorizedException, despite a fresh token from each full login)
+ *    switches refresh off until the app is saved. Throttling, AWS-side
+ *    errors and network failures don't count; a successful refresh and
+ *    updated() reset the count.
+ *  - Partial polls (2.4.3): without latestMeasureTime, cassetteType and
+ *    cassetteInfo keep their last values (no C2 -> C5 -> C2 flip), and
+ *    notifications treat a sample time, status, cassette status or battery
+ *    status missing from a response as unchanged (no false "back to GREEN"
+ *    followed by a re-alert). The poll-interval help no longer says every
+ *    poll does a full Cognito login.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at:
@@ -147,7 +165,7 @@ def mainPage() {
 
         if (settings.selectedDevices) {
             section("<b>Polling Schedule</b>") {
-                paragraph "WaterGuru devices only sample a few times per day, so polling more often than every few hours provides no additional data. Each poll performs a full authentication with AWS Cognito."
+                paragraph "WaterGuru devices only sample a few times per day, so polling more often than every few hours provides no additional data. Polls log in with a Cognito refresh token and only fall back to a full login when it is rejected."
                 input "pollInterval", "enum",
                     title: "Poll Interval",
                     options: ["1": "Every 1 hour", "2": "Every 2 hours", "3": "Every 3 hours",
@@ -244,9 +262,11 @@ def uninstalled() {
 def updated() {
     unschedule()
     // Saving the app is the way to retry refresh token logins after Cognito
-    // said that flow is not enabled. wgRefreshTokenSupported is the pre-2.4.2
-    // flag, which any HTTP error could set; it is no longer read.
+    // said that flow is not enabled or kept rejecting the token.
+    // wgRefreshTokenSupported is the pre-2.4.2 flag, which any HTTP error
+    // could set; it is no longer read.
     state.remove("wgRefreshFlowDisabled")
+    state.remove("wgRefreshRejections")
     state.remove("wgRefreshTokenSupported")
 
     def selected = settings.selectedDevices ?: []
@@ -509,6 +529,7 @@ private Map refreshAuthenticate() {
         )
         if (resp?.AuthenticationResult) {
             ifDebug("Refresh token auth succeeded")
+            state.remove("wgRefreshRejections")
             return resp.AuthenticationResult
         }
         return null
@@ -522,11 +543,25 @@ private Map refreshAuthenticate() {
             // until the app is saved again (updated() clears the flag).
             log.warn "WaterGuru: Cognito does not allow refresh token logins for this client, using a full login from now on (${e.statusCode}: ${body ?: e.message})"
             state.wgRefreshFlowDisabled = true
+        } else if (refreshTokenRejected(e.statusCode, body)) {
+            // Cognito refused the token itself. Once is normal (an expired or
+            // revoked token; the full login below stores a fresh one), but a
+            // fresh token refused three polls in a row means refresh can't work
+            // for this login, so stop paying for the attempt until the app is
+            // saved again (updated() clears the flag and the count).
+            int rejections = ((state.wgRefreshRejections ?: 0) as int) + 1
+            state.wgRefreshRejections = rejections
+            if (rejections >= 3) {
+                state.wgRefreshFlowDisabled = true
+                log.warn "WaterGuru: refresh token rejected ${rejections} times in a row (${e.statusCode}: ${body ?: e.message}), using a full login until the app is saved again"
+            } else {
+                log.warn "WaterGuru: refresh token rejected (${e.statusCode}), falling back to a full login: ${body ?: e.message}"
+            }
         } else {
-            // An expired or revoked token, throttling or an AWS-side error is
-            // no reason to give up on refresh: this poll falls back to a full
-            // login, which also stores a fresh refresh token.
-            log.warn "WaterGuru: refresh token rejected (${e.statusCode}), falling back to a full login: ${body ?: e.message}"
+            // Throttling or an AWS-side error is no reason to give up on refresh:
+            // this poll falls back to a full login, which also stores a fresh
+            // refresh token.
+            log.warn "WaterGuru: refresh token login failed (${e.statusCode}), falling back to a full login: ${body ?: e.message}"
         }
         return null
     } catch (e) {
@@ -542,6 +577,13 @@ private Map refreshAuthenticate() {
 private boolean refreshFlowNotEnabled(statusCode, String body) {
     def b = body?.toLowerCase() ?: ""
     return statusCode == 400 && b.contains("not enabled") && (b.contains("flow") || b.contains("refresh"))
+}
+
+// Cognito refuses a refresh token it won't accept (expired, revoked, or one
+// this login can't refresh, "Invalid Refresh Token") with HTTP 400,
+// NotAuthorizedException. Throttling and AWS-side errors are other types.
+private boolean refreshTokenRejected(statusCode, String body) {
+    return statusCode == 400 && (body ?: "").contains("NotAuthorizedException")
 }
 
 // Use the refresh token while it is < 25 days old and was issued for the
@@ -902,9 +944,14 @@ private void processWaterGuruData(def response) {
             if (li != null && li >= 0) labPack = pod.refillables[li]
         }
 
-        def cassetteType = chemFresh ? "C5" : (chemPresent ? "C2" : "unknown")
+        // Without the water body's latest sample time there is nothing to judge
+        // freshness against (the per-measurement fallback above can read stale
+        // TA/CH/CYA as fresh), so the model and cassetteInfo stay null and
+        // emit() keeps their last values instead of flipping C2 -> C5 -> C2.
+        def cassetteType = null
+        if (latestMs != null) cassetteType = chemFresh ? "C5" : (chemPresent ? "C2" : "unknown")
         def cassetteInfo = null
-        if (labPack != null) {
+        if (labPack != null && cassetteType != null) {
             def parts = [cassetteType == "unknown" ? "Cassette" : cassetteType]
             def rt = toEpoch(labPack.refillTime)
             if (rt != null) parts << "installed ${new Date(rt).format('MMM d, yyyy')}"
@@ -1021,12 +1068,25 @@ private void processWaterGuruData(def response) {
         emit("cassetteInfo",          cassetteInfo)
 
         // Last, so a rule or app that reacts to a new LastMeasurement reads
-        // the readings it timestamps rather than the previous sample's.
-        emit("LastMeasurementHuman", LastMeasurementHuman)
-        emit("LastMeasurement",      LastMeasurement)
+        // the readings it timestamps rather than the previous sample's. A
+        // sample without free chlorine or pH (on a chlorine pool, or when the
+        // sanitizer isn't reported) is not announced at all: emit() kept the
+        // previous FC/pH, so a new LastMeasurement would make those look like
+        // the new sample's values to anything that doses from them.
+        def sampleGaps = []
+        if (sanitizerType == null || sanitizerType.toString() == "FREE_CL") {
+            if (freeChlorine == null) sampleGaps << "FREE_CL"
+            if (pH == null)           sampleGaps << "PH"
+        }
+        if (sampleGaps) {
+            log.warn "WaterGuru: ${name}: sample ${LastMeasurement} has no ${sampleGaps.join(' or ')} value; LastMeasurement not advanced, last values kept"
+        } else {
+            emit("LastMeasurementHuman", LastMeasurementHuman)
+            emit("LastMeasurement",      LastMeasurement)
+        }
 
         evaluateNotifications(id, name, [
-            lastMeasurement : LastMeasurement,
+            lastMeasurement : sampleGaps ? null : LastMeasurement,
             status          : notifyStatus,
             statusMsg       : notifyStatusMsg,
             cassetteStatus  : CassetteStatus,
@@ -1075,6 +1135,15 @@ private void evaluateNotifications(String id, String name, Map cur) {
     def prev = ns[id]
     boolean firstPoll = (prev == null)
     if (firstPoll) prev = [:]
+
+    // A partial response leaves some of these out. A missing value means "not
+    // reported", not a change: without this a poll without a status announced
+    // "back to GREEN" and the next full poll re-alerted the same condition.
+    if (!firstPoll) {
+        ["lastMeasurement", "status", "cassetteStatus", "batteryStatus"].each { k ->
+            if (cur[k] == null) cur[k] = prev[k]
+        }
+    }
 
     def alerts     = []
     def recoveries = []
