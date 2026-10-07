@@ -1,7 +1,7 @@
 /**
  * WaterGuru Integration App
  *
- * 2.4.0 - Brian Wilson / bubba@bubba.org
+ * 2.4.1 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration — no external Python/Flask server required.
  * Authenticates directly with AWS Cognito (SRP flow) and calls the
@@ -52,6 +52,19 @@
  *    from whether Total Alkalinity / Calcium Hardness / Cyanuric Acid are
  *    freshly sampled (only a C5 measures those) or the pod carries a LAB
  *    lab-pad pack. Additive: existing attributes are unchanged.
+ *  - cassetteType (2.4.1): the model now comes only from TA/CH/CYA
+ *    freshness. 2.4.0 also took a refillable with unit "pad" for a C5 lab-pad
+ *    pack, but that is the regular cassette, so a C2 reporting its cassette
+ *    the same way read as a C5. The cassette refillable now only supplies
+ *    cassetteInfo's install date. After a C5 is swapped for a C2, the type
+ *    changes once the C5's last TA/CH/CYA readings are more than 2 days older
+ *    than the latest sample: about 2 to 3 days after the last C5 sample.
+ *  - CassetteChecksLeft (2.4.1): sent as a number. WaterGuru sends the count
+ *    as a string ("144"), which never equals the attribute's numeric current
+ *    value, so the event was re-sent on every poll.
+ *  - cassetteInfo (2.4.1): drop the raw "N/M pads" count. It duplicates
+ *    CassetteChecksLeft, and a C5 uses several pads per measurement day, so
+ *    the pad count read as nonsense next to the pod's own days left.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at:
@@ -617,6 +630,16 @@ private boolean isStaleDataAlert(alert) {
     alert?.text && alert.text.toLowerCase().contains("measurement outdated")
 }
 
+// WaterGuru sends some counts as strings (a refillable's amountLeft is "144").
+// A NUMBER attribute must get a number: currentValue() reads it back as one,
+// and a string never compares equal to it, so the event would be re-sent on
+// every poll. Null (or unparseable) stays null.
+private Integer toIntOrNull(v) {
+    if (v == null) return null
+    def s = v.toString().trim()
+    return s.isNumber() ? (s as BigDecimal).intValue() : null
+}
+
 // =================== Data Processing ===================
 
 private void processWaterGuruData(def response) {
@@ -743,7 +766,7 @@ private void processWaterGuruData(def response) {
                 CassetteStatus     = pod.refillables[index].status
                 CassettePercent    = pod.refillables[index].pctLeft
                 CassetteTimeLeft   = pod.refillables[index].timeLeftText
-                CassetteChecksLeft = pod.refillables[index].amountLeft
+                CassetteChecksLeft = toIntOrNull(pod.refillables[index].amountLeft)
             }
             index = pod.refillables?.findIndexOf { it.label == "Battery" }
             if (index != null && index >= 0) {
@@ -752,15 +775,21 @@ private void processWaterGuruData(def response) {
             }
         }
 
-        // ---- Cassette type: C2 vs C5 (2.4.0) -----------------------------
+        // ---- Cassette type: C2 vs C5 (2.4.0, corrected in 2.4.1) ---------
         // WaterGuru never prints the cassette model (pod.product is always
         // "SENSE"), but it's derivable. A C5 cassette additionally samples
         // Total Alkalinity, Calcium Hardness and Cyanuric Acid on each run,
-        // while a C2 measures only free chlorine + pH; and a C5 pod carries a
-        // "LAB" refillable (its lab-pad pack). So a *fresh* TA/CH/CYA reading
-        // — one sampled at (close to) the water body's latest measurement,
-        // not a years-stale leftover — or a present LAB pad pack means a C5;
-        // a pod that reports neither means C2; nothing to go on ⇒ unknown.
+        // while a C2 measures only free chlorine + pH. So a *fresh* TA/CH/CYA
+        // reading (one sampled at, or close to, the water body's latest
+        // measurement, not a years-stale leftover) means a C5; TA/CH/CYA
+        // readings that are all stale mean a C2; none at all ⇒ unknown.
+        //
+        // Swapping a C5 for a C2 leaves the C5's last TA/CH/CYA readings in
+        // the response. They count as fresh until the latest sample is more
+        // than freshWindowMs newer, so cassetteType changes to C2 with the
+        // first C2 sample taken over 2 days after the last C5 sample (2 to 3
+        // days later with daily samples), seen on the next poll. A swap to a
+        // C5 shows on the first poll after its first sample.
         def toEpoch = { s ->
             if (!s) return null
             try { return toDateTime(s.toString())?.time } catch (ignored) { return null }
@@ -783,22 +812,28 @@ private void processWaterGuruData(def response) {
             }
         }
 
-        // Pod LAB refillable — the C5 lab-pad pack — drives cassetteInfo and
-        // is itself a positive C5 signal (a C2 has no lab pads).
+        // The pod's cassette refillable supplies cassetteInfo's install date
+        // and nothing else. It is NOT a model signal: on a C5 it reads
+        // {type: "LAB", label: "Cassette", unit: "pad", ...}. 2.4.0 matched it
+        // by unit "pad" as a C5-only lab-pad pack, but it is the regular
+        // cassette, so a C2 that reports its cassette the same way read as a
+        // C5. Matching broadly is safe now that the model doesn't depend on it.
         def labPack
         item.pods?.each { pod ->
-            def li = pod.refillables?.findIndexOf { it.label == "LAB" || it.unit == "pad" }
+            def li = pod.refillables?.findIndexOf { it.label == "Cassette" || it.type == "LAB" || it.unit == "pad" }
             if (li != null && li >= 0) labPack = pod.refillables[li]
         }
 
-        def cassetteType = (chemFresh || labPack != null) ? "C5" : (chemPresent ? "C2" : "unknown")
+        def cassetteType = chemFresh ? "C5" : (chemPresent ? "C2" : "unknown")
         def cassetteInfo = null
         if (labPack != null) {
-            def parts = [cassetteType]
+            def parts = [cassetteType == "unknown" ? "Cassette" : cassetteType]
             def rt = toEpoch(labPack.refillTime)
             if (rt != null) parts << "installed ${new Date(rt).format('MMM d, yyyy')}"
-            if (labPack.amountLeft != null && labPack.maxAmount != null)
-                parts << "${labPack.amountLeft}/${labPack.maxAmount} pads"
+            // Note: the raw pad/check count is deliberately NOT shown here — it
+            // duplicates CassetteChecksLeft, and a C5 burns several pads per
+            // measurement day, so "N pads" reads as nonsense next to the pod's
+            // own "days left". Use CassetteChecksLeft / CassetteTimeLeft instead.
             cassetteInfo = parts.join(" · ")
         }
         ifDebug("cassetteType=${cassetteType} cassetteInfo=${cassetteInfo}")

@@ -4,9 +4,9 @@
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/WaterGuru",
   "communityLink": "https://community.hubitat.com/t/release-waterguru-pool-integration/77922",
-  "dateReleased": "2026-08-18",
-  "releaseNotes": "Cassette type: derive and surface the installed cassette model (cassetteType: C2 / C5 / unknown) plus an optional human summary (cassetteInfo). WaterGuru's API never prints the model, so it is derived from whether Total Alkalinity / Calcium Hardness / Cyanuric Acid are freshly sampled (only a C5 measures those). Additive — existing attributes unchanged.",
-  "version": "2.4.0",
+  "dateReleased": "2026-10-06",
+  "releaseNotes": "Cassette fixes. cassetteType no longer reports C5 on a C2: the model now comes only from fresh Total Alkalinity / Calcium Hardness / Cyanuric Acid readings (after swapping a C5 for a C2 it changes about 2 to 3 days after the last C5 sample). CassetteChecksLeft is sent as a number, so it is no longer re-sent on every poll. cassetteInfo no longer appends the raw N/M pads count, which duplicated CassetteChecksLeft. No attribute added, removed or renamed.",
+  "version": "2.4.1",
   "drivers": [
     {
       "id": "20bad83b-d3db-43f6-ba69-ffa3d6e120ca",
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/WaterGuru/WaterGuru-Integration.groovy",
       "required": true,
       "oauth": false,
-      "version": "2.4.0"
+      "version": "2.4.1"
     }
   ]
 }
