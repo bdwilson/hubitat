@@ -14,6 +14,12 @@ no auto-dock. Tested with the real extracted methods: no alert at 29 min, one at
 31, none repeated, a second episode alerts again, Paused-while-charging never
 alerts, and the Standby alert is unchanged.
 
+**Root cause of the missed arrivals (10/7, from the user's rule screenshot):** the
+Visual Rule Builder rule triggered only on "mode becomes Away", then a "Mode is
+Away" gate, then a branch (on / off). There is no arrival trigger, and the gate
+would block one. Not an app or driver defect; documented in the README
+troubleshooting.
+
 **Also checked on 10/6 (user: "when the vacuum docks the switch turns off"):** the
 device Events show `switch on` at 9:06:05 and **no** switch event until `switch
 off` at 2:42 PM, sourced by the app. The vacuum docked at 9:45 and 12:52 with the
