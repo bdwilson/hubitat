@@ -13,8 +13,8 @@ entirely within Hubitat.
 
 Install both files via HPM or manually via **Apps Code** and **Drivers Code**:
 
-* [WaterGuru-Integration.groovy](WaterGuru-Integration.groovy) — install as an App
-* [WaterGuru-Driver.groovy](WaterGuru-Driver.groovy) — install as a Driver
+* [WaterGuru-Integration.groovy](https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/WaterGuru/WaterGuru-Integration.groovy) — install as an App
+* [WaterGuru-Driver.groovy](https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/WaterGuru/WaterGuru-Driver.groovy) — install as a Driver
 
 Then add the **WaterGuru Integration** app under **Apps**, enter your credentials,
 click **Discover**, select your device(s), and configure your poll interval.
@@ -70,6 +70,13 @@ coalesced into a single message.
 
 * WaterGuru devices sample a few times per day at most — polling more often than
   every few hours will not yield additional data.
+* Polls log in with a Cognito refresh token for up to 25 days and fall back to a
+  full login when it is rejected. Only if Cognito says refresh logins are not
+  enabled for this client does the app stop trying them, until you save the app
+  again.
+* A poll that fails or comes back incomplete (a WaterGuru error, no water
+  bodies, or missing fields) is logged as an error and leaves the device
+  attributes at their last values.
 
 ## Credits
 
