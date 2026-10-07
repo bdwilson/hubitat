@@ -78,11 +78,13 @@ coalesced into a single message.
   days after the last C5 sample. A swap to a C5 shows after its first sample.
 * Polls log in with a Cognito refresh token for up to 25 days and fall back to a
   full login when it is rejected. Only if Cognito says refresh logins are not
-  enabled for this client does the app stop trying them, until you save the app
-  again.
+  enabled for this client, or rejects the token three polls in a row, does the
+  app stop trying them, until you save the app again.
 * A poll that fails or comes back incomplete (a WaterGuru error, no water
-  bodies, or missing fields) is logged as an error and leaves the device
-  attributes at their last values.
+  bodies, or missing fields) is logged and leaves the device attributes at
+  their last values. A sample without free chlorine or pH does not advance
+  `LastMeasurement`, so rules triggered by it never see the previous sample's
+  readings as new.
 
 ## Credits
 
