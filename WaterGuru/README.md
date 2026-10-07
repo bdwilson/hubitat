@@ -13,8 +13,8 @@ entirely within Hubitat.
 
 Install both files via HPM or manually via **Apps Code** and **Drivers Code**:
 
-* [WaterGuru-Integration.groovy](WaterGuru-Integration.groovy) — install as an App
-* [WaterGuru-Driver.groovy](WaterGuru-Driver.groovy) — install as a Driver
+* [WaterGuru-Integration.groovy](https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/WaterGuru/WaterGuru-Integration.groovy) — install as an App
+* [WaterGuru-Driver.groovy](https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/WaterGuru/WaterGuru-Driver.groovy) — install as a Driver
 
 Then add the **WaterGuru Integration** app under **Apps**, enter your credentials,
 click **Discover**, select your device(s), and configure your poll interval.
@@ -70,6 +70,12 @@ coalesced into a single message.
 
 * WaterGuru devices sample a few times per day at most — polling more often than
   every few hours will not yield additional data.
+* `cassetteType` is derived, because WaterGuru never names the cassette model: a
+  C5 is recognised by Total Alkalinity / Calcium Hardness / Cyanuric Acid
+  readings taken within about 2 days of the latest sample, which a C2 never
+  produces. After swapping a C5 for a C2, the C5's last readings stay in
+  WaterGuru's data for a while, so `cassetteType` changes to C2 about 2 to 3
+  days after the last C5 sample. A swap to a C5 shows after its first sample.
 
 ## Credits
 

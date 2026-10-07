@@ -5,7 +5,7 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/WaterGuru",
   "communityLink": "https://community.hubitat.com/t/release-waterguru-pool-integration/77922",
   "dateReleased": "2026-10-06",
-  "releaseNotes": "cassetteInfo no longer appends the raw N/M pads count: it duplicates CassetteChecksLeft and, because a C5 uses several pads per measurement day, read as nonsense next to the pod's own days left. No attribute changes.",
+  "releaseNotes": "Cassette fixes. cassetteType no longer reports C5 on a C2: the model now comes only from fresh Total Alkalinity / Calcium Hardness / Cyanuric Acid readings (after swapping a C5 for a C2 it changes about 2 to 3 days after the last C5 sample). CassetteChecksLeft is sent as a number, so it is no longer re-sent on every poll. cassetteInfo no longer appends the raw N/M pads count, which duplicated CassetteChecksLeft. No attribute added, removed or renamed.",
   "version": "2.4.1",
   "drivers": [
     {
