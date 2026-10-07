@@ -123,7 +123,8 @@ metadata {
         // pod freshly samples TA/CH/CYA — a C5 does, a C2 measures only free
         // chlorine + pH. "unknown" when there is nothing to derive from.
         attribute "cassetteType",         "STRING"   // C2 / C5 / unknown
-        // Optional human summary, e.g. "C5 · installed Aug 12, 2026 · 28/30 pads".
+        // Optional human summary, e.g. "C5 · installed Aug 14, 2026"
+        // ("Cassette · installed ..." while the model is unknown).
         attribute "cassetteInfo",         "STRING"
     }
 }
