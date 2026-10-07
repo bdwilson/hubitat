@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.33.1 - Brian Wilson / bubba@bubba.org
+ * 1.34.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -85,6 +85,9 @@ import java.util.zip.Inflater
 // itself, or the switch latches on (the 1.29.1 bug). The limits that matter to
 // the user are the room count and "nothing left due".
 @Field static final Integer WAIT_FOR_CHARGE_GIVE_UP_HOURS = 6
+
+// A vacuum Paused, off its dock and not charging for this long is stranded (1.34.0).
+@Field static final Integer STRANDED_PAUSED_MINUTES = 30
 
 definition(
     name: "Wyze Vacuum Connect",
@@ -291,6 +294,10 @@ def mainPage() {
                                         }
                                     }
                                 }
+
+                                input "tripPresenceSensors_${mac}", "capability.presenceSensor",
+                                    title: "Presence sensors (optional) — a backstop in case your arrival rule doesn't fire. If a trip started with all of these away and any of them is home when it's about to carry on, the trip ends instead. A trip you start while someone is home is never affected",
+                                    multiple: true, required: false
 
                                 def pending = pendingRoomCount(mac)
                                 paragraph "${pending} of ${(settings["rotationRooms_${mac}"] ?: []).size()} rotation room(s) are due for cleaning right now."
@@ -962,6 +969,27 @@ private void checkStaleActiveCleanRun(String mac) {
     if (!startedAt) return
     double minutesSinceDispatch = (now() - startedAt) / 60000.0
 
+    // Paused or errored means the dispatch DID take effect -- the vacuum left its
+    // dock -- and then something stopped it. Treating that as "never started" is
+    // wrong twice over: the retry below re-sends the start command to a vacuum
+    // that has just been stopped on purpose, and the give-up below tells the
+    // user it never started. Confirmed live (10/6): a person stopped the vacuum
+    // by hand about a minute after a dispatch (mode 4, charge_state 0), and two
+    // minutes later this code re-sent the command anyway, then sent a "never
+    // started" alert for a vacuum that had been running. The poll interval is
+    // why Cleaning was never observed to set everConfirmedCleaning: it went from
+    // the dock to Paused between two polls.
+    //
+    // Whoever stopped it has made the decision, so the trip ends here too. The
+    // room stays uncredited and due, same as any interrupted run.
+    def stoppedStatus = state.lastKnownStatus?.getAt(mac)
+    if (stoppedStatus in ["Paused", "Error"]) {
+        log.info "Wyze Vacuum ${mac}: the dispatched room-clean left the dock and is now ${stoppedStatus} -- it was stopped outside Hubitat, so not retrying and ending the trip (the room stays due)"
+        state.activeCleanRun.remove(mac)
+        endRotationSweep(mac)
+        return
+    }
+
     // Confirmed live: Wyze's control API can acknowledge a room-clean
     // dispatch (code:1, no error) that the vacuum then simply never acts
     // on -- even while sitting fully charged and idle (not mid-transit
@@ -1000,6 +1028,49 @@ private void endRotationSweep(String mac) {
     state.rotationSweepStartedAt?.remove(mac)
     state.rotationSweepWaitingSince?.remove(mac)
     state.rotationSweepRooms?.remove(mac)
+    state.rotationSweepStartedAway?.remove(mac)
+}
+
+// Presence backstop (1.34.0). The app never needs to know who's home as long as
+// the user's arrival rule turns the vacuum off -- but that rule is outside the
+// app, and on 10/6 it never sent anything: no dock()/pause()/start() line from
+// 9:06 to 2:33, so a trip that began with everyone out resumed itself twice
+// after someone was home, and a person had to stop it by hand. If the user
+// names presence sensors, the app checks them itself at the moments it would
+// otherwise carry on unattended.
+//
+// Only a trip that STARTED with every named sensor away is guarded. A trip the
+// user starts on purpose while they're home must not be cancelled the moment it
+// has to wait for a recharge.
+private List sweepPresenceSensors(String mac) {
+    return (settings["tripPresenceSensors_${mac}"] ?: []) as List
+}
+
+private void snapshotTripPresence(String mac) {
+    def sensors = sweepPresenceSensors(mac)
+    state.rotationSweepStartedAway = state.rotationSweepStartedAway ?: [:]
+    if (!sensors) { state.rotationSweepStartedAway.remove(mac); return }
+    def homeAtStart = sensors.findAll { it.currentValue("presence") == "present" }
+    state.rotationSweepStartedAway[mac] = homeAtStart.isEmpty()
+    if (!homeAtStart.isEmpty()) {
+        log.info "Wyze Vacuum ${mac}: ${homeAtStart.collect { it.displayName }.join(' and ')} already home when this trip started, so the presence backstop is off for it"
+    }
+}
+
+// Names of whoever is home now, if this trip began with everyone away; otherwise
+// empty, meaning "carry on".
+private List homeOnAwayTrip(String mac) {
+    if (!state.rotationSweepStartedAway?.getAt(mac)) return []
+    return sweepPresenceSensors(mac).findAll { it.currentValue("presence") == "present" }.collect { it.displayName }
+}
+
+// Ends the trip and returns true if someone is home on a trip that began away.
+private boolean endTripIfSomeoneHome(String mac) {
+    def home = homeOnAwayTrip(mac)
+    if (!home) return false
+    log.info "Wyze Vacuum ${mac}: ${home.join(' and ')} ${home.size() == 1 ? 'is' : 'are'} home and this trip started with everyone away -- ending it instead of carrying on (anything still due waits for the next trigger)"
+    endRotationSweep(mac)
+    return true
 }
 
 // "Wait for charge" only means anything alongside the battery check -- with that
@@ -1073,6 +1144,7 @@ private void checkSweepWaiting(String mac) {
         endRotationSweep(mac)
         return
     }
+    if (endTripIfSomeoneHome(mac)) return
 
     def next = previewNextRooms(mac)
     if (next && roomsBatteryCanCover(mac, next, false, true)) {
@@ -1138,6 +1210,35 @@ private void checkPossiblyStuck(String mac, String newStatus, boolean isCharging
     } else {
         state.standbyStartedAt.remove(mac)
         state.stuckNotified[mac] = false
+    }
+
+    checkStrandedPaused(mac, newStatus, isCharging, d)
+}
+
+// Confirmed live (10/6): a hand-stopped vacuum sat Paused, off its dock and not
+// charging, from 2:31 PM until at least 7:45 PM while the battery drained from
+// 75% to 42% -- and nothing said so, because the check above only knows
+// "Standby". A paused vacuum is just as stranded: it will not return to the
+// dock by itself, so left alone it runs flat wherever it stopped. Alert once per
+// episode (it does not dock the vacuum for you: the person who paused it may
+// have a reason, and it may be sitting somewhere a dock command can't help).
+private void checkStrandedPaused(String mac, String newStatus, boolean isCharging, def d) {
+    state.pausedStartedAt = state.pausedStartedAt ?: [:]
+    state.strandedNotified = state.strandedNotified ?: [:]
+
+    if (newStatus == "Paused" && !isCharging) {
+        if (!state.pausedStartedAt[mac]) state.pausedStartedAt[mac] = now()
+        double minutesPaused = (now() - (state.pausedStartedAt[mac] as Long)) / 60000.0
+        if (minutesPaused >= STRANDED_PAUSED_MINUTES && !state.strandedNotified[mac]) {
+            state.strandedNotified[mac] = true
+            def batt = d?.currentValue("battery")
+            def battText = (batt != null) ? " (battery ${batt}% and falling)" : ""
+            log.warn "Wyze Vacuum ${mac}: paused off its dock for ${Math.round(minutesPaused)} min${battText}"
+            sendVacuumNotification("${d?.displayName ?: mac} has been paused off its dock for over ${STRANDED_PAUSED_MINUTES} minutes${battText}. A paused vacuum doesn't go home by itself and will run flat where it stopped -- send it to the dock (dock() or the Wyze app) or resume it.")
+        }
+    } else {
+        state.pausedStartedAt.remove(mac)
+        state.strandedNotified[mac] = false
     }
 }
 
@@ -1320,7 +1421,7 @@ private void checkLowBatteryAutoDock(String mac, Integer batteryPct) {
         if (!state.lowBatteryDockTriggered[mac]) {
             log.warn "Wyze Vacuum ${mac}: battery ${batteryPct}% below ${threshold}% threshold while cleaning — sending back to dock"
             state.lowBatteryDockTriggered[mac] = true
-            dockVacuum(mac, "the low-battery dock threshold")
+            dockVacuumFor(mac, "the low-battery dock threshold")
         }
     } else {
         // Reset once no longer cleaning or battery has recovered, so the
@@ -1491,7 +1592,7 @@ def cancelAutoResumeDock(data) {
         return
     }
     log.info "Wyze Vacuum ${mac}: vacuum restarted an unfinished job on its own -- docking it (auto-resume is turned off for this vacuum)"
-    dockVacuum(mac, "auto-resume is turned off")
+    dockVacuumFor(mac, "auto-resume is turned off")
     // Marked silent so the run's end doesn't also announce "was docked N min
     // into cleaning" -- the start-side notification already explained this.
     // Still counts as an interruption, so the room keeps its pending status
@@ -1627,7 +1728,7 @@ private void continueSweepIfNeeded(String mac, String newStatus) {
             if (elapsedMin >= maxMinutes) {
                 ifDebug("continueSweepIfNeeded(${mac}): continuous sweep hit its ${maxMinutes}-minute limit (${elapsedMin} min elapsed), docking")
                 endRotationSweep(mac)
-                dockVacuum(mac, "the continuous-sweep time limit")
+                dockVacuumFor(mac, "the continuous-sweep time limit")
                 return
             }
         }
@@ -1638,6 +1739,8 @@ private void continueSweepIfNeeded(String mac, String newStatus) {
         endRotationSweep(mac)
         return
     }
+
+    if (endTripIfSomeoneHome(mac)) return
 
     boolean somethingToDispatch = sweepHasWork(mac)
     if (!somethingToDispatch) {
@@ -1804,7 +1907,16 @@ def pauseVacuum(String mac) {
     pollVacuum(mac)
 }
 
-def dockVacuum(String mac, String reason = null) {
+// The driver's dock()/off() call this, so it keeps exactly the one-argument
+// signature it had before 1.33.1. Anything with a default parameter was avoided
+// on purpose: it generates overloads, and how Hubitat dispatches a parent.x()
+// call from a child driver onto them can't be tested off-hub. The internal
+// callers that want to say why use dockVacuumFor() instead.
+def dockVacuum(String mac) {
+    dockVacuumFor(mac, null)
+}
+
+private void dockVacuumFor(String mac, String reason) {
     ifDebug("dockVacuum: ${mac}")
     logCommand(mac, "dock()", reason)
     endRotationSweep(mac) // explicit stop -- don't auto-continue to the next room
@@ -1889,6 +2001,7 @@ def cleanNextRooms(String mac) {
         state.rotationSweepRooms = state.rotationSweepRooms ?: [:]
         state.rotationSweepRooms[mac] = 0
         state.rotationSweepWaitingSince?.remove(mac)
+        snapshotTripPresence(mac)
     }
 
     def chosen = previewNextRooms(mac)
