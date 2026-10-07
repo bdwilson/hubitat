@@ -1,7 +1,7 @@
 /**
  * WaterGuru Integration App
  *
- * 2.4.0 - Brian Wilson / bubba@bubba.org
+ * 2.4.1 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration — no external Python/Flask server required.
  * Authenticates directly with AWS Cognito (SRP flow) and calls the
@@ -52,6 +52,9 @@
  *    from whether Total Alkalinity / Calcium Hardness / Cyanuric Acid are
  *    freshly sampled (only a C5 measures those) or the pod carries a LAB
  *    lab-pad pack. Additive: existing attributes are unchanged.
+ *  - cassetteInfo (2.4.1): drop the raw "N/M pads" count. It duplicates
+ *    CassetteChecksLeft, and a C5 uses several pads per measurement day, so
+ *    the pad count read as nonsense next to the pod's own days left.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at:
@@ -797,8 +800,10 @@ private void processWaterGuruData(def response) {
             def parts = [cassetteType]
             def rt = toEpoch(labPack.refillTime)
             if (rt != null) parts << "installed ${new Date(rt).format('MMM d, yyyy')}"
-            if (labPack.amountLeft != null && labPack.maxAmount != null)
-                parts << "${labPack.amountLeft}/${labPack.maxAmount} pads"
+            // Note: the raw pad/check count is deliberately NOT shown here — it
+            // duplicates CassetteChecksLeft, and a C5 burns several pads per
+            // measurement day, so "N pads" reads as nonsense next to the pod's
+            // own "days left". Use CassetteChecksLeft / CassetteTimeLeft instead.
             cassetteInfo = parts.join(" · ")
         }
         ifDebug("cassetteType=${cassetteType} cassetteInfo=${cassetteInfo}")
