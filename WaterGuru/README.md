@@ -76,6 +76,13 @@ coalesced into a single message.
   produces. After swapping a C5 for a C2, the C5's last readings stay in
   WaterGuru's data for a while, so `cassetteType` changes to C2 about 2 to 3
   days after the last C5 sample. A swap to a C5 shows after its first sample.
+* Polls log in with a Cognito refresh token for up to 25 days and fall back to a
+  full login when it is rejected. Only if Cognito says refresh logins are not
+  enabled for this client does the app stop trying them, until you save the app
+  again.
+* A poll that fails or comes back incomplete (a WaterGuru error, no water
+  bodies, or missing fields) is logged as an error and leaves the device
+  attributes at their last values.
 
 ## Credits
 

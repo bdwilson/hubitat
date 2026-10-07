@@ -1,7 +1,7 @@
 /**
  * WaterGuru Integration App
  *
- * 2.4.1 - Brian Wilson / bubba@bubba.org
+ * 2.4.2 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration — no external Python/Flask server required.
  * Authenticates directly with AWS Cognito (SRP flow) and calls the
@@ -65,6 +65,24 @@
  *  - cassetteInfo (2.4.1): drop the raw "N/M pads" count. It duplicates
  *    CassetteChecksLeft, and a C5 uses several pads per measurement day, so
  *    the pad count read as nonsense next to the pod's own days left.
+ *  - Refresh token (2.4.2): one failed REFRESH_TOKEN_AUTH call no longer
+ *    switches the refresh path off for good. Any HTTP error (a 429, a 5xx,
+ *    an expired token) set wgRefreshTokenSupported = false, after which
+ *    every poll did a full SRP login. Now only Cognito's "flow not enabled
+ *    for this client" switches it off, until the app is saved again; any
+ *    other failure falls back to a full login for that poll, which also
+ *    stores a fresh token. The old flag is ignored (and cleared on save),
+ *    and a stored token is only used for the account it was issued to.
+ *  - Failed and partial polls (2.4.2): a Lambda error body, or a response
+ *    without waterBodies, is logged as an error and leaves every attribute
+ *    at its last value. Every attribute now goes through the null-skipping
+ *    emitter, so a field missing from a response keeps its last value
+ *    instead of being cleared.
+ *  - LastMeasurement (2.4.2): sent after the readings it timestamps, so a
+ *    rule or app triggered by it reads the new sample's values.
+ *  - Quiet hours (2.4.2): saving the app no longer drops notifications held
+ *    for the end of quiet hours (updated()'s unschedule() cancelled their
+ *    delivery); the flush is re-armed.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at:
@@ -225,6 +243,11 @@ def uninstalled() {
 
 def updated() {
     unschedule()
+    // Saving the app is the way to retry refresh token logins after Cognito
+    // said that flow is not enabled. wgRefreshTokenSupported is the pre-2.4.2
+    // flag, which any HTTP error could set; it is no longer read.
+    state.remove("wgRefreshFlowDisabled")
+    state.remove("wgRefreshTokenSupported")
 
     def selected = settings.selectedDevices ?: []
     getAllChildDevices().each { child ->
@@ -241,6 +264,13 @@ def updated() {
     }
 
     if (settings.isDebug) runIn(3600, logsOff)
+
+    // unschedule() above also cancelled a pending quiet-hours flush. Re-arm
+    // it, or notifications held during quiet hours would never be sent.
+    if (state.pendingNotify) {
+        if (inQuietHours()) scheduleQuietFlush()
+        else runIn(5, "flushPendingNotifications")
+    }
 }
 
 // Called by child driver's refresh() via parent.updateStatus()
@@ -483,22 +513,45 @@ private Map refreshAuthenticate() {
         }
         return null
     } catch (groovyx.net.http.HttpResponseException e) {
-        // Log the exact Cognito error body so we know whether REFRESH_TOKEN_AUTH is unsupported
+        // Log the exact Cognito error body so the reason is visible
         def body = ""
         try { body = e.response?.data?.text } catch (ignore) {}
         if (!body) try { body = e.response?.data?.toString() } catch (ignore) {}
-        log.warn "WaterGuru: refresh token rejected (${e.statusCode}) — ${body ?: e.message}"
-        // Disable refresh attempts for this session; this client may not allow REFRESH_TOKEN_AUTH
-        state.wgRefreshTokenSupported = false
+        if (refreshFlowNotEnabled(e.statusCode, body)) {
+            // This client may not use REFRESH_TOKEN_AUTH at all: stop trying
+            // until the app is saved again (updated() clears the flag).
+            log.warn "WaterGuru: Cognito does not allow refresh token logins for this client, using a full login from now on (${e.statusCode}: ${body ?: e.message})"
+            state.wgRefreshFlowDisabled = true
+        } else {
+            // An expired or revoked token, throttling or an AWS-side error is
+            // no reason to give up on refresh: this poll falls back to a full
+            // login, which also stores a fresh refresh token.
+            log.warn "WaterGuru: refresh token rejected (${e.statusCode}), falling back to a full login: ${body ?: e.message}"
+        }
+        return null
+    } catch (e) {
+        log.warn "WaterGuru: refresh token login failed (${e}), falling back to a full login"
         return null
     }
 }
 
-// Use refresh token if supported and < 25 days old, fall back to full SRP otherwise
+// Cognito answers REFRESH_TOKEN_AUTH on an app client that doesn't allow it
+// with HTTP 400, InvalidParameterException "... flow not enabled for this
+// client". That is the only refresh failure worth remembering; anything else
+// (an expired or revoked token, throttling, a 5xx) can work with the next token.
+private boolean refreshFlowNotEnabled(statusCode, String body) {
+    def b = body?.toLowerCase() ?: ""
+    return statusCode == 400 && b.contains("not enabled") && (b.contains("flow") || b.contains("refresh"))
+}
+
+// Use the refresh token while it is < 25 days old and was issued for the
+// configured account; fall back to a full SRP login otherwise, or when the
+// refresh is rejected
 private Map getAuthTokens() {
     long twentyFiveDays = 25L * 24 * 60 * 60 * 1000
-    if (state.wgRefreshTokenSupported != false &&
+    if (!state.wgRefreshFlowDisabled &&
         state.wgRefreshToken && state.wgRefreshTokenTime &&
+        state.wgRefreshTokenUser == settings.wgUser &&
         (now() - state.wgRefreshTokenTime) < twentyFiveDays) {
         def ar = refreshAuthenticate()
         if (ar) return ar
@@ -510,10 +563,13 @@ private Map getAuthTokens() {
     // handshake every time. Without this the refresh branch is unreachable —
     // state.wgRefreshToken is never set — and every poll does a full login.
     // A refresh response omits RefreshToken, so only overwrite when present.
+    // The token is tied to the account it was issued for, so changing the
+    // WaterGuru login in the app never polls the previous account.
     def ar = srpAuthenticate()
     if (ar?.RefreshToken) {
         state.wgRefreshToken     = ar.RefreshToken
         state.wgRefreshTokenTime = now()
+        state.wgRefreshTokenUser = settings.wgUser
     }
     return ar
 }
@@ -616,11 +672,23 @@ private Map callWaterGuruLambda(String userId, String accessKeyId, String secret
 def discoverChildDevices() {
     try {
         def dashboard = getWaterGuruDashboard()
-        if (!dashboard) return
+        if (dashboard == null) return   // login or identity failure, already logged
         processWaterGuruData(dashboard)
     } catch (e) {
         log.error "WaterGuru discoverChildDevices error: ${e}"
     }
+}
+
+// Why a dashboard response can't be used, or null when it can. Reports only
+// Lambda's error fields and the top-level keys, never the body itself (it can
+// hold account details).
+private String dashboardProblem(def response) {
+    if (!(response instanceof Map)) return "unexpected response"
+    if (response.errorMessage || response.errorType)
+        return "WaterGuru error ${response.errorType ?: ''}: ${response.errorMessage ?: ''}".toString()
+    if (!(response.waterBodies instanceof List) || !response.waterBodies)
+        return "no waterBodies in the response (keys: ${response.keySet()})".toString()
+    return null
 }
 
 // Identifies WaterGuru's "measurement outdated" YELLOW alerts so the
@@ -643,6 +711,16 @@ private Integer toIntOrNull(v) {
 // =================== Data Processing ===================
 
 private void processWaterGuruData(def response) {
+    // A failed poll must leave the devices alone. WaterGuru's Lambda answers
+    // HTTP 200 even when the function fails, with an error body
+    // ({errorMessage, errorType}) in place of the dashboard; that, or a body
+    // without waterBodies, is logged and every attribute keeps its last value.
+    def problem = dashboardProblem(response)
+    if (problem) {
+        log.error "WaterGuru: poll returned no usable data, keeping the last values (${problem})"
+        return
+    }
+
     def selected = settings.selectedDevices ?: []
     // Always log selection state at info level so misconfiguration is obvious
     def bodyIds = response.waterBodies?.collect { it.waterBodyId?.toString() } ?: []
@@ -852,17 +930,29 @@ private void processWaterGuruData(def response) {
         }
         if (!d) { log.error "WaterGuru: addChildDevice returned null for ${name}"; return }
 
+        // Change-gated emitter for every reading below. Skips nulls, so a field
+        // missing from a partial response keeps the attribute's last value
+        // instead of clearing it. Numbers compare by value: a NUMBER attribute
+        // reads back as a number that must still match the Integer, Double or
+        // BigDecimal it was sent as (and a numeric string still matches by text).
+        def emit = { String attr, def val, def unit = null ->
+            if (val == null) return
+            def cur = d.currentValue(attr)
+            boolean same = cur != null &&
+                ((cur instanceof Number && val instanceof Number) ? cur == val : cur.toString() == val.toString())
+            if (same && !force) return
+            def evt = [name: attr, value: val, isStateChange: true]
+            if (unit) evt.unit = unit
+            d.sendEvent(evt)
+        }
+
         if (date != d.currentValue("LastUpdated") || force)
             d.sendEvent(name: "LastUpdated", value: date)
-        if (d.currentValue("battery") != batteryPct || force)
-            d.sendEvent(name: "battery", value: batteryPct, isStateChange: true)
-        if (d.currentValue("batteryStatus") != batteryStatus || force)
-            d.sendEvent(name: "batteryStatus", value: batteryStatus, isStateChange: true)
-        if (d.currentValue("CassettePercent") != CassettePercent || force)
-            d.sendEvent(name: "CassettePercent", value: CassettePercent, isStateChange: true)
-        if (d.currentValue("temperature") != temp || force)
-            d.sendEvent(name: "temperature", value: temp, unit: "°${tempScale}", isStateChange: true)
-        if (d.currentValue("CassetteStatus") != CassetteStatus || force) {
+        emit("battery",         batteryPct)
+        emit("batteryStatus",   batteryStatus)
+        emit("CassettePercent", CassettePercent)
+        emit("temperature",     temp, "°${tempScale}")
+        if (CassetteStatus != null && (d.currentValue("CassetteStatus") != CassetteStatus || force)) {
             d.sendEvent(name: "CassetteStatus", value: CassetteStatus, isStateChange: true)
             switch (CassetteStatus) {
                 case "GREEN":  d.sendEvent(name: "consumableStatus", value: "good"); break
@@ -871,35 +961,16 @@ private void processWaterGuruData(def response) {
                 default:       d.sendEvent(name: "consumableStatus", value: "maintenance_required"); break
             }
         }
-        if (d.currentValue("CassetteTimeLeft") != CassetteTimeLeft || force)
-            d.sendEvent(name: "CassetteTimeLeft", value: CassetteTimeLeft, isStateChange: true)
-        if (d.currentValue("LastMeasurementHuman") != LastMeasurementHuman || force)
-            d.sendEvent(name: "LastMeasurementHuman", value: LastMeasurementHuman, isStateChange: true)
-        if (d.currentValue("LastMeasurement") != LastMeasurement || force)
-            d.sendEvent(name: "LastMeasurement", value: LastMeasurement, isStateChange: true)
-        if (d.currentValue("CassetteChecksLeft") != CassetteChecksLeft || force)
-            d.sendEvent(name: "CassetteChecksLeft", value: CassetteChecksLeft, isStateChange: true)
-        if (d.currentValue("Status") != status || force)
-            d.sendEvent(name: "Status", value: status, isStateChange: true)
-        if (d.currentValue("rssi") != rssi || force)
-            d.sendEvent(name: "rssi", value: rssi, isStateChange: true)
-        if (d.currentValue("statusMsg") != statusMsg || force)
-            d.sendEvent(name: "statusMsg", value: statusMsg, isStateChange: true)
-        if (d.currentValue("freeChlorine") != freeChlorine || force)
-            d.sendEvent(name: "freeChlorine", value: freeChlorine, isStateChange: true)
-        if (d.currentValue("pH") != pH || force)
-            d.sendEvent(name: "pH", value: pH, isStateChange: true)
-        if (d.currentValue("rate") != rate || force)
-            d.sendEvent(name: "rate", unit: "GPM", value: rate, isStateChange: true)
+        emit("CassetteTimeLeft",   CassetteTimeLeft)
+        emit("CassetteChecksLeft", CassetteChecksLeft)
+        emit("Status",             status)
+        emit("rssi",               rssi)
+        emit("statusMsg",          statusMsg)
+        emit("freeChlorine",       freeChlorine)
+        emit("pH",                 pH)
+        emit("rate",               rate, "GPM")
 
         // ---- Full chemistry panel (2.1.0) --------------------------------
-        // Change-gated emitter, mirroring the per-attribute pattern above.
-        // Skips nulls so absent readings don't clobber a prior value.
-        def emit = { String attr, def val ->
-            if (val != null && (d.currentValue(attr)?.toString() != val.toString() || force))
-                d.sendEvent(name: attr, value: val, isStateChange: true)
-        }
-
         emit("totalAlkalinity",  totalAlkalinity)
         emit("calciumHardness",  calciumHardness)
         emit("cyanuricAcid",     cyanuricAcid)
@@ -948,6 +1019,11 @@ private void processWaterGuruData(def response) {
         emit("equipment",             equipment)
         emit("cassetteType",          cassetteType)
         emit("cassetteInfo",          cassetteInfo)
+
+        // Last, so a rule or app that reacts to a new LastMeasurement reads
+        // the readings it timestamps rather than the previous sample's.
+        emit("LastMeasurementHuman", LastMeasurementHuman)
+        emit("LastMeasurement",      LastMeasurement)
 
         evaluateNotifications(id, name, [
             lastMeasurement : LastMeasurement,
