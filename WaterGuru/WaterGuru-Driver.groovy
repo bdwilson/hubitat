@@ -1,6 +1,8 @@
 /*
  * Water Guru Integration Driver
  *
+ * 2.2.1 - cassetteDaysLeft: the cassette countdown as a number of days, parsed
+ *         by the app from WaterGuru's timeLeftText. Additive only.
  * 2.2.0 - Cassette type: expose the installed cassette model (cassetteType:
  *         C2 / C5 / unknown) and an optional human summary (cassetteInfo).
  *         WaterGuru's API never prints the model, so the app derives it from
@@ -46,6 +48,7 @@ metadata {
         attribute "CassettePercent", "NUMBER"
         attribute "CassetteChecksLeft", "NUMBER"
         attribute "CassetteTimeLeft", "STRING"
+        attribute "cassetteDaysLeft", "NUMBER"
         attribute "CassetteStatus", "ENUM", ["RED", "YELLOW", "GREEN"]
         attribute "batteryStatus", "ENUM", ["RED", "YELLOW", "GREEN"]
         attribute "Status", "ENUM", ["RED", "YELLOW", "GREEN"]
