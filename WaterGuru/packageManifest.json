@@ -5,8 +5,8 @@
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/WaterGuru",
   "communityLink": "https://community.hubitat.com/t/release-waterguru-pool-integration/77922",
   "dateReleased": "2026-10-06",
-  "releaseNotes": "Fixes from a review of 2.4.2. A sample without free chlorine or pH no longer advances LastMeasurement: 2.4.2 kept the previous readings when a value was missing, so a rule or dosing app triggered by LastMeasurement could act on the previous sample's free chlorine. A refresh token that Cognito rejects three polls in a row now switches the refresh login off until the app is saved. A response without latestMeasureTime no longer flips cassetteType, and partial responses no longer cause false recovery notices followed by re-alerts.",
-  "version": "2.4.3",
+  "releaseNotes": "New numeric cassetteDaysLeft attribute: the cassette countdown in days, parsed from WaterGuru's countdown text (\"4 days left\" is 4, \"1 week 3 days left\" is 10). Due or past-due texts, and the \"0 left\" WaterGuru shows when a cassette runs out, are 0. It is published only when the text can be read: a bare number without a unit, or any other unrecognised text, publishes nothing rather than a guess. It is sent right after CassetteTimeLeft. Driver 2.2.1 declares the attribute. No existing attribute changes.",
+  "version": "2.4.4",
   "drivers": [
     {
       "id": "20bad83b-d3db-43f6-ba69-ffa3d6e120ca",
@@ -14,7 +14,7 @@
       "namespace": "brianwilson-hubitat",
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/WaterGuru/WaterGuru-Driver.groovy",
       "required": true,
-      "version": "2.2.0"
+      "version": "2.2.1"
     }
   ],
   "apps": [
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/WaterGuru/WaterGuru-Integration.groovy",
       "required": true,
       "oauth": false,
-      "version": "2.4.3"
+      "version": "2.4.4"
     }
   ]
 }

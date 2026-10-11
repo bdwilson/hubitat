@@ -85,6 +85,11 @@ coalesced into a single message.
   their last values. A sample without free chlorine or pH does not advance
   `LastMeasurement`, so rules triggered by it never see the previous sample's
   readings as new.
+* `cassetteDaysLeft` (2.4.4) is `CassetteTimeLeft` as a number of days, parsed
+  from WaterGuru's countdown text and sent right after it. Due or past-due texts,
+  and the "0 left" WaterGuru shows when a cassette runs out, are 0. A text the
+  app can't read, including a bare number without a unit ("5 left", which could
+  count checks), publishes nothing, so the attribute keeps its last value.
 
 ## Credits
 

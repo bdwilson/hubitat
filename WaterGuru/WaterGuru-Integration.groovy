@@ -1,7 +1,7 @@
 /**
  * WaterGuru Integration App
  *
- * 2.4.3 - Brian Wilson / bubba@bubba.org
+ * 2.4.4 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration — no external Python/Flask server required.
  * Authenticates directly with AWS Cognito (SRP flow) and calls the
@@ -101,6 +101,15 @@
  *    status missing from a response as unchanged (no false "back to GREEN"
  *    followed by a re-alert). The poll-interval help no longer says every
  *    poll does a full Cognito login.
+ *  - cassetteDaysLeft (2.4.4): new numeric attribute, the cassette
+ *    countdown as a number of days, parsed from WaterGuru's timeLeftText
+ *    ("4 days left" -> 4, "1 week 3 days left" -> 10; amounts summed,
+ *    rounded down). Due or past-due texts ("less than 1 day left", "2 days
+ *    overdue", "expired") are 0, and so is "0 left", which WaterGuru shows
+ *    when a cassette runs out. A bare non-zero amount without a unit
+ *    ("5 left") could count checks rather than days, so it publishes
+ *    nothing, like any text that can't be read. Sent right after
+ *    CassetteTimeLeft.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at:
@@ -1009,6 +1018,11 @@ private void processWaterGuruData(def response) {
             }
         }
         emit("CassetteTimeLeft",   CassetteTimeLeft)
+        // The same countdown as a number, for rules, dashboards and charts. WaterGuru only
+        // sends the text, so it is parsed; an unrecognised text publishes nothing. Keep it
+        // right after CassetteTimeLeft: a consumer tells a stale number from a newer text
+        // by which of the two was sent last.
+        emit("cassetteDaysLeft",   cassetteDaysFromText(CassetteTimeLeft), "days")
         emit("CassetteChecksLeft", CassetteChecksLeft)
         emit("Status",             status)
         emit("rssi",               rssi)
@@ -1340,4 +1354,45 @@ def logsOff() {
 
 private ifDebug(msg) {
     if (msg && settings.isDebug) log.debug "WaterGuru Integration: ${msg}"
+}
+
+/**
+ * WaterGuru's cassette countdown text as whole days: "4 days left" -> 4, "6 weeks left" -> 42,
+ * "1 week 3 days left" -> 10, "1.5 weeks left" -> 10, "12 hours left" -> 0. Amounts are summed
+ * and rounded down. Text that says the cassette is past due ("2 days overdue", "expired 3 days
+ * ago", a negative amount) is 0 whatever number it carries, and so is "less than a/1 day (or
+ * hour) left"; any other "less than" ("less than 2 weeks left") is null, not 0. "Replace
+ * cassette" without an amount is 0 too, as is "0 left" (a zero needs no unit). A bare non-zero
+ * amount ("5 left", "1,000 left") stays null, since without a unit it may count checks. A number
+ * counts only as a standalone token, never as the tail of "1,000", "1 000", "1.5", "1/0" or "1e0".
+ * Anything else returns null, so nothing is published rather than a guess. Never throws: a bad
+ * text must not hold back the whole sample.
+ */
+private Integer cassetteDaysFromText(text) {
+    try {
+        if (text == null) return null
+        String t = text.toString().trim().toLowerCase()
+        if (!t) return null
+        if ((t =~ /\b(overdue|ago|expired)\b/).find() || (t =~ /(?<!\w)-\s*\d/).find()) return 0
+        if ((t =~ /\bless than\b/).find()) return (t =~ /\bless than (a|an|one|1) (day|hour)\b/).find() ? 0 : null
+        // A standalone number: not the tail of a word or a longer number ("1,000", "1 000",
+        // "1.5", "1/0", "1e0") and not a negative or signed amount.
+        String num = /(?<![\w.,\/+\-])(?<!\d[\s,.])/
+        // Amount + unit pairs: at most 3 digits, so a garbled number can't overflow.
+        def m = (t =~ (num + /(\d{1,3}(?:\.\d+)?)\s*(hour|day|week|month)/))
+        BigDecimal hours = null
+        while (m.find()) {
+            BigDecimal perUnit = [hour: 1, day: 24, week: 168, month: 720][m.group(2)]
+            hours = (hours ?: 0) + new BigDecimal(m.group(1)) * perUnit
+        }
+        if (hours != null) return (int) Math.floor((hours / 24) as double)
+        // "0 left" (seen live when a cassette ran out): zero is zero in any unit. A bare
+        // non-zero amount ("5 left") stays null below: without a unit it may count checks.
+        if ((t =~ (num + /0+(?:\.0+)?\s+left\b/)).find()) return 0
+        if ((t =~ /\d\s+left\b/).find()) return null
+        if ((t =~ /\b(replace|empty|today)\b/).find()) return 0
+        return null
+    } catch (e) {
+        return null
+    }
 }
