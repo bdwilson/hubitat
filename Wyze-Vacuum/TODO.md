@@ -2,6 +2,15 @@
 
 Not yet implemented. Tracked here so they survive across sessions.
 
+## ~~40. Say so when Wyze reports the vacuum offline~~ — DONE (1.34.0)
+
+10/10-10/11: the vacuum lost Wi-Fi for about a day. Every start/dock bounced with
+`code 3000 "Device is offline"`, which was only a log warning; reads kept returning
+the last state, and a "never started" alert implied a dispatch problem. `venusControl`
+now notifies once per episode (`state.offlineNotified`, cleared by the next
+successful command) and the never-started alert is skipped for 30 min after an
+offline report. Tested with the real methods.
+
 ## ~~39. A vacuum left Paused off its dock ran flat unnoticed~~ — DONE (1.34.0)
 
 After the hand-stop on 10/6 (see #38) the vacuum stayed `Paused`, `charging false`,
@@ -13,6 +22,14 @@ battery %, and re-arms when the status changes or it starts charging. Deliberate
 no auto-dock. Tested with the real extracted methods: no alert at 29 min, one at
 31, none repeated, a second episode alerts again, Paused-while-charging never
 alerts, and the Standby alert is unchanged.
+
+**Correction (10/11):** the first draft of this entry blamed the user's rule for having no arrival
+trigger. That was wrong as a general claim: on 10/10 7:51 PM and 10/11 7:14 AM a
+`dock() received` line follows the Home mode change / HSM disarm by 2-4 seconds, so an
+arrival-to-dock rule exists and works. What caused the missed stop on 10/6 at 10:52 is
+unexplained; the likeliest candidate is the mode not changing at that arrival (it only
+fires on a change). Still to check: the 10/6 mode history. Also found 10/10-10/11: the
+vacuum was offline to Wyze (`Device is offline`, code 3000) for about a day.
 
 **Also checked on 10/6 (user: "when the vacuum docks the switch turns off"):** the
 device Events show `switch on` at 9:06:05 and **no** switch event until `switch

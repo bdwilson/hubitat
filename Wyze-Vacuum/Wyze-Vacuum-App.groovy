@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.34.0 - Brian Wilson / bubba@bubba.org
+ * 1.35.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -1007,7 +1007,11 @@ private void checkStaleActiveCleanRun(String mac) {
 
     if (minutesSinceDispatch >= 10.0) {
         log.warn "Wyze Vacuum ${mac}: room-clean dispatched ${Math.round(minutesSinceDispatch)} min ago never actually started cleaning, even after a retry -- clearing it so its room(s) aren't excluded from rotation indefinitely."
-        sendVacuumNotification("${getChildDevice(mac)?.displayName ?: mac}: a room-clean command was sent but the vacuum never started -- worth checking it's not stuck or offline.")
+        if (state.offlineAt?.getAt(mac) && (now() - (state.offlineAt[mac] as Long)) < 30 * 60000L) {
+            log.warn "Wyze Vacuum ${mac}: not sending the \"never started\" alert -- the vacuum was reported offline (already notified)"
+        } else {
+            sendVacuumNotification("${getChildDevice(mac)?.displayName ?: mac}: a room-clean command was sent but the vacuum never started -- worth checking it's not stuck or offline.")
+        }
         state.activeCleanRun.remove(mac)
         // The sweep has to end here too. It only ever advances off the back of
         // a run actually finishing, so once the run is abandoned nothing will
@@ -1948,7 +1952,32 @@ private void venusControl(String mac, int type, int value, List rooms = null) {
     def resp = venusRequest("POST", "/plugin/venus/${mac}/control", [:], body)
     // Wyze returns code as an integer (1), not the string "1" -- comparing
     // against a string here made every successful call log a false warning.
-    if (resp != null && resp.code?.toString() != "1") log.warn "Wyze Vacuum control (${mac}) returned: ${resp}"
+    if (resp != null && resp.code?.toString() != "1") {
+        log.warn "Wyze Vacuum control (${mac}) returned: ${resp}"
+        if (isDeviceOfflineResponse(resp)) noteVacuumOffline(mac)
+    } else if (resp != null) {
+        state.offlineNotified?.remove(mac)
+    }
+}
+
+// Wyze answers a command for a vacuum that has lost its Wi-Fi with code 3000 /
+// "Device is offline". Reads keep returning the last known state, so the vacuum
+// still looks docked at 100% -- confirmed live 10/10-10/11, when every start and
+// dock for about a day bounced and the only trace was a log warning followed by a
+// misleading "never started" alert.
+private boolean isDeviceOfflineResponse(def resp) {
+    return resp?.code?.toString() == "3000" || resp?.message?.toString()?.toLowerCase()?.contains("offline")
+}
+
+// One notification per offline episode; re-arms when a command next succeeds.
+private void noteVacuumOffline(String mac) {
+    state.offlineNotified = state.offlineNotified ?: [:]
+    state.offlineAt = state.offlineAt ?: [:]
+    state.offlineAt[mac] = now()
+    if (state.offlineNotified[mac]) return
+    state.offlineNotified[mac] = true
+    log.warn "Wyze Vacuum ${mac}: Wyze says the device is offline -- the command was not carried out"
+    sendVacuumNotification("${getChildDevice(mac)?.displayName ?: mac} is offline -- Wyze rejected a command because the vacuum isn't connected. Check its Wi-Fi in the Wyze app. Until it reconnects, starts and docks will not work even though its status may look normal.")
 }
 
 // =================== Room rotation ===================
