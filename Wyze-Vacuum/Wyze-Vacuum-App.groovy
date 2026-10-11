@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.34.0 - Brian Wilson / bubba@bubba.org
+ * 1.35.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
