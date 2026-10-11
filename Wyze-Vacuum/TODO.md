@@ -2,6 +2,15 @@
 
 Not yet implemented. Tracked here so they survive across sessions.
 
+## ~~40. Say so when Wyze reports the vacuum offline~~ — DONE (1.34.0)
+
+10/10-10/11: the vacuum lost Wi-Fi for about a day. Every start/dock bounced with
+`code 3000 "Device is offline"`, which was only a log warning; reads kept returning
+the last state, and a "never started" alert implied a dispatch problem. `venusControl`
+now notifies once per episode (`state.offlineNotified`, cleared by the next
+successful command) and the never-started alert is skipped for 30 min after an
+offline report. Tested with the real methods.
+
 ## ~~39. A vacuum left Paused off its dock ran flat unnoticed~~ — DONE (1.34.0)
 
 After the hand-stop on 10/6 (see #38) the vacuum stayed `Paused`, `charging false`,
