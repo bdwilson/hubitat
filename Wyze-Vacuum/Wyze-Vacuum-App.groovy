@@ -1236,10 +1236,13 @@ private void checkStrandedPaused(String mac, String newStatus, boolean isChargin
     if (newStatus == "Paused" && !isCharging) {
         if (!state.pausedStartedAt[mac]) state.pausedStartedAt[mac] = now()
         double minutesPaused = (now() - (state.pausedStartedAt[mac] as Long)) / 60000.0
-        if (minutesPaused >= STRANDED_PAUSED_MINUTES && !state.strandedNotified[mac]) {
+        // One minute of slack: polls land a few hundred ms apart, so an episode first
+        // seen at 2:15:00.787 and re-read at 2:45:00.588 is 29.997 min -- confirmed
+        // live 10/18, it cost a whole extra 15-minute poll before the alert.
+        if (minutesPaused >= (STRANDED_PAUSED_MINUTES - 1) && !state.strandedNotified[mac]) {
             state.strandedNotified[mac] = true
             def batt = d?.currentValue("battery")
-            def battText = (batt != null) ? " (battery ${batt}% and falling)" : ""
+            def battText = (batt != null) ? " (battery ${batt}%)" : ""
             log.warn "Wyze Vacuum ${mac}: paused off its dock for ${Math.round(minutesPaused)} min${battText}"
             sendVacuumNotification("${d?.displayName ?: mac} has been paused off its dock for over ${STRANDED_PAUSED_MINUTES} minutes${battText}. A paused vacuum doesn't go home by itself and will run flat where it stopped -- send it to the dock (dock() or the Wyze app) or resume it.")
         }
