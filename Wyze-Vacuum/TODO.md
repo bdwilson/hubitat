@@ -2,6 +2,20 @@
 
 Not yet implemented. Tracked here so they survive across sessions.
 
+## ~~41. A cancelled resume restarted unnoticed (10/18)~~ — DONE (1.36.0)
+
+Arrival at 1:50 PM turned the switch off (driver `switch off` event, so the command
+reached the driver and the app) while the vacuum charged with the job paused (mode
+11, "cleaning will resume"). The firmware restarted the job when the battery reached
+about 60% (59% at 2:00, off the dock by 2:15). The cancellation marker
+(`state.resumeCancelled`) only acts on a poll that sees the transition *into*
+`Cleaning`; the idle poll is 15 min, and the poll at 2:15 saw `mode=4` Paused (a
+person had already stopped it), so nothing docked it. It then sat Paused off the
+dock, draining ~6%/h. Fixes: `resumeCancelPending()` keeps fast polling on while the
+marker is live; `catchCancelledResume()` docks a vacuum seen off-dock and not
+charging as `Cleaning` *or* `Paused`. The firmware restart itself still can't be
+prevented (no API to forget a pending resume). Tested with the real methods.
+
 ## ~~40. Say so when Wyze reports the vacuum offline~~ — DONE (1.34.0)
 
 10/10-10/11: the vacuum lost Wi-Fi for about a day. Every start/dock bounced with

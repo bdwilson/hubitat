@@ -125,6 +125,8 @@ The other half of the same fix: `off()` — and `dock()`/`pause()` directly — 
 
 There's no API to tell the vacuum to forget a pending resume, so if it starts up again on its own afterwards, it gets sent straight back to the dock. That happens regardless of the ["Don't let it auto-resume"](#stopping-it-from-auto-resuming) setting — an explicit stop already said what you wanted, and this is the only point at which that intent can actually be enforced.
 
+**Catching the restart (1.36.0).** This can only react *after* the vacuum leaves its dock, so how quickly the app notices matters. Confirmed live on 10/18: the switch was turned off at 1:50 PM while the vacuum charged, the firmware restarted the job around 2:00-2:15 PM with everyone home, and the 15-minute idle poll first saw it at 2:15 as `Paused` (someone had already stopped it), not `Cleaning`, so the cancellation was never acted on. Now, from the moment you cancel a paused job until the vacuum restarts (or 3 hours pass), the app polls at the fast interval, and a vacuum seen off its dock and not charging as either `Cleaning` or `Paused` is sent to the dock. Expect a minute-by-minute poll for up to a few hours after an arrival stop; that is the cost of catching a restart you can't prevent.
+
 ---
 
 ## Room Buttons — one-tap Dashboard tiles per room, no child devices
@@ -451,7 +453,7 @@ This is deliberately distinct from a normal low-battery recharge cycle, which sh
 
 ### Stranded-while-paused detection
 
-Added in 1.34.0. Stuck detection above only watched `Standby`. A vacuum that is `Paused`, off its dock and not charging is just as stranded: a paused vacuum doesn't go home by itself, so it runs flat wherever it stopped. Confirmed live on 10/6 — a vacuum stopped by hand at 2:31 PM stayed `Paused` off its dock for five-plus hours while the battery drained from 75% to 42%, with no alert of any kind. After 30 minutes of `Paused` and not charging you now get one notification per episode, with the battery level. The app does **not** dock the vacuum for you: whoever paused it may have meant to, and it may be sitting somewhere a dock command can't help. It re-arms once the vacuum is next seen docked or charging. This includes a pause you sent from Hubitat and forgot about.
+Added in 1.34.0. Stuck detection above only watched `Standby`. A vacuum that is `Paused`, off its dock and not charging is just as stranded: a paused vacuum doesn't go home by itself, so it runs flat wherever it stopped. Confirmed live on 10/6 — a vacuum stopped by hand at 2:31 PM stayed `Paused` off its dock for five-plus hours while the battery drained from 75% to 42%, with no alert of any kind. After about 30 minutes of `Paused` and not charging (one minute of slack, so a 15-minute poll cadence alerts on the second poll rather than the third) you now get one notification per episode, with the battery level. The app does **not** dock the vacuum for you: whoever paused it may have meant to, and it may be sitting somewhere a dock command can't help. It re-arms once the vacuum is next seen docked or charging. This includes a pause you sent from Hubitat and forgot about.
 
 ---
 
