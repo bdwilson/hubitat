@@ -2,7 +2,7 @@
 
 Not yet implemented. Tracked here so they survive across sessions.
 
-## ~~41. A cancelled resume restarted unnoticed (10/18)~~ — DONE (1.35.0)
+## ~~41. A cancelled resume restarted unnoticed (10/18)~~ — DONE (1.36.0)
 
 Arrival at 1:50 PM turned the switch off (driver `switch off` event, so the command
 reached the driver and the app) while the vacuum charged with the job paused (mode
