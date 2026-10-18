@@ -533,7 +533,7 @@ private void rescheduleDynamicPoll() {
     // entirely between two idle-interval polls and never get caught at all,
     // silently skipping both the start/finish notifications and credit.
     def anyCleaning = settings.selectedVacuums?.any { mac ->
-        state.lastKnownStatus?.getAt(mac) == "Cleaning" || state.activeCleanRun?.containsKey(mac) || state.rotationSweepPending?.getAt(mac)
+        state.lastKnownStatus?.getAt(mac) == "Cleaning" || state.activeCleanRun?.containsKey(mac) || state.rotationSweepPending?.getAt(mac) || resumeCancelPending(mac)
     } ?: false
     def desiredMode = anyCleaning ? "cleaning" : "idle"
     if (state.currentPollMode == desiredMode) return
@@ -899,6 +899,9 @@ def handleVacuumStatusResponse(resp, data) {
     } else if (prevStatus == "Cleaning" && newStatus != "Cleaning") {
         handleCleaningSessionEnd(mac, d.currentValue("cleanTime"), d, newStatus, modeCode)
     }
+    // A restart seen only as Paused/off-dock (already stopped again, or caught
+    // between polls) never takes the Cleaning branch above.
+    if (!(prevStatus != "Cleaning" && newStatus == "Cleaning")) catchCancelledResume(mac, newStatus, isCharging)
     if (newStatus == "Cleaning" && state.activeCleanRun?.getAt(mac) != null) {
         state.activeCleanRun[mac].everConfirmedCleaning = true
     }
@@ -1571,6 +1574,30 @@ private void cancelPendingWork(String mac) {
     }
 }
 
+// True while a stop issued during a battery pause is still waiting for the
+// vacuum's firmware to restart that job (see cancelPendingWork). While it is,
+// the app polls at the fast interval: the restart can't be prevented, only
+// caught, and a 15-minute idle poll was too coarse to catch it -- confirmed
+// live 10/18: stopped at 1:50 PM, restarted by the vacuum around 2:00-2:15 PM
+// with everyone home, and the one poll that saw it (2:15) read Paused, not
+// Cleaning, so the cancellation was never acted on.
+private boolean resumeCancelPending(String mac) {
+    def at = state.resumeCancelled?.getAt(mac)
+    return at != null && (now() - (at as Long)) <= 3 * 60 * 60 * 1000L
+}
+
+// The vacuum is off its dock and not charging while a cancelled resume is
+// pending, so the job it was told to drop has restarted -- possibly already
+// stopped again by a person (Paused), which the Cleaning-transition check above
+// can't see. Either way the right place for it is the dock. Returns true if it
+// scheduled the dock.
+private boolean catchCancelledResume(String mac, String newStatus, boolean isCharging) {
+    if (isCharging || !(newStatus in ["Paused", "Cleaning"])) return false
+    if (!consumeResumeCancelled(mac)) return false
+    runIn(2, "cancelAutoResumeDock", [data: [mac: mac], overwrite: false])
+    return true
+}
+
 private boolean consumeResumeCancelled(String mac) {
     def at = state.resumeCancelled?.getAt(mac)
     if (!at) return false
@@ -1591,12 +1618,13 @@ private void markCommandInterrupt(String mac, String how, boolean silent = false
 def cancelAutoResumeDock(data) {
     def mac = data?.mac
     if (!mac) return
-    if (state.lastKnownStatus?.getAt(mac) != "Cleaning") {
+    def seen = state.lastKnownStatus?.getAt(mac)
+    if (!(seen in ["Cleaning", "Paused"])) {
         ifDebug("cancelAutoResumeDock(${mac}): no longer cleaning, nothing to cancel")
         return
     }
-    log.info "Wyze Vacuum ${mac}: vacuum restarted an unfinished job on its own -- docking it (auto-resume is turned off for this vacuum)"
-    dockVacuumFor(mac, "auto-resume is turned off")
+    log.info "Wyze Vacuum ${mac}: vacuum restarted an unfinished job on its own (now ${seen}) -- docking it (the job was cancelled, or auto-resume is turned off for this vacuum)"
+    dockVacuumFor(mac, "the job was cancelled or auto-resume is turned off")
     // Marked silent so the run's end doesn't also announce "was docked N min
     // into cleaning" -- the start-side notification already explained this.
     // Still counts as an interruption, so the room keeps its pending status

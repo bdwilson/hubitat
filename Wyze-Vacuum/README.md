@@ -125,6 +125,8 @@ The other half of the same fix: `off()` — and `dock()`/`pause()` directly — 
 
 There's no API to tell the vacuum to forget a pending resume, so if it starts up again on its own afterwards, it gets sent straight back to the dock. That happens regardless of the ["Don't let it auto-resume"](#stopping-it-from-auto-resuming) setting — an explicit stop already said what you wanted, and this is the only point at which that intent can actually be enforced.
 
+**Catching the restart (1.35.0).** This can only react *after* the vacuum leaves its dock, so how quickly the app notices matters. Confirmed live on 10/18: the switch was turned off at 1:50 PM while the vacuum charged, the firmware restarted the job around 2:00-2:15 PM with everyone home, and the 15-minute idle poll first saw it at 2:15 as `Paused` (someone had already stopped it), not `Cleaning`, so the cancellation was never acted on. Now, from the moment you cancel a paused job until the vacuum restarts (or 3 hours pass), the app polls at the fast interval, and a vacuum seen off its dock and not charging as either `Cleaning` or `Paused` is sent to the dock. Expect a minute-by-minute poll for up to a few hours after an arrival stop; that is the cost of catching a restart you can't prevent.
+
 ---
 
 ## Room Buttons — one-tap Dashboard tiles per room, no child devices
