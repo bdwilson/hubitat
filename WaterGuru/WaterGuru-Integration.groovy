@@ -1,7 +1,7 @@
 /**
  * WaterGuru Integration App
  *
- * 2.4.4 - Brian Wilson / bubba@bubba.org
+ * 2.4.5 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration — no external Python/Flask server required.
  * Authenticates directly with AWS Cognito (SRP flow) and calls the
@@ -110,6 +110,14 @@
  *    ("5 left") could count checks rather than days, so it publishes
  *    nothing, like any text that can't be read. Sent right after
  *    CassetteTimeLeft.
+ *  - Real readings (2.4.5): the dashboard request sends clip: false.
+ *    Without it WaterGuru's Lambda clamps a reading to the end of its
+ *    gauge range (the measurement's cfg.floatRanges), so free chlorine
+ *    above 10 ppm arrived as exactly 10.0 and stayed there, while the
+ *    WaterGuru app showed the measured value. pH, copper, iron and the
+ *    saturation index carry the same kind of range. Readings past a gauge
+ *    end now publish as measured, and the out-of-range notifications quote
+ *    them. Status, alert and advice text are the same either way.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at:
@@ -704,7 +712,8 @@ private Map getWaterGuruDashboard() {
 private Map callWaterGuruLambda(String userId, String accessKeyId, String secretKey, String sessionToken) {
     def host    = "lambda.${wgRegion()}.amazonaws.com"
     def path    = "/2015-03-31/functions/prod-getDashboardView/invocations"
-    def body    = JsonOutput.toJson([userId: userId, clientType: "WEB_APP", clientVersion: "0.2.3"])
+    // clip: false, or the Lambda clamps each reading to its gauge range (free chlorine 17.3 arrives as 10.0)
+    def body    = JsonOutput.toJson([userId: userId, clientType: "WEB_APP", clientVersion: "0.2.3", clip: false])
     def headers = aws4SignLambda(body, accessKeyId, secretKey, sessionToken)
     headers["User-Agent"] = "aws-sdk-iOS/2.24.3 iOS/14.7.1 en_US invoker"
 

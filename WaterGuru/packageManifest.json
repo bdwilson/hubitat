@@ -4,9 +4,9 @@
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/WaterGuru",
   "communityLink": "https://community.hubitat.com/t/release-waterguru-pool-integration/77922",
-  "dateReleased": "2026-10-06",
-  "releaseNotes": "New numeric cassetteDaysLeft attribute: the cassette countdown in days, parsed from WaterGuru's countdown text (\"4 days left\" is 4, \"1 week 3 days left\" is 10). Due or past-due texts, and the \"0 left\" WaterGuru shows when a cassette runs out, are 0. It is published only when the text can be read: a bare number without a unit, or any other unrecognised text, publishes nothing rather than a guess. It is sent right after CassetteTimeLeft. Driver 2.2.1 declares the attribute. No existing attribute changes.",
-  "version": "2.4.4",
+  "dateReleased": "2026-10-24",
+  "releaseNotes": "Real readings above the gauge: free chlorine over 10 ppm used to arrive as exactly 10.0, because WaterGuru's service clamps each reading to its gauge range unless the request asks it not to. The app now asks for unclamped values (clip: false), so freeChlorine shows what the WaterGuru app shows (for example 17.3 instead of 10.0). pH, copper, iron and the saturation index have the same kind of range and are no longer clamped either. Status, alert and advice text do not change. Rules that treat 10.0 as the top of the scale will now see higher numbers. Driver unchanged.",
+  "version": "2.4.5",
   "drivers": [
     {
       "id": "20bad83b-d3db-43f6-ba69-ffa3d6e120ca",
@@ -25,7 +25,7 @@
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/WaterGuru/WaterGuru-Integration.groovy",
       "required": true,
       "oauth": false,
-      "version": "2.4.4"
+      "version": "2.4.5"
     }
   ]
 }
