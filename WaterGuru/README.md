@@ -90,6 +90,11 @@ coalesced into a single message.
   and the "0 left" WaterGuru shows when a cassette runs out, are 0. A text the
   app can't read, including a bare number without a unit ("5 left", which could
   count checks), publishes nothing, so the attribute keeps its last value.
+* Readings are the measured values (2.4.5). WaterGuru's service clamps each
+  reading to its gauge range unless asked not to, so before 2.4.5 free
+  chlorine above 10 ppm showed as exactly 10.0. pH, copper, iron and the
+  saturation index have such a range too. Since 2.4.5 `freeChlorine` can be
+  higher than 10, matching the WaterGuru app.
 
 ## Credits
 
