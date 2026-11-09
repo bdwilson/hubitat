@@ -9,6 +9,8 @@ Connects [Scrypted NVR](https://scrypted.app) to Hubitat:
 2. **Mute Scrypted's own notifications** for one camera or all cameras, either for a set
    time or until turned back on, while **Scrypted keeps recording**. Hubitat never sends
    alerts itself; Scrypted's native app notifications stay in charge.
+3. **Home / Away.** Mute chosen cameras automatically while Hubitat is in a Home mode, but
+   turn them back on during sleep schedules (e.g. 11pm–6am daily).
 
 Works with Scrypted on any platform (Docker, macOS, the Home Assistant add-on, ...), as long
 as Hubitat can reach Scrypted's HTTP port (11080 by default) on your LAN.
@@ -73,7 +75,7 @@ Scrypted                                         Hubitat
    person, vehicle, animal, package), the minimum confidence (default 0.6) and how many
    seconds without a detection before it goes inactive (default 30).
 4. Click **Next**, select the cameras to create Hubitat devices for, click **Done**.
-5. Optionally open the app again and add **Motion Disablers**.
+5. Optionally open the app again and add **Motion Disablers** or set up **Home / Away**.
 
 The app re-sends its settings (including its callback URL) to the bridge every 5 minutes,
 which also serves as the health check.
@@ -104,6 +106,7 @@ reports the end of a detection (for example if Scrypted restarts mid-detection).
 | `notifications` | `enabled`, `partially muted` or `muted` |
 | `mutedCameras`, `totalCameras` | counts across all Scrypted cameras |
 | `healthStatus` | `online` / `offline` — whether the bridge answered the last request |
+| `homeMode` | `away`, `home` (muting the Home cameras), `sleeping` (home, inside a sleep window) or `off` (not set up) |
 
 ### Motion Disabler (child app)
 
@@ -111,6 +114,31 @@ Mutes the selected cameras for N seconds whenever a chosen contact, lock, motion
 event happens, e.g. unlocking the front door mutes the Doorbell for 2 minutes. Repeated
 triggers extend the mute. Don't use a camera's own Scrypted Connect motion sensor as a
 trigger for that same camera.
+
+### Home / Away
+
+Open the app and choose **Home / Away**:
+
+* **Modes that count as Home:** e.g. *Day*, *Evening*. Every other mode is Away.
+* **When home, mute Scrypted notifications from:** any Scrypted camera, with or without a
+  Hubitat device (e.g. the back yard cameras while you're out there anyway).
+* **But re-enable them while I sleep:** add as many sleep times as you like, each with a
+  start, an end and *Every day*, *Weekdays*, *Weekends* or specific days. A time that runs past
+  midnight belongs to the day it starts: *Weekdays 11pm–6am* covers Monday night through
+  Friday night, ending Saturday 6am.
+
+In a Home mode outside sleep time the chosen cameras are muted until unmuted; switching to
+an Away mode or reaching a sleep time restores them. The app re-checks every 5 minutes, so it
+catches up after a hub reboot.
+
+How it interacts with other muting:
+
+* If you unmute a camera by hand while home, it stays unmuted until the next Home / Away /
+  sleep change.
+* A camera that was already muted until unmuted (by you or the Hub switch) when Home starts is
+  left alone, and Home / Away won't unmute it later.
+* A Motion Disabler on a camera Home / Away has muted can't shorten the mute. When Home ends,
+  the camera is restored even if a Motion Disabler's time hadn't run out yet.
 
 ### Rule Machine examples
 
@@ -122,6 +150,8 @@ trigger for that same camera.
 
 ## Known limitations
 
+* Home / Away runs in Hubitat. Its mutes and restores happen when Hubitat is up; a timed
+  `mute(seconds)` is tracked by Scrypted instead.
 * Muting covers the **Scrypted NVR app notifiers** (the phones/Macs/browsers listed in
   Scrypted's notifier devices). Other notification paths you've built yourself (e.g. Home
   Assistant automations) aren't touched.

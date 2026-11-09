@@ -1,10 +1,12 @@
 /**
  *  Scrypted Connect
- *  Version: 0.1.0
+ *  Version: 0.2.0
  *
  *  Brings Scrypted NVR's verified detections (person / vehicle / animal / package)
  *  into Hubitat as virtual motion sensors, and lets Hubitat mute Scrypted's own
  *  app notifications per camera (or for all cameras) without stopping recording.
+ *  Home / Away: mutes chosen cameras while Hubitat is in a Home mode, except
+ *  during sleep schedules.
  *
  *  Requires the companion Scrypted script (scrypted_connect-bridge.ts) running in
  *  Scrypted -> Plugins -> Scripts. OAuth must be enabled for this app in Apps Code.
@@ -29,6 +31,7 @@ definition(
 preferences {
     page(name: "mainPage")
     page(name: "camerasPage")
+    page(name: "homeModePage")
 }
 
 mappings {
@@ -40,6 +43,10 @@ mappings {
 @groovy.transform.Field static final String HUB_DNI = "scrypted-connect-hub"
 @groovy.transform.Field static final Map CLASS_OPTIONS = [
     "person": "Person", "vehicle": "Vehicle", "animal": "Animal", "package": "Package", "face": "Face"
+]
+@groovy.transform.Field static final List DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+@groovy.transform.Field static final Map SLEEP_DAY_OPTIONS = [
+    "daily": "Every day", "weekdays": "Weekdays (Mon–Fri)", "weekends": "Weekends (Sat–Sun)", "custom": "Specific days"
 ]
 
 def mainPage() {
@@ -63,6 +70,14 @@ def mainPage() {
                     title: "Add a Motion Disabler", multiple: true)
             } else {
                 paragraph "Finish installing (click Next, pick cameras, Done), then come back here to add Motion Disablers."
+            }
+        }
+        section("<h3>Home / Away</h3>") {
+            if (state.installed) {
+                href(name: "toHomeModePage", page: "homeModePage", title: "Mute some cameras while home, with sleep-time exceptions",
+                    description: homeModeSummary())
+            } else {
+                paragraph "Finish installing first, then come back here to set up Home / Away muting."
             }
         }
         section("Logging") {
@@ -92,6 +107,63 @@ def camerasPage() {
             paragraph "Unselecting a camera deletes its Hubitat device."
         }
     }
+}
+
+def homeModePage() {
+    dynamicPage(name: "homeModePage", title: "", install: false, uninstall: false) {
+        // Refresh the camera list so cameras without a Hubitat device can be chosen too.
+        Map status = bridgeGet("status")
+        if (status?.cameras) state.cameraNames = status.cameras.collectEntries { [(it.key): it.name] }
+        section("<h3>Home / Away</h3>") {
+            paragraph "While Hubitat is in one of the <b>Home modes</b>, Scrypted notifications from the cameras below are muted " +
+                "(recording continues). Every other mode counts as <b>Away</b> and restores them. Changes apply when you click Done."
+            input "homeModes", "mode", title: "Modes that count as Home", multiple: true, required: false
+            input "homeMuteCameras", "enum", title: "When home, mute Scrypted notifications from", options: allCameraOptions(),
+                multiple: true, required: false
+        }
+        section("<h3>But re-enable them while I sleep</h3>") {
+            paragraph "Notifications come back during these times even when home. A window that runs past midnight belongs to the " +
+                "day it starts (a Weekdays 11pm–6am window covers Monday night through Friday night)."
+            ((state.sleepIds ?: []) as List).each { id ->
+                input "sleepStart_${id}", "time", title: "From", required: true, width: 3
+                input "sleepEnd_${id}", "time", title: "To", required: true, width: 3
+                input "sleepDays_${id}", "enum", title: "On", options: SLEEP_DAY_OPTIONS, defaultValue: "daily", required: true,
+                    width: 3, submitOnChange: true
+                if (settings["sleepDays_${id}"] == "custom") {
+                    input "sleepDow_${id}", "enum", title: "Days", options: DOW, multiple: true, required: true, width: 3
+                }
+                input "removeSleep_${id}", "button", title: "Remove this sleep time"
+                paragraph "<hr>"
+            }
+            input "addSleep", "button", title: "Add sleep time"
+        }
+        section {
+            paragraph "Right now: <b>${homeModeSummary()}</b>"
+        }
+    }
+}
+
+def appButtonHandler(String btn) {
+    List ids = ((state.sleepIds ?: []) as List).collect { it as Integer }
+    if (btn == "addSleep") {
+        Integer next = ((state.nextSleepId ?: 0) as Integer) + 1
+        state.nextSleepId = next
+        state.sleepIds = ids + [next]
+    } else if (btn.startsWith("removeSleep_")) {
+        Integer id = btn.substring("removeSleep_".length()) as Integer
+        state.sleepIds = ids.findAll { it != id }
+        ["sleepStart_", "sleepEnd_", "sleepDays_", "sleepDow_"].each { app.removeSetting("${it}${id}") }
+    }
+}
+
+// Every Scrypted camera (from the last bridge status), labelled with the Hubitat device name when there is one.
+Map allCameraOptions() {
+    Map opts = [:]
+    (state.cameraNames ?: [:]).each { k, v ->
+        def child = cameraChild(k as String)
+        opts[k] = child ? child.displayName : v
+    }
+    return opts.sort { it.value }
 }
 
 // ---------- lifecycle ----------
@@ -128,6 +200,7 @@ def initialize() {
     syncCameraDevices()
     pushConfig()
     runEvery5Minutes("pushConfig")
+    initHomeMode()
 }
 
 private void syncCameraDevices() {
@@ -196,7 +269,7 @@ private Map bridgeGet(String route) {
 }
 
 // Asynchronous POST; every bridge reply carries full status, which is applied to devices.
-private void bridgePost(String route, Map body) {
+private void bridgePost(String route, Map body, Map extra = [:]) {
     ifDebug("POST ${route} ${body}")
     Map params = [
         uri               : bridgeBase() + route,
@@ -206,7 +279,7 @@ private void bridgePost(String route, Map body) {
         body              : body,
         timeout           : 30
     ]
-    asynchttpPost("bridgeResponse", params, [route: route])
+    asynchttpPost("bridgeResponse", params, [route: route] + extra)
 }
 
 def bridgeResponse(response, data) {
@@ -214,6 +287,10 @@ def bridgeResponse(response, data) {
     if (response.hasError()) {
         log.warn "Scrypted Connect: bridge ${data?.route} failed: HTTP ${response.status} ${response.getErrorMessage()}"
         hub?.setHealth("offline")
+        // Undo the Home / Away bookkeeping so the next evaluation retries.
+        List ours = (state.homeMuted ?: []) as List
+        if (data?.home == "mute") state.homeMuted = ours - (data.keys as List)
+        if (data?.home == "unmute") state.homeMuted = (ours + (data.keys as List)).unique()
         return
     }
     hub?.setHealth("online")
@@ -296,9 +373,17 @@ def handleEvent() {
             break
         case "mute":
             cameraChild(data.camera?.key)?.applyMute(data.muted as Boolean, data.until as Long)
+            String key = data.camera?.key as String
             Map muted = state.mutedCameras ?: [:]
-            muted[data.camera?.key as String] = data.muted as Boolean
+            muted[key] = data.muted as Boolean
             state.mutedCameras = muted
+            Map indef = state.indefiniteMutes ?: [:]
+            if (data.muted && !data.until) {
+                indef[key] = true
+            } else {
+                indef.remove(key)
+            }
+            state.indefiniteMutes = indef
             updateHubMuteState()
             break
         case "hello":
@@ -326,6 +411,7 @@ private void applyStatus(Map status) {
         }
     }
     state.mutedCameras = (status.cameras ?: []).collectEntries { [(it.key as String): it.muted as Boolean] }
+    state.indefiniteMutes = (status.cameras ?: []).findAll { it.muted && !it.until }.collectEntries { [(it.key as String): true] }
     getChildDevice(HUB_DNI)?.setBridgeVersion(status.version as String)
     updateHubMuteState()
 }
@@ -334,6 +420,116 @@ private void applyStatus(Map status) {
 private void updateHubMuteState() {
     Map muted = state.mutedCameras ?: [:]
     getChildDevice(HUB_DNI)?.setMuteSummary(muted.count { k, v -> v } as Integer, muted.size() as Integer)
+}
+
+// ---------- Home / Away ----------
+//
+// While location.mode is a Home mode and no sleep window is active, the chosen cameras are muted
+// until unmuted. The app remembers which cameras it muted (state.homeMuted) and only acts on the
+// difference between that and what it wants now, so a manual unmute while home sticks until the
+// next Home/Away/sleep change, and cameras it didn't mute are never unmuted by it.
+
+private void initHomeMode() {
+    subscribe(location, "mode", "modeHandler")
+    sleepWindows().each { w ->
+        [w.start, w.end].each { Integer m ->
+            schedule("5 ${m % 60} ${m.intdiv(60)} ? * *", "evaluateHomeMode", [overwrite: false])
+        }
+    }
+    runEvery5Minutes("evaluateHomeMode")   // catches up after a hub reboot or a failed bridge call
+    evaluateHomeMode()
+}
+
+def modeHandler(evt) {
+    evaluateHomeMode()
+}
+
+// "off" (not set up), "away", "home" (muting) or "sleeping" (home, inside a sleep window)
+private String homeState() {
+    if (!settings.homeModes || !settings.homeMuteCameras) return "off"
+    if (!((settings.homeModes as List).contains(location.mode))) return "away"
+    return isSleeping() ? "sleeping" : "home"
+}
+
+def evaluateHomeMode() {
+    String hs = homeState()
+    if (hs != state.lastHomeState) {
+        log.info "Scrypted Connect: Home / Away is now ${hs} (Hubitat mode ${location.mode})"
+        state.lastHomeState = hs
+    }
+    getChildDevice(HUB_DNI)?.setHomeMode(hs)
+    if (!settings.bridgeUrl || !settings.bridgeToken) return
+
+    List desired = hs == "home" ? ((settings.homeMuteCameras ?: []) as List) : []
+    List ours = (state.homeMuted ?: []) as List
+    Map indef = state.indefiniteMutes ?: [:]
+    // Leave alone cameras someone else already muted until unmuted; they're muted anyway.
+    List toMute = (desired - ours).findAll { !indef[it] }
+    List toUnmute = ours - desired
+    if (toMute) {
+        state.homeMuted = ours + toMute
+        log.info "Scrypted Connect: home, muting ${cameraNamesFor(toMute)}"
+        bridgePost("mute", [cameras: toMute], [home: "mute", keys: toMute])
+    }
+    if (toUnmute) {
+        state.homeMuted = ((state.homeMuted ?: []) as List) - toUnmute
+        log.info "Scrypted Connect: ${hs == 'sleeping' ? 'sleep time' : hs}, restoring ${cameraNamesFor(toUnmute)}"
+        bridgePost("unmute", [cameras: toUnmute], [home: "unmute", keys: toUnmute])
+    }
+}
+
+private String cameraNamesFor(List keys) {
+    Map names = allCameraOptions()
+    return keys.collect { names[it] ?: it }.join(", ")
+}
+
+private String homeModeSummary() {
+    switch (homeState()) {
+        case "off": return "Not set up (choose Home modes and cameras)"
+        case "away": return "Away (${location.mode}): notifications on"
+        case "sleeping": return "Home (${location.mode}), sleep time: notifications on"
+        default: return "Home (${location.mode}): muting ${cameraNamesFor((settings.homeMuteCameras ?: []) as List)}"
+    }
+}
+
+private List sleepWindows() {
+    List out = []
+    ((state.sleepIds ?: []) as List).each { id ->
+        String s = settings["sleepStart_${id}"]
+        String e = settings["sleepEnd_${id}"]
+        if (!s || !e) return
+        String days = settings["sleepDays_${id}"] ?: "daily"
+        List dayList = days == "weekdays" ? ["Mon", "Tue", "Wed", "Thu", "Fri"] :
+            days == "weekends" ? ["Sat", "Sun"] :
+            days == "custom" ? ((settings["sleepDow_${id}"] ?: []) as List) : DOW
+        out << [start: minuteOfDay(toDateTime(s)), end: minuteOfDay(toDateTime(e)), days: dayList]
+    }
+    return out
+}
+
+private Integer minuteOfDay(Date d) {
+    Calendar cal = Calendar.getInstance(location.timeZone)
+    cal.setTime(d)
+    return cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+}
+
+private String dayName(Date d) {
+    Calendar cal = Calendar.getInstance(location.timeZone)
+    cal.setTime(d)
+    return DOW[cal.get(Calendar.DAY_OF_WEEK) - 1]
+}
+
+// A window that crosses midnight belongs to the day it starts.
+private boolean isSleeping() {
+    Date nowDate = new Date()
+    Integer m = minuteOfDay(nowDate)
+    String today = dayName(nowDate)
+    String yesterday = dayName(new Date(nowDate.time - 86400000L))
+    return sleepWindows().any { w ->
+        if (w.start == w.end) return false
+        if (w.start < w.end) return w.days.contains(today) && m >= w.start && m < w.end
+        return (w.days.contains(today) && m >= w.start) || (w.days.contains(yesterday) && m < w.end)
+    }
 }
 
 // ---------- logging ----------

@@ -1,6 +1,6 @@
 /**
  *  Scrypted Connect Hub
- *  Version: 0.1.0
+ *  Version: 0.2.0
  *
  *  Parent-level device created by the Scrypted Connect app.
  *    switch on  = Scrypted notifications enabled for every camera
@@ -28,6 +28,7 @@ metadata {
         attribute "totalCameras", "number"
         attribute "notifications", "enum", ["enabled", "partially muted", "muted"]
         attribute "bridgeVersion", "string"
+        attribute "homeMode", "enum", ["off", "away", "home", "sleeping"]
     }
 }
 
@@ -63,6 +64,13 @@ void setHealth(String value) {
     if (device.currentValue("healthStatus") != value) {
         sendEvent(name: "healthStatus", value: value, descriptionText: "Scrypted bridge is ${value}")
         if (value == "offline") log.warn "${device.displayName}: Scrypted bridge is offline"
+    }
+}
+
+// off = Home / Away not set up, away, home (muting the chosen cameras), sleeping (home, inside a sleep window)
+void setHomeMode(String value) {
+    if (device.currentValue("homeMode") != value) {
+        sendEvent(name: "homeMode", value: value, descriptionText: "Scrypted Connect Home / Away is ${value}")
     }
 }
 
