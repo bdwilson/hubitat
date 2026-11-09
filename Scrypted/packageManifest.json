@@ -1,0 +1,50 @@
+{
+  "packageName": "Scrypted Connect",
+  "author": "Brian Wilson",
+  "version": "0.2.0",
+  "minimumHEVersion": "2.2.0",
+  "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Scrypted",
+  "communityLink": "",
+  "dateReleased": "2026-11-09",
+  "releaseNotes": "First release. Virtual motion sensors for Scrypted NVR verified detections (person, vehicle, animal, package), timed or indefinite muting of Scrypted's own notifications per camera or for all cameras while recording continues, Motion Disabler child apps, and Home / Away muting by Hubitat mode with per-day sleep-time exceptions. Requires the Scrypted-side bridge script (see documentation).",
+  "apps": [
+    {
+      "id": "caba5836-f91a-459e-8d77-2c2234bbb7fb",
+      "name": "Scrypted Connect",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/Scrypted/scrypted_connect-app.groovy",
+      "required": true,
+      "oauth": true,
+      "primary": true,
+      "version": "0.2.0"
+    },
+    {
+      "id": "f8dc97c1-fa80-4dd7-bd4e-64952e1c1e80",
+      "name": "Scrypted Connect Child - Motion Disabler",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/Scrypted/scrypted_connect-motion-disabler-child-app.groovy",
+      "required": false,
+      "oauth": false,
+      "primary": false,
+      "version": "0.1.0"
+    }
+  ],
+  "drivers": [
+    {
+      "id": "4220c245-71ab-4185-b3b2-200dfc9757da",
+      "name": "Scrypted Connect Hub",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/Scrypted/scrypted_connect-hub-driver.groovy",
+      "required": true,
+      "version": "0.2.0"
+    },
+    {
+      "id": "06638a98-c839-405e-8d2a-d717e5d60994",
+      "name": "Scrypted Connect Camera",
+      "namespace": "brianwilson-hubitat",
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/Scrypted/scrypted_connect-camera-driver.groovy",
+      "required": true,
+      "version": "0.1.0"
+    }
+  ]
+}

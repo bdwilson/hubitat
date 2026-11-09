@@ -46,7 +46,7 @@ Scrypted                                         Hubitat
 1. In Scrypted, open **Plugins → Scripts** and click **+** to create a new script. Name it
    *Scrypted Connect*.
 2. Replace its contents with
-   [scrypted_connect-bridge.ts](https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/scrypted-connect/Scrypted/scrypted_connect-bridge.ts)
+   [scrypted_connect-bridge.ts](https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/Scrypted/scrypted_connect-bridge.ts)
    and click **Save**. Use **Save**, not **Run**: Scrypted only stores a script on Save,
    and Run on an unsaved script fails with `"undefined" is not valid JSON`.
 3. The script's console prints two lines you need for Hubitat:
@@ -58,14 +58,21 @@ Scrypted                                         Hubitat
 
 ### 2. Hubitat: install the code
 
+**Option A: Hubitat Package Manager (recommended).** In HPM choose **Install → Search by
+Keywords**, search for *Scrypted Connect* and install it. HPM installs the app and both
+drivers and enables OAuth for the app. Tick *Scrypted Connect Child - Motion Disabler*
+too if you want Motion Disablers.
+
+**Option B: manual install.**
+
 * **Drivers Code → New Driver**, paste and save each of:
-  * [Scrypted Connect Hub](https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/scrypted-connect/Scrypted/scrypted_connect-hub-driver.groovy)
-  * [Scrypted Connect Camera](https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/scrypted-connect/Scrypted/scrypted_connect-camera-driver.groovy)
+  * [Scrypted Connect Hub](https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/Scrypted/scrypted_connect-hub-driver.groovy)
+  * [Scrypted Connect Camera](https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/Scrypted/scrypted_connect-camera-driver.groovy)
 * **Apps Code → New App**, paste and save each of:
-  * [Scrypted Connect](https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/scrypted-connect/Scrypted/scrypted_connect-app.groovy)
+  * [Scrypted Connect](https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/Scrypted/scrypted_connect-app.groovy)
     — then click **OAuth → Enable OAuth in App → Update**. This is required: Scrypted
     delivers detections to the app's OAuth endpoint.
-  * [Scrypted Connect Child - Motion Disabler](https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/scrypted-connect/Scrypted/scrypted_connect-motion-disabler-child-app.groovy) (optional)
+  * [Scrypted Connect Child - Motion Disabler](https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/Scrypted/scrypted_connect-motion-disabler-child-app.groovy) (optional)
 
 ### 3. Hubitat: configure the app
 
