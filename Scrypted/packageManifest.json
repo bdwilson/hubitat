@@ -1,12 +1,12 @@
 {
   "packageName": "Scrypted Connect",
   "author": "Brian Wilson",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "minimumHEVersion": "2.2.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Scrypted",
   "communityLink": "",
   "dateReleased": "2026-11-09",
-  "releaseNotes": "First release. Virtual motion sensors for Scrypted NVR verified detections (person, vehicle, animal, package), timed or indefinite muting of Scrypted's own notifications per camera or for all cameras while recording continues, Motion Disabler child apps, and Home / Away muting by Hubitat mode with per-day sleep-time exceptions. Camera mute/unmute events say what caused them (which Motion Disabler and trigger, Home / Away, a switch or command). Requires the Scrypted-side bridge script (see documentation).",
+  "releaseNotes": "First release. Virtual motion sensors for Scrypted NVR verified detections (person, vehicle, animal, package), timed or indefinite muting of Scrypted's own notifications per camera or for all cameras while recording continues, Motion Disabler child apps, and Home / Away muting by Hubitat mode with per-day sleep-time exceptions. Muting also covers the Advanced Notifier plugin's per-camera switch (Auto / NVR only / Advanced Notifier only / Both). Camera mute/unmute events say what caused them (which Motion Disabler and trigger, Home / Away, a switch or command). Requires the Scrypted-side bridge script (see documentation).",
   "apps": [
     {
       "id": "caba5836-f91a-459e-8d77-2c2234bbb7fb",
@@ -16,7 +16,7 @@
       "required": true,
       "oauth": true,
       "primary": true,
-      "version": "0.2.0"
+      "version": "0.3.0"
     },
     {
       "id": "f8dc97c1-fa80-4dd7-bd4e-64952e1c1e80",
