@@ -1,6 +1,6 @@
 /**
  *  Scrypted Connect Camera
- *  Version: 0.1.0
+ *  Version: 0.2.0
  *
  *  One per Scrypted camera, created by the Scrypted Connect app.
  *    motion     active while Scrypted NVR verifies a selected detection type
@@ -39,6 +39,7 @@ metadata {
     preferences {
         input "maxActiveSeconds", "number", title: "Safety timeout: force motion inactive after this many seconds if Scrypted never reports the end",
             defaultValue: 900, range: "60..86400"
+        input "txtEnable", "bool", title: "Log mute / unmute descriptions (with what caused them)", defaultValue: true
     }
 }
 
@@ -52,20 +53,20 @@ def installed() {
 // ---------- switch / mute ----------
 
 def on() {
-    parent.unmuteCameras([cameraKey()])
+    parent.unmuteCameras([cameraKey()], "${device.displayName}: switch on")
 }
 
 def off() {
-    parent.muteCameras([cameraKey()], null)
+    parent.muteCameras([cameraKey()], null, "${device.displayName}: switch off")
 }
 
 def mute(seconds = null) {
     Integer secs = seconds ? (seconds as BigDecimal).intValue() : null
-    parent.muteCameras([cameraKey()], secs)
+    parent.muteCameras([cameraKey()], secs, "${device.displayName}: mute command")
 }
 
 def unmute() {
-    parent.unmuteCameras([cameraKey()])
+    parent.unmuteCameras([cameraKey()], "${device.displayName}: unmute command")
 }
 
 def refresh() {
@@ -105,14 +106,36 @@ void inactive() {
     sendEvent(name: "motion", value: "inactive", descriptionText: "${device.displayName} detection ended")
 }
 
-void applyMute(Boolean muted, Long until) {
+// `reason` is who asked for the change (from the parent app), shown in the events' descriptionText.
+// No reason on an unmute means Scrypted did it itself: a timed mute ran out, or it was undone there.
+void applyMute(Boolean muted, Long until, String reason = null) {
     String sw = muted ? "off" : "on"
-    String untilText = !muted ? "" : (until ? new Date(until).format("yyyy-MM-dd HH:mm:ss", location.timeZone) : "until unmuted")
-    if (device.currentValue("switch") != sw) {
-        sendEvent(name: "switch", value: sw, descriptionText: "${device.displayName} Scrypted notifications ${muted ? 'muted' : 'enabled'}")
+    String untilText = !muted ? "n/a" : (until ? new Date(until).format("yyyy-MM-dd HH:mm:ss", location.timeZone) : "until unmuted")
+    Boolean switchChanged = device.currentValue("switch") != sw
+    Boolean untilChanged = device.currentValue("mutedUntil") != untilText
+    if (!switchChanged && !untilChanged) return   // periodic status sync with nothing new
+    if (!muted && !switchChanged) {               // first sync after install
+        sendEvent(name: "mutedUntil", value: untilText)
+        return
     }
-    sendEvent(name: "notifications", value: muted ? "muted" : "enabled")
-    sendEvent(name: "mutedUntil", value: untilText ?: "n/a")
+
+    String desc
+    if (muted) {
+        desc = "${device.displayName} notifications " + (switchChanged ?
+            "muted " + (until ? "until ${untilText}" : "until unmuted") :
+            "mute now " + (until ? "ends ${untilText}" : "lasts until unmuted"))
+        if (reason) desc += " (${reason})"
+    } else {
+        Long prevUntil = state.muteUntil as Long
+        String why = reason ?: (prevUntil && now() >= prevUntil - 5000 ? "timed mute ended" : "unmuted in Scrypted")
+        desc = "${device.displayName} notifications restored (${why})"
+    }
+    state.muteUntil = muted ? until : null
+    if (settings.txtEnable != false) log.info desc
+
+    if (switchChanged) sendEvent(name: "switch", value: sw, descriptionText: desc)
+    sendEvent(name: "notifications", value: muted ? "muted" : "enabled", descriptionText: desc)
+    sendEvent(name: "mutedUntil", value: untilText, descriptionText: desc)
 }
 
 private String nowString() {

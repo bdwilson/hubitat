@@ -110,6 +110,23 @@ which also serves as the health check.
 Preference **Safety timeout** (default 900 s) forces `motion` inactive if Scrypted never
 reports the end of a detection (for example if Scrypted restarts mid-detection).
 
+**Why was it muted?** Each mute / unmute event's **Description Text** (in the device's
+**Events** tab, and in the log while *Log mute / unmute descriptions* is on) names what
+caused it, for example:
+
+| Name | Value | Description Text |
+|---|---|---|
+| switch | off | Doorbell notifications muted until 2026-11-09 18:42:10 (Motion Disabler 'Front Door': Front Door Lock unlocked) |
+| mutedUntil | 2026-11-09 18:44:30 | Doorbell notifications mute now ends 2026-11-09 18:44:30 (Motion Disabler 'Garage': Garage Door open) |
+| switch | on | Doorbell notifications restored (timed mute ended) |
+| switch | off | Doorbell notifications muted until unmuted (Home / Away: Home mode Day) |
+| switch | on | Doorbell notifications restored (Home / Away: sleep time started) |
+
+The cause shows as the Motion Disabler and its triggering device, Home / Away and the mode
+or sleep time, or the camera / hub device's own switch or command (a Rule Machine rule
+turning the device off shows up as *switch off*). *Timed mute ended* and *unmuted in
+Scrypted* mean Scrypted restored it on its own.
+
 ### Scrypted Connect Hub
 
 | | |

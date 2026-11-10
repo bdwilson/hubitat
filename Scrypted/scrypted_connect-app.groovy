@@ -41,6 +41,8 @@ mappings {
 }
 
 @groovy.transform.Field static final String HUB_DNI = "scrypted-connect-hub"
+@groovy.transform.Field static final String ALL_CAMERAS = "*"
+@groovy.transform.Field static final Long REASON_TTL_MS = 60000L   // how long a mute reason waits for the bridge's report
 @groovy.transform.Field static final Map CLASS_OPTIONS = [
     "person": "Person", "vehicle": "Vehicle", "animal": "Animal", "package": "Package", "face": "Face"
 ]
@@ -323,26 +325,57 @@ def pushConfig() {
 
 // ---------- called by child devices / child apps ----------
 
-void muteCameras(List keys, Integer seconds) {
+// `reason` says who asked (e.g. "Motion Disabler 'Front Door': Front Door Lock unlocked"). It's shown in
+// the camera device's event descriptionText when the bridge reports the resulting mute/unmute.
+void muteCameras(List keys, Integer seconds, String reason = null) {
     if (!keys) return
     Map body = [cameras: keys]
     if (seconds) body.seconds = seconds
+    noteReason(keys, true, reason)
     bridgePost("mute", body)
 }
 
-void unmuteCameras(List keys) {
+void unmuteCameras(List keys, String reason = null) {
     if (!keys) return
+    noteReason(keys, false, reason)
     bridgePost("unmute", [cameras: keys])
 }
 
-void muteAll(Integer seconds) {
+void muteAll(Integer seconds, String reason = null) {
     Map body = [cameras: "all"]
     if (seconds) body.seconds = seconds
+    noteReason([ALL_CAMERAS], true, reason)
     bridgePost("mute", body)
 }
 
-void unmuteAll() {
+void unmuteAll(String reason = null) {
+    noteReason([ALL_CAMERAS], false, reason)
     bridgePost("unmute", [cameras: "all"])
+}
+
+// ---------- mute reasons ----------
+//
+// The bridge reports mutes back asynchronously and doesn't know who asked, so the app remembers the
+// reason per camera for a short while and hands it to the camera device when the matching report
+// (same direction: mute or unmute) arrives. A report with no remembered reason came from Scrypted
+// itself, e.g. a timed mute running out.
+
+private void noteReason(List keys, Boolean muted, String reason) {
+    if (!reason) return
+    Map reasons = pruneReasons()
+    keys.each { reasons[it as String] = [text: reason, muted: muted, at: now()] }
+    state.muteReasons = reasons
+}
+
+private String reasonFor(String key, Boolean muted) {
+    Map reasons = pruneReasons()
+    Map r = [reasons[key], reasons[ALL_CAMERAS]].find { it && (it.muted as Boolean) == muted } as Map
+    return r?.text as String
+}
+
+private Map pruneReasons() {
+    Long cutoff = now() - REASON_TTL_MS
+    return ((state.muteReasons ?: [:]) as Map).findAll { k, v -> (v.at as Long) >= cutoff }
 }
 
 void refreshAll() {
@@ -383,8 +416,8 @@ def handleEvent() {
             cameraChild(data.camera?.key)?.applyDetection(data)
             break
         case "mute":
-            cameraChild(data.camera?.key)?.applyMute(data.muted as Boolean, data.until as Long)
             String key = data.camera?.key as String
+            cameraChild(key)?.applyMute(data.muted as Boolean, data.until as Long, reasonFor(key, data.muted as Boolean))
             Map muted = state.mutedCameras ?: [:]
             muted[key] = data.muted as Boolean
             state.mutedCameras = muted
@@ -417,7 +450,7 @@ private void applyStatus(Map status) {
     status.cameras?.each { cam ->
         def child = cameraChild(cam.key)
         if (child) {
-            child.applyMute(cam.muted as Boolean, cam.until as Long)
+            child.applyMute(cam.muted as Boolean, cam.until as Long, reasonFor(cam.key as String, cam.muted as Boolean))
             if (!cam.active && child.currentValue("motion") == "active") child.inactive()
         }
     }
@@ -464,7 +497,12 @@ private String homeState() {
 
 def evaluateHomeMode() {
     String hs = homeState()
-    if (hs != state.lastHomeState) {
+    String prev = state.lastHomeState as String
+    String reason = "Home / Away: " + (
+        hs == "home" ? (prev == "sleeping" ? "sleep time ended (mode ${location.mode})" : "Home mode ${location.mode}") :
+        hs == "sleeping" ? "sleep time started" :
+        hs == "away" ? "Away mode ${location.mode}" : "turned off")
+    if (hs != prev) {
         log.info "Scrypted Connect: Home / Away is now ${hs} (Hubitat mode ${location.mode})"
         state.lastHomeState = hs
     }
@@ -480,11 +518,13 @@ def evaluateHomeMode() {
     if (toMute) {
         state.homeMuted = ours + toMute
         log.info "Scrypted Connect: home, muting ${cameraNamesFor(toMute)}"
+        noteReason(toMute, true, reason)
         bridgePost("mute", [cameras: toMute], [home: "mute", keys: toMute])
     }
     if (toUnmute) {
         state.homeMuted = ((state.homeMuted ?: []) as List) - toUnmute
         log.info "Scrypted Connect: ${hs == 'sleeping' ? 'sleep time' : hs}, restoring ${cameraNamesFor(toUnmute)}"
+        noteReason(toUnmute, false, reason)
         bridgePost("unmute", [cameras: toUnmute], [home: "unmute", keys: toUnmute])
     }
 }

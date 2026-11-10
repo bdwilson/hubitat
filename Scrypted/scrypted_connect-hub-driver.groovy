@@ -38,20 +38,20 @@ def installed() {
 }
 
 def on() {
-    parent.unmuteAll()
+    parent.unmuteAll("${device.displayName}: switch on")
 }
 
 def off() {
-    parent.muteAll(null)
+    parent.muteAll(null, "${device.displayName}: switch off")
 }
 
 def muteAll(seconds = null) {
     Integer secs = seconds ? (seconds as BigDecimal).intValue() : null
-    parent.muteAll(secs)
+    parent.muteAll(secs, "${device.displayName}: muteAll command")
 }
 
 def unmuteAll() {
-    parent.unmuteAll()
+    parent.unmuteAll("${device.displayName}: unmuteAll command")
 }
 
 def refresh() {

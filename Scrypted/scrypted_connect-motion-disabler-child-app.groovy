@@ -1,6 +1,6 @@
 /**
  *  Scrypted Connect Child - Motion Disabler
- *  Version: 0.1.0
+ *  Version: 0.2.0
  *
  *  Mutes Scrypted app notifications for the selected cameras for N seconds
  *  whenever one of the chosen contact / lock / motion / presence events happens
@@ -103,5 +103,6 @@ def initialize() {
 
 def triggerHandler(evt) {
     parent.ifDebug("Motion Disabler '${app.label}': ${evt.displayName} ${evt.value} -> muting ${settings.cameras} for ${settings.seconds}s")
-    parent.muteCameras(settings.cameras as List, settings.seconds as Integer)
+    parent.muteCameras(settings.cameras as List, settings.seconds as Integer,
+        "Motion Disabler '${app.label}': ${evt.displayName} ${evt.value}")
 }
