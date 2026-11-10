@@ -24,7 +24,7 @@ definition(
     iconUrl: "",
     iconX2Url: "",
     iconX3Url: "",
-    importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/Scrypted/scrypted_connect-app.groovy",
+    importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/scrypted-connect/Scrypted/scrypted_connect-app.groovy",
     singleInstance: true
 )
 
@@ -60,7 +60,7 @@ mappings {
 def mainPage() {
     dynamicPage(name: "mainPage", title: "", install: false, uninstall: true, nextPage: "camerasPage") {
         section("<h2>Scrypted Connect</h2>") {
-            paragraph "<i>See the <a href='https://github.com/bdwilson/hubitat/tree/master/Scrypted' target='_blank'>installation instructions</a>. " +
+            paragraph "<i>See the <a href='https://github.com/bdwilson/hubitat/tree/scrypted-connect/Scrypted' target='_blank'>installation instructions</a>. " +
                 "Install the <b>Scrypted Connect bridge</b> script in Scrypted first; its console prints the Bridge URL and Bridge Token.</i>"
             input "bridgeUrl", "text", title: "Bridge URL", description: "e.g. http://192.168.1.68:11080/endpoint/82/public/", required: true
             input "bridgeToken", "password", title: "Bridge Token", required: true
