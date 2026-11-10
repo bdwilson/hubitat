@@ -1,6 +1,6 @@
 /**
  *  Scrypted Connect
- *  Version: 0.2.0
+ *  Version: 0.3.0
  *
  *  Brings Scrypted NVR's verified detections (person / vehicle / animal / package)
  *  into Hubitat as virtual motion sensors, and lets Hubitat mute Scrypted's own
@@ -24,7 +24,7 @@ definition(
     iconUrl: "",
     iconX2Url: "",
     iconX3Url: "",
-    importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/Scrypted/scrypted_connect-app.groovy",
+    importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/scrypted-connect/Scrypted/scrypted_connect-app.groovy",
     singleInstance: true
 )
 
@@ -44,6 +44,12 @@ mappings {
 @groovy.transform.Field static final Map CLASS_OPTIONS = [
     "person": "Person", "vehicle": "Vehicle", "animal": "Animal", "package": "Package", "face": "Face"
 ]
+@groovy.transform.Field static final Map MUTE_TARGET_OPTIONS = [
+    "auto": "Auto: Scrypted NVR notifiers, plus Advanced Notifier on cameras that use it",
+    "nvr": "Scrypted NVR notifiers only",
+    "advanced": "Advanced Notifier only",
+    "both": "Both (warn if a camera isn't extended with Advanced Notifier)"
+]
 @groovy.transform.Field static final List DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 @groovy.transform.Field static final Map SLEEP_DAY_OPTIONS = [
     "daily": "Every day", "weekdays": "Weekdays (Mon–Fri)", "weekends": "Weekends (Sat–Sun)", "custom": "Specific days"
@@ -62,6 +68,10 @@ def mainPage() {
                 multiple: true, required: true, defaultValue: ["person", "vehicle", "animal", "package"]
             input "minScore", "decimal", title: "Minimum detection confidence (0.0 – 1.0)", required: true, defaultValue: 0.6, range: "0..1"
             input "gapSeconds", "number", title: "Seconds without a detection before motion goes inactive", required: true, defaultValue: 30, range: "5..3600"
+        }
+        section("<h3>Notification muting</h3>") {
+            input "muteTarget", "enum", title: "When a camera is muted, silence", options: MUTE_TARGET_OPTIONS,
+                required: true, defaultValue: "auto"
         }
         section("<h3>Motion Disablers</h3>") {
             if (state.installed) {
@@ -249,7 +259,8 @@ private Map configBody() {
         callback  : callbackUrl(),
         classes   : settings.classes ?: ["person", "vehicle", "animal", "package"],
         minScore  : settings.minScore != null ? settings.minScore : 0.6,
-        gapSeconds: settings.gapSeconds ?: 30
+        gapSeconds: settings.gapSeconds ?: 30,
+        muteTarget: settings.muteTarget ?: "auto"
     ]
 }
 

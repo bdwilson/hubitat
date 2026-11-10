@@ -1,5 +1,5 @@
 // Scrypted Connect — Hubitat bridge (Scrypted Script)
-// Version: 0.1.0
+// Version: 0.2.0
 //
 // Install: Scrypted -> Plugins -> Scripts -> "+" -> paste this file -> SAVE
 // (Save, not Run: Scrypted only stores a script on Save). The console prints
@@ -14,21 +14,28 @@
 //   * Hubitat -> Scrypted notification muting. Muting a camera adds it to
 //     "Custom Notifications" on every Scrypted NVR notifier (phones, Mac, browser)
 //     with no notification types selected. Recording and detection keep running.
+//     If a camera is extended with the Advanced Notifier plugin, its own
+//     per-camera "Notifications enabled" switch is turned off too (Advanced
+//     Notifier ignores NVR custom notifications). `muteTarget` picks which:
+//     auto (default: NVR + Advanced Notifier where present), nvr, advanced, both.
 //     Unmuting restores exactly what was there before. Mutes can be timed or
 //     indefinite and survive a Scrypted restart.
 //
 // HTTP API (all under the Bridge URL; every call needs
 // "Authorization: Bearer <token>" except GET on the bare URL):
 //   GET  status                 -> bridge + camera state
-//   POST config  {callback, classes, minScore, gapSeconds}
+//   POST config  {callback, classes, minScore, gapSeconds, muteTarget}
 //   POST mute    {cameras: [key|name, ...] | "all", seconds?}   (no seconds = until unmuted)
 //   POST unmute  {cameras: [key|name, ...] | "all"}
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 const IGNORED_CLASSES = new Set(['motion', 'clip']);
 // Camera-native (e.g. Reolink) class names folded into Scrypted NVR's names.
 const CLASS_ALIASES: Record<string, string> = { people: 'person', dog_cat: 'animal', car: 'vehicle' };
-const DEFAULT_CONFIG = { callback: '', classes: ['person', 'vehicle', 'animal', 'package'], minScore: 0.6, gapSeconds: 30 };
+const MUTE_TARGETS = ['auto', 'nvr', 'advanced', 'both'];
+const DEFAULT_CONFIG = { callback: '', classes: ['person', 'vehicle', 'animal', 'package'], minScore: 0.6, gapSeconds: 30, muteTarget: 'auto' };
+// Advanced Notifier (@apocaliss92/scrypted-advanced-notifier) camera mixin setting.
+const AN_ENABLED_KEY = 'homeassistantMetadata:notificationsEnabled';
 const CAMERA_RESCAN_MS = 60_000;
 const MAX_TIMER_MS = 2_000_000_000; // setTimeout limit is ~24.8 days
 
@@ -169,7 +176,8 @@ function postToHubitat(body: any) {
 // ---------- notification muting ----------
 // mutes[cameraKey] = { name, camId, until: epoch ms | null (indefinite),
 //                      originals: { [notifierId]: { inCustom, value } } }
-interface MuteRecord { name: string; camId: string; until: number | null; originals: Record<string, { inCustom: boolean; value: any }>; }
+//                      advancedOriginal?: boolean (Advanced Notifier switch before mute) }
+interface MuteRecord { name: string; camId: string; until: number | null; originals: Record<string, { inCustom: boolean; value: any }>; advancedOriginal?: boolean; }
 const getMutes = () => store.get<Record<string, MuteRecord>>('mutes', {});
 const muteTimers = new Map<string, any>();
 
@@ -203,6 +211,22 @@ async function silenceOnNotifier(n: any, camId: string, rec: MuteRecord) {
     await n.putSetting(typesKey, []);
 }
 
+function muteNvr(target: string) { return target !== 'advanced'; }
+function muteAdvanced(target: string) { return target !== 'nvr'; }
+
+// Returns the camera's Advanced Notifier switch, or undefined if the camera isn't extended with it.
+async function advancedEnabled(camId: string): Promise<boolean | undefined> {
+    const dev: any = systemManager.getDeviceById(camId);
+    if (!dev?.interfaces?.includes(ScryptedInterface.Settings)) return undefined;
+    const v = await settingValue(dev, AN_ENABLED_KEY);
+    return v === undefined ? undefined : v !== false && v !== 'false';
+}
+
+async function setAdvancedEnabled(camId: string, enabled: boolean) {
+    const dev: any = systemManager.getDeviceById(camId);
+    await dev?.putSetting(AN_ENABLED_KEY, enabled);
+}
+
 function muteCamera(cam: Cam, seconds?: number | null) {
     return serial(async () => {
         const mutes = getMutes();
@@ -215,12 +239,26 @@ function muteCamera(cam: Cam, seconds?: number | null) {
             rec = { name: cam.name, camId: cam.id, until, originals: {} };
         }
         mutes[cam.key] = rec;
+        const target = getConfig().muteTarget;
         // Record originals before changing anything, so a crash mid-way can still be undone.
-        for (const n of nvrNotifiers()) {
+        if (muteNvr(target)) {
+            for (const n of nvrNotifiers()) {
+                try {
+                    await silenceOnNotifier(n, rec.camId, rec);
+                    store.set('mutes', mutes);
+                } catch (e: any) { console.warn(`mute ${cam.name} on ${n.name} failed: ${e?.message || e}`); }
+            }
+        }
+        if (muteAdvanced(target)) {
             try {
-                await silenceOnNotifier(n, rec.camId, rec);
-                store.set('mutes', mutes);
-            } catch (e: any) { console.warn(`mute ${cam.name} on ${n.name} failed: ${e?.message || e}`); }
+                const cur = await advancedEnabled(rec.camId);
+                if (cur === undefined) {
+                    if (target !== 'auto') console.warn(`${cam.name} is not extended with Advanced Notifier; nothing to mute there`);
+                } else {
+                    if (rec.advancedOriginal === undefined) { rec.advancedOriginal = cur; store.set('mutes', mutes); }
+                    await setAdvancedEnabled(rec.camId, false);
+                }
+            } catch (e: any) { console.warn(`Advanced Notifier mute ${cam.name} failed: ${e?.message || e}`); }
         }
         store.set('mutes', mutes);
         scheduleUnmute(cam.key);
@@ -247,6 +285,10 @@ function unmuteCamera(key: string) {
                     await n.putSetting('customCameras', custom.filter(id => id !== rec.camId));
                 }
             } catch (e: any) { console.warn(`unmute ${rec.name} on ${n.name} failed: ${e?.message || e}`); }
+        }
+        if (rec.advancedOriginal !== undefined) {
+            try { await setAdvancedEnabled(rec.camId, rec.advancedOriginal); }
+            catch (e: any) { console.warn(`Advanced Notifier unmute ${rec.name} failed: ${e?.message || e}`); }
         }
         delete mutes[key];
         store.set('mutes', mutes);
@@ -276,7 +318,7 @@ function status() {
     return {
         version: VERSION,
         callbackConfigured: !!cfg.callback,
-        config: { classes: cfg.classes, minScore: cfg.minScore, gapSeconds: cfg.gapSeconds },
+        config: { classes: cfg.classes, minScore: cfg.minScore, gapSeconds: cfg.gapSeconds, muteTarget: cfg.muteTarget },
         notifiers: nvrNotifiers().map(n => ({ id: n.id, name: n.name })),
         cameras: [...cameras.values()].map(c => ({
             key: c.key, name: c.name, id: c.id, hasDetector: c.hasDetector,
@@ -328,6 +370,7 @@ class ScryptedConnectBridge extends ScryptedDeviceBase {
                         classes: Array.isArray(body.classes) && body.classes.length ? body.classes.map(String) : cur.classes,
                         minScore: Number.isFinite(+body.minScore) && body.minScore !== null && body.minScore !== '' ? Math.min(1, Math.max(0, +body.minScore)) : cur.minScore,
                         gapSeconds: Number.isFinite(+body.gapSeconds) && +body.gapSeconds >= 5 ? Math.round(+body.gapSeconds) : cur.gapSeconds,
+                        muteTarget: MUTE_TARGETS.includes(body.muteTarget) ? body.muteTarget : cur.muteTarget,
                     };
                     store.set('config', next);
                     return send(200, status());

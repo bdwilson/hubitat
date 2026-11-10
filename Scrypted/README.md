@@ -38,6 +38,12 @@ Scrypted                                         Hubitat
   notification types selected. Unmuting puts back exactly what was there before. Timed mutes
   are tracked inside Scrypted, so they end on time even if Hubitat is offline, and they
   survive a Scrypted restart.
+* **Advanced Notifier:** the [Advanced Notifier](https://github.com/apocaliss92/scrypted-advanced-notifier)
+  plugin ignores NVR Custom Notifications and checks its own per-camera **Notifications
+  enabled** switch instead. The app's **When a camera is muted, silence** setting picks what
+  a mute touches: **Auto** (default — NVR notifiers, plus Advanced Notifier's switch on any
+  camera extended with it), **NVR only**, **Advanced Notifier only**, or **Both**. The
+  switch's previous value is restored on unmute.
 
 ## Installation
 
@@ -176,7 +182,7 @@ How it interacts with other muting:
 ## Troubleshooting
 
 * **App says it can't reach the bridge:** open the Bridge URL in a browser from the same
-  network — it should return `{"scryptedConnect":"0.1.0"}`. If the script was re-created,
+  network — it should return `{"scryptedConnect":"0.2.0"}`. If the script was re-created,
   its URL (the number after `/endpoint/`) changes; copy the new one from the console.
 * **`createAccessToken` / OAuth error in the Hubitat log:** enable OAuth for the
   Scrypted Connect app in **Apps Code**, then open the app and click **Done**.
