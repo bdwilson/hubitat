@@ -89,6 +89,7 @@ def mainPage() {
             paragraph "Defaults below come from a calibration pass against ~30 days of real usage. See the README before changing them."
             input "washerStartWaitMin", "number", title: "Time (minutes) power must hold before a start counts (filters idle-noise blips; see README)", required: false, defaultValue: 10
             input "washerStartW", "decimal", title: "Start cycle when power (W) rises above", required: false, defaultValue: 5
+            input "washerStartPeakW", "decimal", title: "...and only once power has reached this (W) at least once while waiting (filters idle noise; 0 = off; see README)", required: false, defaultValue: 50
             input "washerMinEndMin", "number", title: "Minimum minutes after start before end detection begins", required: false, defaultValue: 10
             input "washerStopW", "decimal", title: "Stop cycle when power (W) drops below", required: false, defaultValue: 3
             input "washerStopReadings", "number", title: "Stop after power is below threshold for this many sequential readings (fast path, if the meter keeps reporting)", required: false, defaultValue: 2
@@ -243,6 +244,7 @@ private String tuningPrompt() {
     sb << "CURRENT SETTINGS\n"
     sb << "washer start threshold: ${washerStartW ?: 5} W\n"
     sb << "washer start wait: ${washerStartWaitMin ?: 10} min\n"
+    sb << "washer start must also reach: ${washerStartPeakW ?: 0} W at least once while waiting (0 = off)\n"
     sb << "washer stop threshold: ${washerStopW ?: 3} W\n"
     sb << "washer min minutes before end detection: ${washerMinEndMin ?: 10}\n"
     sb << "washer stop - sequential low readings: ${washerStopReadings ?: 2}\n"
@@ -277,8 +279,15 @@ private String tuningPrompt() {
     } else {
         fb.each { f ->
             Map n = idx.find { (it.i as Integer) == (f.i as Integer) }
-            sb << "- ${n?.t ? new Date(n.t as Long).format('yyyy-MM-dd HH:mm') : '?'} "
-            sb << "\"${n?.m ?: '?'}\" (${n?.k} ${n?.d}) -> ${f.ok ? 'CORRECT' : 'WRONG'}"
+            if (n) {
+                sb << "- ${new Date(n.t as Long).format('yyyy-MM-dd HH:mm')} "
+                sb << "\"${n.m ?: '?'}\" (${n.k} ${n.d}) -> ${f.ok ? 'CORRECT' : 'WRONG'}"
+            } else {
+                // The alert itself has rotated out of the notification index;
+                // the answer survives, so keep it with the time it was given.
+                String answered = f.t ? new Date(f.t as Long).format('yyyy-MM-dd HH:mm') : "?"
+                sb << "- (alert details no longer kept; answered ${answered}) -> ${f.ok ? 'CORRECT' : 'WRONG'}"
+            }
             if (f.note) sb << " - I said: ${f.note}"
             sb << "\n"
         }
@@ -373,7 +382,7 @@ def uninstalled() {
 // defaultValue only applies to a setting that has never been set. So
 // without this, an existing install keeps running on its old values and
 // silently ignores the new defaults.
-private static String settingsVersion() { return "9" }
+private static String settingsVersion() { return "10" }
 
 private void migrateSettings() {
     if (state.settingsVersion == settingsVersion()) return
@@ -496,6 +505,21 @@ private void migrateSettings() {
         changes << "washerStartWaitMin=10"
     }
 
+    // v10: six more overnight false starts in October/November, every one
+    // an idle-noise run of 10.5 minutes - longer than v9's wait. Noise runs
+    // have roughly doubled every few weeks (1.5, 3, 6, 10.5 minutes), so
+    // raising the wait again only buys time. Wattage never has: noise has
+    // never exceeded 35W, while every one of 22 raw-logged real loads
+    // reached 50W within 18 minutes and stays above the stop threshold for
+    // 34 or more. A start now needs both, so noise would have to beat two
+    // independent limits at once. Replayed: all six phantoms gone, all 22
+    // real loads detected with unchanged start times; the start alert's
+    // median moves from 10.5 to 12 minutes in (worst case 16.5 to 18).
+    if (washerStartPeakW == null) {
+        app.updateSetting("washerStartPeakW", [value: "50", type: "decimal"])
+        changes << "washerStartPeakW=50"
+    }
+
     state.settingsVersion = settingsVersion()
     if (changes) log.info "Laundry Monitor: applied v${settingsVersion()} settings (${changes.join(', ')})"
 }
@@ -614,25 +638,44 @@ def washerPowerHandler(evt) {
     Integer stopMinutes = (washerStopMinutes ?: 0) as Integer
     Integer minEndMin = (washerMinEndMin ?: 0) as Integer
     Integer startWaitMin = (washerStartWaitMin ?: 0) as Integer
+    BigDecimal startPeakW = (washerStartPeakW ?: 0) as BigDecimal
 
     if (debugEnable) log.debug "washer power=${p}W on=${state.washerOn}"
 
     if (!state.washerOn) {
+        // Idle noise on this circuit can now hold above the stop threshold
+        // for longer than any sensible wait, but it has never come close to
+        // the draw of a real wash: a real load always reaches the start-peak
+        // threshold within its first few minutes. So a start also has to
+        // reach that at least once - tracked across every reading while the
+        // start is pending, including ones between the two thresholds.
+        if (state.washerPendingSince && p < ignoreW && p > ((state.washerPendingPeakW ?: 0) as BigDecimal)) {
+            state.washerPendingPeakW = p
+        }
         if (p >= startW && p < ignoreW) {
             if (startWaitMin > 0) {
                 if (!state.washerPendingSince) {
                     state.washerPendingSince = nowTs
+                    state.washerPendingPeakW = p
                     if (debugEnable) log.debug "washer power above start threshold, waiting ${startWaitMin}m to confirm"
                     return
                 }
                 if (nowTs - (state.washerPendingSince as Long) < startWaitMin * 60000L) return
             }
+            BigDecimal seenPeak = (state.washerPendingPeakW ?: 0) as BigDecimal
+            if (p > seenPeak) seenPeak = p
+            if (startPeakW > 0 && seenPeak < startPeakW) {
+                if (debugEnable) log.debug "washer has held above ${startW}W but peaked at ${seenPeak}W, not ${startPeakW}W yet - still waiting"
+                return
+            }
             Long trueStart = (state.washerPendingSince ?: nowTs) as Long
             state.remove("washerPendingSince")
+            state.remove("washerPendingPeakW")
             startWasherCycle(trueStart, p)
         } else if (state.washerPendingSince && p < stopW) {
             if (debugEnable) log.debug "washer power dropped back to idle before start-wait elapsed, cancelling"
             state.remove("washerPendingSince")
+            state.remove("washerPendingPeakW")
         }
         return
     }
@@ -682,6 +725,7 @@ private void startWasherCycle(Long ts, BigDecimal p) {
     state.washerLowCount = 0
     state.remove("washerEndingSince")
     state.remove("washerPendingSince")
+    state.remove("washerPendingPeakW")
     logCycleEvent("washer", "start", ts, [peakW: p, concurrent: concurrentDryer])
     if (txtEnable) log.info "Washer started (${p}W)${concurrentDryer ? ' - dryer is still running (second load)' : ''}"
     armDeadman("washer", ts)
@@ -713,6 +757,7 @@ private void endWasherCycle(String reason, Long endTs) {
     state.washerLowCount = 0
     state.remove("washerEndingSince")
     state.remove("washerPendingSince")
+    state.remove("washerPendingPeakW")
     if (switchList) switchList*.off()
     if (enableDoneNotify) {
         if (doubt) {
@@ -840,8 +885,15 @@ def washerReminderFired() {
     // Don't nag about moving a load that's already confirmed in the dryer -
     // this fired even when the dryer had been running for several minutes,
     // because it only checked whether the washer had restarted, never
-    // whether the dryer already had.
-    if (!state.washerOn && !state.dryerOn) {
+    // whether the dryer already had. It also has to count a dryer cycle
+    // that started after the wash finished and is already over by the time
+    // the reminder is due: with a long reminder delay, a short dryer run fits
+    // entirely inside it, and "the dryer isn't running" then looked like
+    // "nobody moved the load".
+    Long washerEnd = state.washerCycleEndTs as Long
+    Long dryerStart = state.dryerCycleStart as Long
+    boolean dryerRanSince = washerEnd && dryerStart && dryerStart >= washerEnd
+    if (!state.washerOn && !state.dryerOn && !dryerRanSince) {
         notify(washerReminderMessage ?: "Reminder: the washer is still waiting to be moved to the dryer", "reminder", "washer", state.washerCycleEndTs as Long)
     }
 }
