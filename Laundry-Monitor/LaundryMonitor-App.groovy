@@ -97,7 +97,7 @@ def mainPage() {
             input "washerStopConfirmMin", "number", title: "Also confirm stop after this many minutes with no reading back above the stop threshold, even without a second low reading (handles meters that stop reporting once idle; needs to outlast a soak-cycle pause - see README; 0 = off)", required: false, defaultValue: 20
             input "washerStopConfirmLateMin", "number", title: "Shorter confirmation once the wash has already run about as long as a normal load (catches back-to-back loads; 0 = always use the value above)", required: false, defaultValue: 4
             input "washerIgnoreW", "decimal", title: "Ignore extraneous power (W) readings above (spike filter)", required: false, defaultValue: 1500
-            input "washerDeadmanMin", "number", title: "Maximum cycle time in minutes (deadman timer, force-ends a stuck cycle)", required: false, defaultValue: 90
+            input "washerDeadmanMin", "number", title: "Maximum cycle time in minutes (deadman timer, force-ends a stuck cycle - must be longer than your longest real wash, see README)", required: false, defaultValue: 180
         }
 
         section("<b>Dryer - Vibration Thresholds</b>", hideable: true, hidden: false) {
@@ -251,7 +251,7 @@ private String tuningPrompt() {
     sb << "washer stop - quiet timeout: ${washerStopConfirmMin ?: 10} min\n"
     sb << "washer stop - quiet timeout late in load: ${washerStopConfirmLateMin ?: 4} min\n"
     sb << "washer spike filter: ${washerIgnoreW ?: 1500} W\n"
-    sb << "washer deadman: ${washerDeadmanMin ?: 90} min\n"
+    sb << "washer deadman: ${washerDeadmanMin ?: 180} min\n"
     sb << "dryer minimum continuous active: ${dryerMinRunMin ?: 6} min\n"
     sb << "dryer deadman: ${dryerDeadmanMin ?: 120} min\n"
     sb << "cross-talk suppression: ${suppressCrossTalk ? 'on' : 'off'}\n\n"
@@ -382,7 +382,7 @@ def uninstalled() {
 // defaultValue only applies to a setting that has never been set. So
 // without this, an existing install keeps running on its old values and
 // silently ignores the new defaults.
-private static String settingsVersion() { return "10" }
+private static String settingsVersion() { return "11" }
 
 private void migrateSettings() {
     if (state.settingsVersion == settingsVersion()) return
@@ -518,6 +518,22 @@ private void migrateSettings() {
     if (washerStartPeakW == null) {
         app.updateSetting("washerStartPeakW", [value: "50", type: "decimal"])
         changes << "washerStartPeakW=50"
+    }
+
+    // v11: a real 117-minute wash was force-ended by the 90-minute deadman
+    // at 14:58 on 11/15 while the machine was still working - 429W three and
+    // a half minutes earlier, and its display still showing 27 minutes left.
+    // The false "washer is done" was followed by a false second start as the
+    // same load kept drawing power. The longest wash that ended normally is
+    // 62 minutes, and a second load also reached 90 on 11/6, so long washes
+    // are not freak events. The deadman is only a net for a meter that dies
+    // mid-wash, so it belongs well above any real load: 180 leaves 63
+    // minutes over the 117 seen. The cost is that a wash whose end is never
+    // detected (final reading stuck above the stop threshold) is now closed
+    // up to 90 minutes later.
+    if ((washerDeadmanMin ?: 0) < 180) {
+        app.updateSetting("washerDeadmanMin", [value: "180", type: "number"])
+        changes << "washerDeadmanMin=180"
     }
 
     state.settingsVersion = settingsVersion()

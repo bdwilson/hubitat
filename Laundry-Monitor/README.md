@@ -85,13 +85,13 @@ Washer power thresholds
 | Quiet-timeout confirmation | 20 min | Backstop: also ends the cycle after this many minutes with no reading back above the stop threshold, even if a second low reading never arrives. See below - this is the important one. |
 | Shorter confirmation late in a load | 4 min | Used instead of the 10 minutes above once the wash has already run about as long as a normal load for your machine. See "Why the stop timeout adapts" below. |
 | Ignore readings above (spike filter) | 1500W | A single reading this high or higher is treated as sensor noise and never starts a new cycle. |
-| Deadman timer | 90 min | Hard cap - force-ends a cycle that's been "on" this long, in case a real stop never gets detected. |
+| Deadman timer | 180 min | Hard cap - force-ends a cycle that's been "on" this long, in case a real stop never gets detected. It has to sit well above your longest real wash - see "Why the deadman timer is 180 minutes" below. |
 
 **Why the start wait is 10 minutes:** idle standby draw isn't flat - it bounces between about 2W and 19W overnight, and the start threshold is only 5W. What finally separates noise from a real load isn't wattage (real loads open at 15-16W while filling, and noise has reached 31W) but *how long it holds*: noise drops back to ~2W within minutes, while a real wash stays above the 3W stop threshold from its very first reading. Measured across every raw log so far - including 19 unbroken days of readings - the longest noise run that could have confirmed a start was 6.0 minutes (it happened five separate times); the shortest real load held for 34.5. Replayed against 24 real loads, 10 minutes detects every one with the same start and end time, and removes all five phantom starts from that 19-day stretch. A start has to hold for the whole wait without any reading dropping below 3W, so 10 minutes clears the worst noise by 1.67x and is still 3.45x shorter than the quickest real start. This setting has had to go up before - it was 2, then 4 when the worst noise run found was 3.0 minutes - because the noise runs have been getting longer (1.5 → 3.0 → 6.0 minutes across the data). If a phantom start shows up again, compare its run length to this number first. The cost is a later start notification (typically 6 minutes later than before, 4.5-12 depending on when the next qualifying reading arrives); the logged start time itself is unaffected, since it's always taken from the first qualifying reading, not from whenever confirmation happens.
 
 **Why a start must also reach 50W:** a month after the wait went to 10 minutes, the noise beat it - six more overnight "Washer started" alerts between 10/9 and 11/8, every one from a noise run that held above 3W for 10.5 minutes. That's the fourth time the noise runs have grown past the wait (1.5 → 3.0 → 6.0 → 10.5 minutes), so raising it again would only buy a few weeks. Wattage tells a steadier story: noise has crept up too (19W, then 31W, then 35W at most), but every real load on record reaches 50W early - the slowest of 22 raw-logged loads took 18 minutes - and stays above the 3W stop threshold for at least 34.5, so its pending start is never cancelled before it gets there. With both conditions, noise would have to hold for 10+ minutes *and* hit 50W in the same run, which it has never come close to doing. Replayed through the app's own code: all six phantom starts disappear, and all 22 real loads start at exactly the same logged time. The cost is a slightly later start alert for loads that ramp up slowly - median 12 minutes into the load instead of 10.5, worst case 18 instead of 16.5. The trade-off to know about: a wash that never draws 50W at all would not be detected (no start, no done). The lowest-peaking real load on record is the 9/20 soak cycle at 86W, so the margin there is about 1.7x; if you ever run a cycle that light, lower this setting or set it to 0.
 
-**Why there are two ways to detect a stop:** a lot of power meters only report a new value when it *changes*. Once your washer settles at a genuinely stable idle wattage, it may never send another event at all - which means "stop after 2 sequential low readings" can silently wait forever for a second reading that's never coming, and the cycle only ever ends via the 90-minute deadman timer, 40+ minutes after the wash actually finished. Confirmed on real data: a wash that visibly finished at 10:36am (last high reading, then one 2W reading, then total silence for the next 2h45m) sat "on" until the deadman forced it closed at 11:20am. The quiet-timeout setting fixes this: once the *first* low reading arrives, it schedules its own check independent of whether anything else ever reports, and ends the cycle using that first low reading's timestamp as the true end time (so the logged duration reflects when the wash actually stopped, not when the timeout happened to fire). The two mechanisms race - whichever confirms first wins - so a chatty meter still gets the fast 2-reading path, and a quiet one still gets a correct, reasonably prompt stop instead of a 90-minute wait.
+**Why there are two ways to detect a stop:** a lot of power meters only report a new value when it *changes*. Once your washer settles at a genuinely stable idle wattage, it may never send another event at all - which means "stop after 2 sequential low readings" can silently wait forever for a second reading that's never coming, and the cycle only ever ends via the deadman timer (90 minutes at the time), 40+ minutes after the wash actually finished. Confirmed on real data: a wash that visibly finished at 10:36am (last high reading, then one 2W reading, then total silence for the next 2h45m) sat "on" until the deadman forced it closed at 11:20am. The quiet-timeout setting fixes this: once the *first* low reading arrives, it schedules its own check independent of whether anything else ever reports, and ends the cycle using that first low reading's timestamp as the true end time (so the logged duration reflects when the wash actually stopped, not when the timeout happened to fire). The two mechanisms race - whichever confirms first wins - so a chatty meter still gets the fast 2-reading path, and a quiet one still gets a correct, reasonably prompt stop instead of waiting out the deadman.
 
 There's a third way a pending stop gets confirmed, faster than either: if the dryer starts for real while the washer has a stop pending, that's strong independent evidence the load actually just finished, so the washer's "done" is confirmed immediately rather than waiting out the rest of the quiet-timeout. Caught on real data: a wash with only one low reading (no second one to satisfy the fast path) sat pending for the full 10 minutes before "Washer is done" fired - by then the dryer had already been running for two minutes, so the notification arrived after the fact, and worse, the 15-minutes-later reminder to move the load fired anyway even though it was already in the dryer. Both are fixed: the dryer starting now resolves the pending washer stop on the spot, and the reminder checks whether the dryer has started before nagging about it, not just whether the washer restarted. That check also counts a dryer cycle that started after the wash finished and is already over by the time the reminder is due - with a 30-minute reminder delay, a short dryer run can fit entirely inside it, and "the dryer isn't running right now" was being read as "nobody moved the load".
 
@@ -111,6 +111,30 @@ shorter 4-minute timeout applies - and the replay ends it exactly there,
 with the next load that started at 17:04 detected separately. The cost
 is the same as always: a cycle that legitimately finishes early gets its
 "done" notification up to 10 extra minutes later.
+
+**Why the deadman timer is 180 minutes, not 90:** the deadman counts from
+the start of the wash and force-ends it at the cap, announcing "Washer is
+done", whatever the meter is doing. On 11/15 a real 117-minute wash
+(the washer's own display showed 27 minutes left when the alert arrived)
+was cut off at 90: the log shows `reason=deadman`, 13:27:59 plus 90 minutes
+to the second, and the machine had drawn 429W three and a half minutes
+earlier. Because the load carried on drawing power, the app then read it as a
+brand-new start. A second load also reached the 90-minute cap on 11/6. Long
+washes are not freak events here: the longest wash that ended *normally* in
+the same log is 62 minutes, so the old cap sat in the gap between a typical
+load and a long cycle, and the 117 that tripped it is 1.9x the longest
+normal one. 180 leaves 63 minutes over the longest wash seen (1.54x).
+
+The cap is only a net for a meter that dies mid-wash, or a wash whose final
+reading never drops to the stop threshold, so raising it cannot change any
+wash that ends normally - all 13 of those in the same log finished in 62
+minutes or less. The cost lands only on that rare failure: a wash whose end
+is never detected is now closed up to 90 minutes later than before, and
+until then the app believes a wash is still running, so a *new* load started
+inside that window would be absorbed into it. One such case may already be
+in the log (11/6, a 90-minute cap with no follow-on start afterwards, which
+suggests the wash really had finished); the data cannot say. If you ever see
+that, the fix is to find why the end was missed - not to lower this number.
 
 **Why the stop timeout adapts to your machine:** a washer dropping to idle
 power mid-load looks *identical* to one that has actually finished - same
@@ -136,7 +160,7 @@ load's worth of runtime only needs 4. The in-between gaps that showed up
 late in real loads were all 3 minutes or shorter, so 4 clears them.
 
 Without this, two loads run back to back merge into a single cycle that
-only ends when the 90-minute deadman fires - which then immediately
+only ends when the deadman fires - which then immediately
 "restarts" on the still-running second load, producing a false start, a
 false "washer done" and a bogus "washer started again while the dryer is
 running" all in a row. It needs at least three completed washes before it
@@ -260,6 +284,7 @@ you set afterwards is respected.
 | v8 | `washerStopConfirmMin` -> 20 (if lower) | A soak-phase pause outlasted the 10-minute quiet timeout, so the wash was declared done mid-cycle and the resumed agitation was then read as a false second-load start. See "Why the quiet timeout is 20 minutes, not 10" above. |
 | v9 | `washerStartWaitMin` -> 10 (if lower) | Four overnight false starts in a week from idle-noise runs of up to 6.0 minutes. See "Why the start wait is 10 minutes" above. |
 | v10 | `washerStartPeakW` -> 50 (new setting) | Six more overnight false starts from noise runs of 10.5 minutes. See "Why a start must also reach 50W" above. |
+| v11 | `washerDeadmanMin` -> 180 (if lower) | A real 117-minute wash was ended at the 90-minute cap and announced as done while it was still running. See "Why the deadman timer is 180 minutes" above. |
 
 ### Only one message per start
 
