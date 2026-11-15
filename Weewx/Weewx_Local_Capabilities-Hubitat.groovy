@@ -41,6 +41,9 @@
  *
  *  Change Log:
  *
+ *  1.3.0 - Poll with asynchttpGet instead of a blocking httpGet (a slow Weewx server was getting the
+ *          device flagged "generates excessive hub load" and throttled), 10s timeout, null-safe wet/dry
+ *          comparisons, and water/switch only emit events when the value actually changes.
  *  1.2.0 - Publish the extended rain data that daily.json already contains (rain rate, today, yesterday,
  *          2-7 day totals and the rolling week total) as first class numeric attributes, plus an optional
  *          set of extended observations (wind, pressure, dewpoint, solar/UV, almanac, daily hi/lo).
@@ -51,7 +54,7 @@
 
 metadata {
     definition (name: "Weewx Local Capabilities", namespace: "brianwilson-hubitat", author: "Brian Wilson",
-                importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Weewx/Weewx_Local_Capabilities-Hubitat.groovy") {
+                importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/weewx-async-polling/Weewx/Weewx_Local_Capabilities-Hubitat.groovy") {
         capability "Actuator"
         capability "Sensor"
         capability "Temperature Measurement"
@@ -184,100 +187,113 @@ def PollStation()
 {
     LOGDEBUG("Weewx: ForcePoll called")
     def params1 = [
-        uri: "http://${ipaddress}:${weewxPort}/${weewxPath}", timeout: 5
-         ]
+        uri: "http://${ipaddress}:${weewxPort}/${weewxPath}",
+        contentType: "application/json",
+        timeout: 10
+    ]
+
+    // Async so a slow or hung Weewx server can never hold this device's thread open
+    // (a blocking httpGet is what gets a device flagged "generates excessive hub load").
+    try {
+        asynchttpGet("handlePoll", params1)
+    } catch (e) {
+        log.error "Weewx poll request failed: $e"
+    }
+}
+
+def handlePoll(resp, data)
+{
+    if (resp.hasError()) {
+        log.error "Weewx poll failed: ${resp.getErrorMessage()}"
+        return
+    }
 
     try {
-        httpGet(params1) { resp1 ->
-           resp1.headers.each {
-           LOGINFO( "Response1: ${it.name} : ${it.value}")
+        def json = resp.getJson()
+        if (!(json instanceof Map)) {
+            log.error "Weewx returned something that isn't JSON - check http://${ipaddress}:${weewxPort}/${weewxPath}"
+            return
         }
-           if(logSet == true){
-                LOGINFO( "params1: ${params1}")
-                LOGINFO( "response contentType: ${resp1.contentType}")
- 		        LOGINFO( "response data: ${resp1.data}")
-                LOGINFO( "response data: ${resp1.data}")
+        // Wrapped so the "data.stats.current..." source paths from older configs still resolve.
+        def resp1 = [data: json]
+        if (logSet == true) { LOGINFO("response data: ${json}") }
 
-           }
-            def var1, var2, rain, wet, varT
-            def temp = settings.temp ? parseMeasure(nodeAt(resp1, settings.temp)) : null
-            def humid = settings.humid ? parseMeasure(nodeAt(resp1, settings.humid)) : null
-            if (settings.var1) {
-                varT = varFix(resp1,settings.var1)
-                var1 = varT?.isDouble() ? varT.toDouble() : null
+        def var1, var2, rain, wet, varT
+        def temp = settings.temp ? parseMeasure(nodeAt(resp1, settings.temp)) : null
+        def humid = settings.humid ? parseMeasure(nodeAt(resp1, settings.humid)) : null
+        if (settings.var1) {
+            varT = varFix(resp1,settings.var1)
+            var1 = varT?.isDouble() ? varT.toDouble() : null
+        }
+        if (settings.var2) {
+            varT = varFix(resp1,settings.var2)
+            var2 = varT?.isDouble() ? varT.toDouble() : null
+        }
+
+       sendEvent(name: "WeewxUptime", value: resp1.data.serverUptime)
+       sendEvent(name: "WeewxLocation", value: resp1.data.location)
+       sendEvent(name: "Refresh-Weewx", value: pollInterval)
+
+       if (temp?.value != null) {
+           sendEvent(name: "temperature", value: temp.value, unit: (temp.unit ?: "\u00B0F"))
+       }
+       if (humid?.value != null) {
+           sendEvent(name: "humidity", value: humid.value, unit: (humid.unit ?: "%"))
+       }
+
+        // Published before the custom wet/dry logic below so a bad custom source or
+        // custom amount can't stop the rest of the station data from reaching Hubitat.
+        def root = resp1.data
+        if (settings.rainData == null || settings.rainData) {
+            publishRain(root)
+        }
+        if (settings.extendedData) {
+            publishExtended(root)
+        }
+
+       wet=0
+       rain=0
+        if ((settings.var1 || settings.var2) && !settings.customamount) {
+            log.error("You need to set a custom amount")
+        } else {
+            if (settings.var1 && !settings.var2) {
+                if (var1 != null && var1 > settings.customamount.toDouble()) {
+                    wet=1
+                }
+                rain=var1
             }
-            if (settings.var2) {
-                varT = varFix(resp1,settings.var2)
-                var2 = varT?.isDouble() ? varT.toDouble() : null
-            }
-
-           sendEvent(name: "WeewxUptime", value: resp1.data.serverUptime)
-           sendEvent(name: "WeewxLocation", value: resp1.data.location)
-           sendEvent(name: "Refresh-Weewx", value: pollInterval)
-
-           if (temp?.value != null) {
-               sendEvent(name: "temperature", value: temp.value, unit: (temp.unit ?: "\u00B0F"))
-           }
-           if (humid?.value != null) {
-               sendEvent(name: "humidity", value: humid.value, unit: (humid.unit ?: "%"))
-           }
-
-            // Published before the custom wet/dry logic below so a bad custom source or
-            // custom amount can't stop the rest of the station data from reaching Hubitat.
-            def root = resp1.data
-            if (settings.rainData == null || settings.rainData) {
-                publishRain(root)
-            }
-            if (settings.extendedData) {
-                publishExtended(root)
-            }
-
-           wet=0
-           rain=0
-            if ((settings.var1 || settings.var2) && !settings.customamount) {
-                log.error("You need to set a custom amount")
-            } else {
-                if (settings.var1 && !settings.var2) {
-                    if (var1 > settings.customamount.toDouble()) {
+            if (settings.var1 && settings.var2) {
+                if (varoperator == "and") {
+                    def tRain = (var1 ?: 0) + (var2 ?: 0)
+                    rain=tRain
+                    if (tRain.toDouble() >= settings.customamount.toDouble()) {
                         wet=1
                     }
-                    rain=var1
-                }
-                if (settings.var1 && settings.var2) {
-                    if (varoperator == "and") {
-                        def tRain = var1 + var2
-                        rain=tRain
-                        if (tRain.toDouble() >= settings.customamount.toDouble()) {
-                            wet=1
-                        }
-                    } else {
-                        if ((var1 >= settings.customamount.toDouble()) || (var2 >= settings.customamount.toDouble())) {
-                            wet=1
-                        }
-                        rain=var2
-                        if (var1 > var2) {
-                                rain=var1
-                        }
+                } else {
+                    if ((var1 != null && var1 >= settings.customamount.toDouble()) || (var2 != null && var2 >= settings.customamount.toDouble())) {
+                        wet=1
+                    }
+                    rain=(var2 ?: 0)
+                    if ((var1 ?: 0) > (var2 ?: 0)) {
+                            rain=var1
                     }
                 }
             }
-            if (wet == 1) {
-                    sendEvent(name: "water", value: "wet", isStateChange: true)
-                    sendEvent(name: "switch", value: "on", isStateChange: true)
-            } else {
-                    sendEvent(name: "water", value: "dry", isStateChange: true)
-                    sendEvent(name: "switch", value: "off", isStateChange: true)
-            }
-            sendEvent(name: "RainForPeriod", value: rain)
-
-            sendEvent(name: "lastPoll", value: new Date().format("yyyy-MM-dd HH:mm:ss", location.timeZone))
-
         }
+        if (wet == 1) {
+                sendEvent(name: "water", value: "wet")
+                sendEvent(name: "switch", value: "on")
+        } else {
+                sendEvent(name: "water", value: "dry")
+                sendEvent(name: "switch", value: "off")
+        }
+        sendEvent(name: "RainForPeriod", value: rain)
+
+        sendEvent(name: "lastPoll", value: new Date().format("yyyy-MM-dd HH:mm:ss", location.timeZone))
 
     } catch (e) {
         log.error "something went wrong: $e"
     }
-
 }
 
 // Publishes the rain data that daily.json already carries: current rate, today, yesterday,
