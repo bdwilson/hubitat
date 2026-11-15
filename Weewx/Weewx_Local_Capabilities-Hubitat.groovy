@@ -54,7 +54,7 @@
 
 metadata {
     definition (name: "Weewx Local Capabilities", namespace: "brianwilson-hubitat", author: "Brian Wilson",
-                importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/weewx-async-polling/Weewx/Weewx_Local_Capabilities-Hubitat.groovy") {
+                importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/master/Weewx/Weewx_Local_Capabilities-Hubitat.groovy") {
         capability "Actuator"
         capability "Sensor"
         capability "Temperature Measurement"
