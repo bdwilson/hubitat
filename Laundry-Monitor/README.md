@@ -460,6 +460,23 @@ pulls the median from 47 to 53 minutes, which shifts the adaptive stop
 timeout, which makes the next call worse. Marking that event "No" now
 removes it from the profile entirely and the median snaps back.
 
+Which alerts count as a "No" against a cycle:
+
+| You tap No on | What it says | Effect on learning |
+|---|---|---|
+| "Washer started" / "Dryer started" | That cycle was never real | The whole cycle is left out |
+| "Washer started again..." | Same - the second load was never real | The whole cycle is left out |
+| "Washer is done" / "Dryer is done" | The end - so the length - was wrong | The whole cycle is left out |
+| A reminder | Something about the load afterwards (already moved, dryer sensor down) | **Nothing** - the wash is still a good sample |
+
+The reminder row exists because of a bug: a reminder is stamped with the
+wash's end time, and for a while a No on one dropped that perfectly good
+wash from the profile. And a No on a *start* alert used not to count at
+all, because the profile is built from cycle ends and the start alert is
+stamped with the start. The profile now follows a rejected start to the end
+of its own cycle. Both still show up in the tuning report as WRONG - that
+report is about what you saw, not about what the profile learns from.
+
 **The sanity gate.** A finished cycle that looks nothing like a real load
 gets logged with a `doubt` note but is *not* announced, and does not start
 a reminder. It deliberately gates on only the two signals with enormous

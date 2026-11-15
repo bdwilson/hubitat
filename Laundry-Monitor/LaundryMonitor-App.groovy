@@ -794,6 +794,13 @@ def washerDeadmanFired() {
 // Cycles the user has explicitly told us were wrong. Without this the app
 // learns from its own mistakes: a bad call goes into the history, shifts
 // the median, and makes the next call worse.
+//
+// Only alerts that are about whether a CYCLE was detected correctly count:
+// a wrong "started" means the cycle was never real, and a wrong "done"
+// means its end - and so its length - was wrong. A wrong reminder is about
+// what happened to the load afterwards (already moved, dryer sensor down),
+// and says nothing about the wash. It carries the wash's end time, so
+// without this filter it silently cost that wash its place in the profile.
 private List rejectedCycleKeys() {
     List fb = (state.feedback instanceof List) ? state.feedback : []
     List idx = (state.feedbackIndex instanceof List) ? state.feedbackIndex : []
@@ -801,7 +808,9 @@ private List rejectedCycleKeys() {
     fb.each { f ->
         if (f.ok) return
         Map n = idx.find { (it.i as Integer) == (f.i as Integer) }
-        if (n?.c && n?.d) keys << "${n.d}|${n.c}".toString()
+        if (!n?.c || !n?.d) return
+        if (!(n.k in ["start", "concurrent", "done"])) return
+        keys << "${n.d}|${n.c}".toString()
     }
     return keys
 }
@@ -819,12 +828,23 @@ private Map cycleProfile() {
     List entries = (state.cycleLog instanceof List) ? state.cycleLog : []
     List rejected = rejectedCycleKeys()
     List wDur = [], wPeak = [], dDur = []
+    // A wrong "started" alert is keyed to the cycle's START time, but the
+    // profile is built from END entries. Each device logs strictly start
+    // then end, so the first end after a rejected start is that cycle's.
+    Map startRejected = [:]
     entries.each { e ->
-        if (e.p != "end" || e.reason != "normal" || !e.durationMin) return
+        if (e.p == "start") {
+            startRejected[e.d] = rejected.contains("${e.d}|${e.t}".toString())
+            return
+        }
+        if (e.p != "end") return
+        boolean cycleRejected = (startRejected[e.d] as boolean) || rejected.contains("${e.d}|${e.t}".toString())
+        startRejected[e.d] = false
+        if (e.reason != "normal" || !e.durationMin) return
         // Never learn from a cycle we ourselves refused to announce - the
         // app would otherwise be taught by the very events it distrusted.
         if (e.doubt) return
-        if (rejected.contains("${e.d}|${e.t}".toString())) return
+        if (cycleRejected) return
         if (e.d == "washer") {
             wDur << (e.durationMin as Integer)
             if (e.peakW) wPeak << (e.peakW as BigDecimal).intValue()
