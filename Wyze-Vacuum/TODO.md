@@ -2,6 +2,23 @@
 
 Not yet implemented. Tracked here so they survive across sessions.
 
+## ~~42. "Excessive hub load" errors and a login that expired unnoticed (11/11-11/15)~~ — DONE (1.37.0)
+
+Device 951 (the vacuum driver) logged `LimitExceededException ... excessive hub load`
+on lines 96/103 (`on`/`off`) several times a day; the app logged the same at line 765
+(`handleVacuumPropsResponse`, first `d.sendEvent`) and 834 (`handleVacuumStatusResponse`)
+at every 15-minute poll from 11/11 10:45 PM; then the user had to re-login. Later the
+user pointed out that another device (dev:723, a wind sensor) throws the same error, so
+the hub was overloaded and this app was one of several victims. The device-side line
+numbers match a pre-1.9.0 driver. Changes (hygiene, not a proven fix for the load):
+`venusControl` and `setVacuumSuctionLevel` use `asynchttpPost` (`venusPostAsync` /
+`handleVenusControlResponse`) with the 401/403 and in-body 2001 token refresh and
+re-send also async (`_resend` in `handleTokenRefreshResponse`); a post-answer poll
+replaces relying on the caller's immediate one; `noteLoginExpired()` sends one
+notification when refresh fails or there is no token; poll cron offset to second 20.
+Tested with the real extracted methods. The blocking `venusRequest` remains only for the
+one-time map discovery in the app UI.
+
 ## ~~41. A cancelled resume restarted unnoticed (10/18)~~ — DONE (1.36.0)
 
 Arrival at 1:50 PM turned the switch off (driver `switch off` event, so the command

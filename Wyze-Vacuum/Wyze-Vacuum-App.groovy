@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.36.0 - Brian Wilson / bubba@bubba.org
+ * 1.37.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -508,15 +508,21 @@ def updated() {
     }
 }
 
+// Fires 20 seconds past the minute rather than on :00. Every cron-scheduled app and
+// driver on a hub lands on second 0, and on 11/11-11/12 this app's two poll callbacks
+// hit "LimitExceededException: App 773 generates excessive hub load" at every
+// 15-minute mark (all at xx:00.5-1.0 seconds). Another device on the same hub (a
+// wind sensor) was logging the same error, so the hub itself was overloaded; this is
+// a mitigation for sharing an instant with everything else, not a fix for that.
 private String pollCron(String minutes) {
     switch (minutes) {
-        case "1":  return "0 * * * * ?"
-        case "2":  return "0 0/2 * * * ?"
-        case "5":  return "0 0/5 * * * ?"
-        case "10": return "0 0/10 * * * ?"
-        case "15": return "0 0/15 * * * ?"
-        case "30": return "0 0/30 * * * ?"
-        default:   return "0 0/5 * * * ?"
+        case "1":  return "20 * * * * ?"
+        case "2":  return "20 0/2 * * * ?"
+        case "5":  return "20 0/5 * * * ?"
+        case "10": return "20 0/10 * * * ?"
+        case "15": return "20 0/15 * * * ?"
+        case "30": return "20 0/30 * * * ?"
+        default:   return "20 0/5 * * * ?"
     }
 }
 
@@ -614,6 +620,7 @@ private void loginWyze() {
 private void handleLoginResult(Map result) {
     if (result?.access_token) {
         state.wyzeAccessToken  = result.access_token
+        state.loginExpiredNotified = false
         state.wyzeRefreshToken = result.refresh_token
         state.wyzeUserId       = result.user_id
         state.wyzeMfa = null
@@ -688,6 +695,7 @@ private boolean refreshWyzeToken() {
     def data = resp?.data ?: resp
     if (data?.access_token) {
         state.wyzeAccessToken = data.access_token
+        state.loginExpiredNotified = false
         if (data.refresh_token) state.wyzeRefreshToken = data.refresh_token
         ifDebug("Wyze token refresh succeeded")
         return true
@@ -1361,6 +1369,7 @@ private Map parseAsyncJson(resp) {
 private void refreshTokenAsync(Map retryContext) {
     if (!state.wyzeRefreshToken) {
         log.error "Wyze Vacuum: no refresh token available -- click Re-login in the app."
+        noteLoginExpired()
         return
     }
     def payload = new LinkedHashMap()
@@ -1396,13 +1405,22 @@ def handleTokenRefreshResponse(resp, data) {
         def errMsg = null
         try { errMsg = resp?.getErrorMessage() } catch (e) { errMsg = resp?.error }
         log.error "Wyze Vacuum: async token refresh failed for ${data?.mac}: ${result ?: errMsg}. If this keeps happening, click Re-login in the app."
+        noteLoginExpired()
         return
     }
 
+    state.loginExpiredNotified = false
     state.wyzeAccessToken = tokenData.access_token
     if (tokenData.refresh_token) state.wyzeRefreshToken = tokenData.refresh_token
     ifDebug("Wyze token refresh succeeded (async)")
 
+    if (data?._resend && data?._postPath) {
+        def resendData = new LinkedHashMap(data)
+        resendData["_retried"] = true
+        resendData.remove("_resend")
+        venusPostAsync(data._postPath, data._postBody, data._postCallback ?: "handleVenusControlResponse", resendData)
+        return
+    }
     def path = data?._venusPath
     def callbackHandler = data?._retryCallback
     if (path && callbackHandler) {
@@ -1969,7 +1987,7 @@ def setVacuumSuctionLevel(String mac, String level) {
     ifDebug("setVacuumSuctionLevel: ${mac} -> ${level}")
     def code = [Quiet: 1, Standard: 2, Strong: 3][level] ?: 2
     def body = [did: mac, model: VACUUM_PRODUCT_MODEL, cmd: "set_preference", params: [[ctrltype: 1, value: code]], is_sub_device: 0]
-    venusRequest("POST", "/plugin/venus/set_iot_action", [:], body)
+    venusPostAsync("/plugin/venus/set_iot_action", body, "handleVenusControlResponse", [mac: mac])
     pollVacuum(mac)
 }
 
@@ -1977,18 +1995,102 @@ def refreshVacuum(String mac) {
     pollVacuum(mac)
 }
 
+// Commands go out asynchronously. They used to be blocking posts, and a blocking
+// post made on behalf of a driver command (on()/off() call parent.x() on the
+// driver's own execution) is exactly what Hubitat's hub-load guardrail punishes:
+// with an expired token one command meant a blocking POST that failed, a blocking
+// token refresh, then a blocking retry -- three network calls in a row inside the
+// driver's call. Confirmed live 11/11-11/15: "LimitExceededException: Device 951
+// generates excessive hub load" on on() and off() several times a day while the
+// Wyze login was expiring, until the user had to re-login. The 1.5.0/1.5.1 poll
+// fixes were the same lesson. The response is handled in handleVenusControlResponse.
 private void venusControl(String mac, int type, int value, List rooms = null) {
     def body = [type: type, value: value, vacuumMopMode: 0]
     if (rooms) body["rooms_id"] = rooms
-    def resp = venusRequest("POST", "/plugin/venus/${mac}/control", [:], body)
+    venusPostAsync("/plugin/venus/${mac}/control", body, "handleVenusControlResponse", [mac: mac])
+}
+
+private void venusPostAsync(String path, Map bodyMap, String callbackHandler, Map ctx) {
+    if (!state.wyzeAccessToken) {
+        log.warn "Wyze Vacuum: not sending ${path} for ${ctx?.mac} -- not logged in. Click Log In in the app."
+        noteLoginExpired()
+        return
+    }
+    def nonce = now()
+    def requestId = md5Hex(md5Hex(nonce.toString()))
+    def signingKey = md5Hex("${state.wyzeAccessToken}${VENUS_SALT}")
+    def payload = new LinkedHashMap(bodyMap ?: [:])
+    payload["nonce"] = nonce.toString()
+    def bodyJson = JsonOutput.toJson(payload)
+    def headers = [
+        "access_token"   : state.wyzeAccessToken,
+        "requestid"      : requestId,
+        "appid"          : VENUS_APP_ID,
+        "appinfo"        : "wyze_android_${APP_VERSION}",
+        "phoneid"        : state.wyzePhoneId,
+        "User-Agent"     : "wyze_android_${APP_VERSION}",
+        "Accept-Encoding": "gzip",
+        "signature2"     : hmacMd5Hex(signingKey, bodyJson)
+    ]
+    def asyncData = new LinkedHashMap(ctx ?: [:])
+    asyncData["_postPath"] = path
+    asyncData["_postBody"] = bodyMap
+    asyncData["_postCallback"] = callbackHandler
+    try {
+        asynchttpPost(callbackHandler, [uri: VENUS_BASE, path: path, requestContentType: "application/json", headers: headers, body: bodyJson, timeout: 20], asyncData)
+    } catch (e) {
+        log.error "Wyze Venus async POST ${path} failed to dispatch: ${e}"
+    }
+}
+
+def handleVenusControlResponse(resp, data) {
+    def mac = data?.mac
+    Integer status = null
+    try { status = resp?.status as Integer } catch (e) { status = null }
+    boolean hasError = false
+    try { hasError = resp?.hasError() as boolean } catch (e) { hasError = (status != null && status >= 400) }
+    Map body = hasError ? null : parseAsyncJson(resp)
+
+    if ((hasError && status in [401, 403]) || isAuthErrorResponse(body)) {
+        if (!data?._retried) {
+            ifDebug("Wyze control for ${mac} got an auth error (${status ?: body?.code}), refreshing token (async) and re-sending once")
+            def retryContext = new LinkedHashMap(data ?: [:])
+            retryContext["_resend"] = true
+            refreshTokenAsync(retryContext)
+        } else {
+            log.error "Wyze Vacuum ${mac}: still getting an auth error after refreshing the token -- the command was not sent"
+            noteLoginExpired()
+        }
+        return
+    }
+    if (hasError) {
+        def errMsg = null
+        try { errMsg = resp?.getErrorMessage() } catch (e) { errMsg = resp?.error }
+        log.error "Wyze Venus control for ${mac} failed (${status}): ${errMsg}"
+        return
+    }
     // Wyze returns code as an integer (1), not the string "1" -- comparing
     // against a string here made every successful call log a false warning.
-    if (resp != null && resp.code?.toString() != "1") {
-        log.warn "Wyze Vacuum control (${mac}) returned: ${resp}"
-        if (isDeviceOfflineResponse(resp)) noteVacuumOffline(mac)
-    } else if (resp != null) {
+    if (body != null && body.code?.toString() != "1") {
+        log.warn "Wyze Vacuum control (${mac}) returned: ${body}"
+        if (isDeviceOfflineResponse(body)) noteVacuumOffline(mac)
+    } else if (body != null) {
         state.offlineNotified?.remove(mac)
+        state.loginExpiredNotified = false
     }
+    // The callers poll right after sending, which now races the command; this
+    // poll runs once Wyze has actually answered it.
+    if (mac) pollVacuum(mac)
+}
+
+// One notification per expired login; cleared by a successful login, token
+// refresh or command. Before this, an expired login only wrote log errors and the
+// first sign was a vacuum that wouldn't start.
+private void noteLoginExpired() {
+    if (state.loginExpiredNotified) return
+    state.loginExpiredNotified = true
+    log.error "Wyze Vacuum: the Wyze login has expired and could not be refreshed -- open the app and click Log In"
+    sendVacuumNotification("Wyze Vacuum: the Wyze login has expired, so commands and status updates are not reaching the vacuum. Open the Wyze Vacuum Connect app and log in again.")
 }
 
 // Wyze answers a command for a vacuum that has lost its Wi-Fi with code 3000 /
