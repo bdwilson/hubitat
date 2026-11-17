@@ -2,6 +2,35 @@
 
 Not yet implemented. Tracked here so they survive across sessions.
 
+## 44. EXPERIMENT: send Pause after Dock when cancelling a battery-paused job (1.38.0)
+
+Dock does not cancel the firmware's pending resume (10/18, and 11/16 with two docks).
+The user is rarely home when it charges and finishes later, so asked for a temporary
+Pause to see what it does. `dockVacuumFor` now sends `venusControl(mac, 0, 2)` after
+the dock when `cancelPendingWork` cancelled a job paused for charging, behind
+`EXPERIMENT_PAUSE_ON_CANCEL`, with an info log line. RESULT NOT YET KNOWN. Read it from
+the app log when the battery passes ~60% after the next stop: stays docked (mode 11 or
+0, never mode 1/5 with charge_state 0) = it worked and should become permanent; leaves
+the dock = remove it. Also watch for the vacuum reading Paused while docked.
+
+## ~~43. Stop watching for a restart once the job is gone (11/16)~~ — DONE (1.37.1)
+
+11/16: trip started 4:00 PM, cleaned to 7%, mode 11 from 4:38. User pressed off at
+4:51:46 (`dock() received -- ended the rotation sweep and cancelled a job paused for
+charging`) and again at 4:57:19 (`nothing outstanding to cancel`). Battery climbed
+6% -> 60% at ~0.55%/min. At 6:21 PM (60%) it left the dock (`mode 5`, `charge_state
+0`, "Returning to charge"), was back at `mode 0` Docked by 6:23, and charged to
+100%. **CORRECTION (user, same day): the firmware DID restart the job at 60%; the user
+walked over, stopped it and sent it home (that is the `mode 5`).** My first reading
+("it did not restart") was wrong. So two dock commands (4:51 and 4:57) did not cancel
+the pending resume, matching 10/18. The app only polled at 6:20 (mode 11) and 6:21
+(mode 5), because the person acted within one poll interval; had they not, the 1.36.0
+catch would have docked it after seeing Cleaning/Paused on a poll or two. 1.36.0's catch never fired because the off-dock status
+was `Returning to charge`, not Paused/Cleaning (correct: nothing to catch), but the
+cancellation marker kept the app polling every minute until its 3-hour expiry
+(7:51 PM), 90 minutes longer than needed. Now a Docked read more than 2 minutes after
+the stop releases the marker. Tested with the real methods against this sequence.
+
 ## ~~42. "Excessive hub load" errors and a login that expired unnoticed (11/11-11/15)~~ — DONE (1.37.0)
 
 Device 951 (the vacuum driver) logged `LimitExceededException ... excessive hub load`
