@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.37.1 - Brian Wilson / bubba@bubba.org
+ * 1.38.0 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -85,6 +85,14 @@ import java.util.zip.Inflater
 // itself, or the switch latches on (the 1.29.1 bug). The limits that matter to
 // the user are the room count and "nothing left due".
 @Field static final Integer WAIT_FOR_CHARGE_GIVE_UP_HOURS = 6
+
+// TEMPORARY EXPERIMENT (1.38.0). Two dock commands during a battery pause did not
+// stop the firmware restarting the job at 60% (10/18 and 11/16), and nothing else
+// is known to cancel it. When a stop cancels a job that is paused for charging, also
+// send a Pause and see whether the restart still happens. Whatever the result, remove
+// this (or make it permanent) -- it is a guess about what the firmware does with a
+// Pause while it is docked in "will resume".
+@Field static final Boolean EXPERIMENT_PAUSE_ON_CANCEL = true
 
 // A vacuum Paused, off its dock and not charging for this long is stranded (1.34.0).
 @Field static final Integer STRANDED_PAUSED_MINUTES = 30
@@ -1574,10 +1582,11 @@ private boolean hasWorkPending(String mac) {
 // so there's no Cleaning -> non-Cleaning transition coming to close the run
 // out -- without this it would stay open until its 3-hour timeout, keeping the
 // switch on, and the firmware would resume the job later regardless.
-private void cancelPendingWork(String mac) {
+// Returns true if it cancelled a job that was paused for charging.
+private boolean cancelPendingWork(String mac) {
     boolean hadPausedJob = state.pausedForResumeAt?.getAt(mac) != null
     boolean hadRun = state.activeCleanRun?.containsKey(mac)
-    if (!hadPausedJob && !hadRun) return
+    if (!hadPausedJob && !hadRun) return false
 
     // Rooms are deliberately left uncredited -- the job was cancelled, not
     // finished, so they stay due and come up again next rotation.
@@ -1593,6 +1602,7 @@ private void cancelPendingWork(String mac) {
         state.resumeCancelled[mac] = now()
         ifDebug("cancelPendingWork(${mac}): cancelled a job that was paused for charging")
     }
+    return hadPausedJob
 }
 
 // True while a stop issued during a battery pause is still waiting for the
@@ -1995,8 +2005,12 @@ private void dockVacuumFor(String mac, String reason) {
     // Ends the job outright, including one that's only paused for charging --
     // see cancelPendingWork. Docking an already-docked vacuum is a no-op at
     // the device, so the cancellation has to be tracked on this side.
-    cancelPendingWork(mac)
+    boolean cancelledPausedJob = cancelPendingWork(mac)
     venusControl(mac, 3, 1) // RETURN_TO_CHARGING / START
+    if (cancelledPausedJob && EXPERIMENT_PAUSE_ON_CANCEL) {
+        log.info "Wyze Vacuum ${mac}: EXPERIMENT -- also sending Pause to a vacuum docked in \"will resume\", to see whether that stops the firmware restarting the job at ~60% battery"
+        venusControl(mac, 0, 2) // GLOBAL_SWEEPING / PAUSE
+    }
     pollVacuum(mac)
 }
 
