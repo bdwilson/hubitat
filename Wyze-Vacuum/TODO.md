@@ -9,9 +9,12 @@ Not yet implemented. Tracked here so they survive across sessions.
 charging`) and again at 4:57:19 (`nothing outstanding to cancel`). Battery climbed
 6% -> 60% at ~0.55%/min. At 6:21 PM (60%) it left the dock (`mode 5`, `charge_state
 0`, "Returning to charge"), was back at `mode 0` Docked by 6:23, and charged to
-100% with no cleaning. So the vacuum did NOT restart the job this time. Whether the
-two dock commands cancelled it (10/18 had one and it did restart) or it varies is
-UNKNOWN; do not rely on it. 1.36.0's catch never fired because the off-dock status
+100%. **CORRECTION (user, same day): the firmware DID restart the job at 60%; the user
+walked over, stopped it and sent it home (that is the `mode 5`).** My first reading
+("it did not restart") was wrong. So two dock commands (4:51 and 4:57) did not cancel
+the pending resume, matching 10/18. The app only polled at 6:20 (mode 11) and 6:21
+(mode 5), because the person acted within one poll interval; had they not, the 1.36.0
+catch would have docked it after seeing Cleaning/Paused on a poll or two. 1.36.0's catch never fired because the off-dock status
 was `Returning to charge`, not Paused/Cleaning (correct: nothing to catch), but the
 cancellation marker kept the app polling every minute until its 3-hour expiry
 (7:51 PM), 90 minutes longer than needed. Now a Docked read more than 2 minutes after
