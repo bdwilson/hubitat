@@ -1,7 +1,7 @@
 /**
  * Wyze Vacuum Connect App
  *
- * 1.37.0 - Brian Wilson / bubba@bubba.org
+ * 1.37.1 - Brian Wilson / bubba@bubba.org
  *
  * Native Hubitat integration for the Wyze Robot Vacuum (e.g. 200S / JA_RO2).
  *
@@ -1612,7 +1612,24 @@ private boolean resumeCancelPending(String mac) {
 // stopped again by a person (Paused), which the Cleaning-transition check above
 // can't see. Either way the right place for it is the dock. Returns true if it
 // scheduled the dock.
+//
+// It also lets go once the vacuum is plainly settled with no job pending. Docked
+// here means mode 0 while charging; a firmware job waiting to resume reads mode 11
+// ("Returning to charge"), so seeing mode 0 again means the job is gone. Confirmed
+// live 11/16: stopped at 4:51 PM at 7%, the firmware left the dock at 60% (6:21),
+// went straight back (mode 5) and sat at mode 0, charging to 100% -- but the
+// marker kept the app on minute-by-minute polling until its 3-hour expiry (7:51 PM),
+// 90 minutes longer than needed. The 2-minute guard avoids reading the instant
+// right after the stop command as "settled".
 private boolean catchCancelledResume(String mac, String newStatus, boolean isCharging) {
+    if (newStatus == "Docked") {
+        def at = state.resumeCancelled?.getAt(mac)
+        if (at != null && (now() - (at as Long)) > 2 * 60 * 1000L) {
+            state.resumeCancelled.remove(mac)
+            ifDebug("catchCancelledResume(${mac}): docked with no job pending -- no longer watching for a restart")
+        }
+        return false
+    }
     if (isCharging || !(newStatus in ["Paused", "Cleaning"])) return false
     if (!consumeResumeCancelled(mac)) return false
     runIn(2, "cancelAutoResumeDock", [data: [mac: mac], overwrite: false])

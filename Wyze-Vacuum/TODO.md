@@ -2,6 +2,21 @@
 
 Not yet implemented. Tracked here so they survive across sessions.
 
+## ~~43. Stop watching for a restart once the job is gone (11/16)~~ — DONE (1.37.1)
+
+11/16: trip started 4:00 PM, cleaned to 7%, mode 11 from 4:38. User pressed off at
+4:51:46 (`dock() received -- ended the rotation sweep and cancelled a job paused for
+charging`) and again at 4:57:19 (`nothing outstanding to cancel`). Battery climbed
+6% -> 60% at ~0.55%/min. At 6:21 PM (60%) it left the dock (`mode 5`, `charge_state
+0`, "Returning to charge"), was back at `mode 0` Docked by 6:23, and charged to
+100% with no cleaning. So the vacuum did NOT restart the job this time. Whether the
+two dock commands cancelled it (10/18 had one and it did restart) or it varies is
+UNKNOWN; do not rely on it. 1.36.0's catch never fired because the off-dock status
+was `Returning to charge`, not Paused/Cleaning (correct: nothing to catch), but the
+cancellation marker kept the app polling every minute until its 3-hour expiry
+(7:51 PM), 90 minutes longer than needed. Now a Docked read more than 2 minutes after
+the stop releases the marker. Tested with the real methods against this sequence.
+
 ## ~~42. "Excessive hub load" errors and a login that expired unnoticed (11/11-11/15)~~ — DONE (1.37.0)
 
 Device 951 (the vacuum driver) logged `LimitExceededException ... excessive hub load`
