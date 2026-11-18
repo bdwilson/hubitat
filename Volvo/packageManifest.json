@@ -3,7 +3,7 @@
   "author": "Brian Wilson",
   "minimumHEVersion": "0.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Volvo",
-  "communityLink": "",
+  "communityLink": "https://community.hubitat.com/t/release-volvo-connect-native-volvo-integration-oauth2-no-external-server/167561",
   "dateReleased": "2026-06-15",
   "releaseNotes": "1.2.4 — Estimate charge completion time from observed charge rate when the API does not supply it. 10% step notifications now also include target % and estimated finish time.",
   "version": "1.2.4",

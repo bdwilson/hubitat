@@ -1,18 +1,29 @@
 # Volvo Connect — Hubitat Integration
 
+Support / discussion: [Hubitat Community thread](https://community.hubitat.com/t/release-volvo-connect-native-volvo-integration-oauth2-no-external-server/167561)
+
 Native Hubitat integration for Volvo vehicles via the [Volvo Connected Vehicle API](https://developer.volvocars.com). No external servers or proxies required.
 
+> ⚠️ **Not all features are verified.** The author's Volvo developer app has **not received full approval** for the extended set of scopes. Lock/unlock, battery/charging and the charging notifications are tested against a real vehicle. Everything marked 🧪 below is **implemented from Volvo's API documentation but untested** — on the author's account those calls return `403 Forbidden`. See [API Approval](#️-api-approval--tested-vs-untested-features).
+
 ## Features
+
+**Tested and working**
 
 - **Lock / Unlock** — control your vehicle's central lock from Hubitat
 - **Battery level** (EVs/PHEVs) — state of charge as a percentage
 - **Electric range** — estimated range remaining
-- **Charging status** — current charging state (e.g. `CHARGING_PAUSED`, `CHARGING`)
-- **Fuel level** (ICE/PHEV) — fuel percentage
-- **Fuel range** — estimated range to empty
-- **GPS location** — latitude/longitude *(requires Location API approval — see note below)*
-- **Charging notifications** — alerts when charging starts (with estimated finish time), stops, or completes; optional 10% battery step alerts
-- **Configurable poll interval** — 5, 10, 15, 30, or 60 minutes
+- **Charging status, connection and charge limit** — e.g. `CHARGING`, `CONNECTED_AC`, target %
+- **Charging notifications** — started (with target % and estimated finish time), charge limit reached, unplugged, fully charged, optional 10% steps
+- **Door / hood / tailgate / tank lid status** (partial — depends on what your vehicle reports)
+- **Metric or imperial units** and a **configurable poll interval** (5, 10, 15, 30 or 60 minutes)
+
+**🧪 Implemented but untested (need Volvo's extended approval)**
+
+- **GPS location** — latitude, longitude, heading, timestamp (`location:read`)
+- **Window and sunroof status**, **tyre status**, **odometer**, **warning lights**, **engine status**
+- **Engine start/stop**, **climatization start/stop**, **honk / flash**
+- **Fuel level and range** (ICE/PHEV) — not verified on an ICE or hybrid vehicle
 
 ---
 
@@ -64,42 +75,42 @@ Select these in the Volvo developer portal when creating your app:
 
 ### Future-proofing: extra scopes to select now
 
-Volvo re-approval takes 14–21 days, so it's worth enabling these now even if the current integration doesn't use them yet:
+The extended features above need these scopes. Volvo re-approval takes 14–21 days, so select them when you first create the app rather than waiting twice:
 
 `conve:battery_charge_level`, `conve:climatization_start_stop`, `conve:engine_start_stop`, `conve:environment`, `conve:honk_flash`, `conve:odometer_status`, `conve:trip_statistics`, `conve:tyre_status`, `conve:warnings`, `conve:windows_status`
 
 ---
 
-## ⚠️ API Approval — 14 to 21 Days
+## ⚠️ API Approval — Tested vs Untested Features
 
-Volvo reviews all developer app submissions before granting access.
+Volvo reviews all developer app submissions before granting access, which takes roughly 14–21 days.
 
-### Works immediately (no approval required)
+**The author has not received full approval for the extended controls.** Anything in the second table below returns `403 Forbidden` on the author's account, so it has **never been run successfully against a real vehicle**. The code follows Volvo's published API, but treat those features as experimental. If you do have approval, please report whether they work (with a debug log) in the support thread or as a GitHub issue.
 
-These work as soon as you create your Volvo developer app and authorize:
+### Tested — works without extended approval
 
 | Feature | Notes |
 |---|---|
 | Lock / Unlock | |
-| Battery level & charging status | Requires Energy API subscription |
-| Fuel level & range | |
-| Door status (hood, tailgate, tank lid) | Partial — individual doors may be pending |
-| Charging notifications | Driven by battery/charging data above |
+| Battery level, range, charging status, charge limit | Requires Energy API subscription |
+| Charging notifications | Driven by the battery/charging data above |
+| Door status (hood, tailgate, tank lid) | Partial — individual doors may be missing |
 
-### Requires full API approval (14–21 days)
+### 🧪 Untested — need extended approval
 
-These return `403 Forbidden` until Volvo approves your application. The app logs them as warnings and silently skips — no action needed on your part. They will start working automatically once approved.
+These return `403 Forbidden` until Volvo approves the corresponding scopes. The app logs them as warnings and skips them, so nothing breaks while you wait. Once approved they *should* start working, but that is not confirmed.
 
 | Feature | Scope |
 |---|---|
 | GPS location | `location:read` |
 | Odometer | `conve:odometer_status` |
-| Window status | `conve:windows_status` |
+| Window / sunroof status | `conve:windows_status` |
 | Tyre status | `conve:tyre_status` |
 | Warning lights | `conve:warnings` |
-| Engine start/stop | `conve:engine_start_stop` |
-| Climatization start/stop | `conve:climatization_start_stop` |
+| Engine status, start / stop | `conve:engine_start_stop` |
+| Climatization start / stop | `conve:climatization_start_stop` |
 | Honk / flash | `conve:honk_flash` |
+| Fuel level / range | `conve:fuel_status` — works for the author's EV account but returns no data, so unverified on ICE/hybrid |
 
 ---
 
@@ -138,26 +149,36 @@ Hubitat will create a child device named **Volvo {VIN}** under the app. You can 
 
 ## Device Attributes
 
+Attributes marked 🧪 depend on scopes that need extended approval and are untested.
+
 | Attribute | Type | Description |
 |---|---|---|
 | `lock` | enum | `locked` / `unlocked` / `locking` / `unlocking` |
 | `battery` | number | EV/PHEV battery charge level (%) |
-| `batteryRange` | number | Estimated electric range (km) |
-| `chargingStatus` | string | e.g. `CHARGING_PAUSED`, `CHARGING` |
-| `fuelLevel` | number | Fuel level (%) |
-| `fuelRange` | number | Estimated fuel range (km) |
-| `latitude` | string | GPS latitude *(after API approval)* |
-| `longitude` | string | GPS longitude *(after API approval)* |
-| `lastLocation` | string | `lat, lon` combined *(after API approval)* |
+| `batteryRange` | number | Estimated electric range (km or mi) |
+| `chargingStatus` | string | e.g. `CHARGING`, `CHARGING_PAUSED`, `FULLY_CHARGED` |
+| `chargingConnection` | string | e.g. `CONNECTED_AC`, `DISCONNECTED` |
+| `chargeLimit` | number | Target charge level set on the car (%) |
+| `fuelLevel`, `fuelRange` | number | Fuel level (%) and range 🧪 |
+| `doorFrontLeft/Right`, `doorRearLeft/Right`, `hood`, `tailgate`, `tankLid` | string | Door states (partial) |
+| `windowFrontLeft/Right`, `windowRearLeft/Right`, `sunroof` | string | Window states 🧪 |
+| `tyreFrontLeft/Right`, `tyreRearLeft/Right` | string | Tyre status 🧪 |
+| `odometer` | number | Total distance (km or mi) 🧪 |
+| `engineStatus` | string | `RUNNING` / `STOPPED` 🧪 |
+| `warningBrakeLight`, `warningFuelLow`, `warningEngineLight`, `warningOilLow`, `warningWasherFluid`, `warningBrakeFluid` | string | Warning states 🧪 |
+| `vehicleModel`, `modelYear`, `fuelType`, `externalColor`, `gearbox` | string | Vehicle info (fetched once) |
+| `latitude`, `longitude`, `heading`, `lastLocation`, `locationTimestamp` | string | GPS 🧪 |
 | `lastRefresh` | string | Timestamp of last successful poll |
 
 ## Device Commands
 
 | Command | Description |
 |---|---|
-| `lock()` | Send lock command to vehicle |
-| `unlock()` | Send unlock command to vehicle |
+| `lock()` / `unlock()` | Lock or unlock the vehicle |
 | `refresh()` | Force an immediate poll |
+| `startEngine(minutes)` / `stopEngine()` | 🧪 Remote engine start (1–15 min) / stop |
+| `startClimatization()` / `stopClimatization()` | 🧪 Pre-condition the cabin |
+| `honk()` / `flash()` / `honkAndFlash()` | 🧪 Horn and/or lights |
 
 ---
 
@@ -181,7 +202,7 @@ Configure notification devices under **Notifications** on the auth page after se
 
 ## Troubleshooting
 
-**`403 Forbidden` on location** — API not yet approved. Wait for Volvo's approval email (14–21 days). No action needed; it will start working automatically.
+**`403 Forbidden` on location, odometer, windows, tyres, warnings, engine, climatization, honk/flash** — your Volvo developer app hasn't been approved for those scopes. They're logged as warnings and skipped. These features are untested even by the author (see above).
 
 **`410 Gone` on energy endpoint** — Outdated endpoint. Make sure you're running the latest version of the app code.
 
@@ -192,6 +213,10 @@ Configure notification devices under **Notifications** on the auth page after se
 **Re-authorization** — If your refresh token expires or becomes invalid, click **Re-authorize** on the app's auth page. The Redirect URI does not change, so no portal changes are needed.
 
 ---
+
+## Support
+
+Questions, bug reports and feedback (especially if you have extended Volvo approval and can test the 🧪 features): [Hubitat Community thread](https://community.hubitat.com/t/release-volvo-connect-native-volvo-integration-oauth2-no-external-server/167561).
 
 ## License
 

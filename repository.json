@@ -153,6 +153,16 @@
       ],
       "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Scrypted/packageManifest.json",
       "description": "Virtual motion sensors for Scrypted NVR verified detections, plus per-camera and Home / Away muting of Scrypted's own notifications (requires a Scrypted bridge script)"
+    },
+    {
+      "name": "Volvo Connect",
+      "category": "Integrations",
+      "tags": [
+        "Monitoring",
+        "Control"
+      ],
+      "location": "https://raw.githubusercontent.com/bdwilson/hubitat/master/Volvo/packageManifest.json",
+      "description": "Native Volvo integration via the Volvo Connected Vehicle API (OAuth2/PKCE, no external server) - lock/unlock, battery/fuel/range, charging status and notifications, doors, windows, tyres, odometer, GPS location, plus engine/climate/honk commands"
     }
   ]
 }
