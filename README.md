@@ -39,7 +39,7 @@ For anything not in HPM (marked ➖ in the tables), open the package's folder, t
 
 | Package | Type | Key Features | HPM | Docs | Community |
 | --- | --- | --- | :---: | --- | --- |
-| **Volvo Connect** | ☁️ Cloud | Lock/unlock • battery, fuel & range • charging status with start/stop/limit-reached notifications and finish-time estimate • doors, windows, tyres, odometer • GPS location • engine/climate/honk commands (some need Volvo API approval) | 📦 | [Docs](Volvo) | — |
+| **Volvo Connect** | ☁️ Cloud | Lock/unlock • battery, fuel & range • charging status with start/stop/limit-reached notifications and finish-time estimate • doors, windows, tyres, odometer • GPS location • engine/climate/honk commands (🧪 extended features are untested — they need Volvo API approval) | 📦 | [Docs](Volvo) | — |
 
 ## 🏊 Pool, Water & Irrigation
 
