@@ -94,5 +94,5 @@ For anything not in HPM (marked ➖ in the tables), open the package's folder, t
 
 ## Notes
 
-- **Volvo Connect** and **Tuya Zigbee Valve** have a `packageManifest.json` but are not yet listed in `repository.json`, so they won't appear in HPM's keyword search until they are; install them from their folder in the meantime.
-- Packages without a Community thread yet (**Scrypted Connect**, **Volvo Connect**) will be linked here once a release thread exists.
+- **Tuya Zigbee Valve** has a `packageManifest.json` but is not yet listed in `repository.json`, so it won't appear in HPM's keyword search until it is; install it from its folder in the meantime.
+- Packages without a Community thread yet (**Scrypted Connect**, **Volvo Connect**, **Toggle API**) will be linked here once a release thread exists.
