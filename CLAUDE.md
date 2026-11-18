@@ -59,7 +59,7 @@ Development happens on a feature/fix branch. A package only becomes
 installable via HPM once its `packageManifest.json` resolves on `master`
 and (for a first release) it's listed in the root `repository.json`. When
 opening a PR that releases an integration's current branch state to
-`master`, do all three of the following in that same PR:
+`master`, do all four of the following in that same PR:
 
 ### 1. Flip every `.groovy` file's `importUrl` to `master`
 
@@ -115,6 +115,26 @@ Since `importUrl` is flipping to `master` in this same PR (step 1 above),
 double-check any README links to the `.groovy` file(s) themselves — they
 should already be raw URLs per the rule above, and now need to point at
 `master` too, same as `importUrl`.
+
+### 4. Populate/update the root `README.md` home page
+
+The root `README.md` is the home page listing every integration in the repo
+(grouped tables: Package, Type, Key Features, HPM, Docs, Community). Treat
+it as part of the check-in, same as `importUrl` and the manifest — not an
+optional follow-up:
+
+- **New integration:** add a row in the matching category table (add a
+  category if none fits). `HPM` is 📦 only if it's listed in
+  `repository.json`, else ➖. `Community` links the `communityLink` from its
+  `packageManifest.json` (`—` if empty).
+- **Existing integration:** if its feature set, type (🌐 Local / ☁️ Cloud /
+  🔌 Bridge), HPM status, or community thread changed, update its row in
+  the same commit.
+- **Added to `repository.json` or given a `communityLink`:** update that
+  row's `HPM` / `Community` cells (and drop it from the "Notes" section at
+  the bottom if it was listed there).
+- Keep the row's Key Features in step with the integration's own
+  `<Dir>/README.md` — don't let the two drift apart.
 
 ### Before opening the PR
 
