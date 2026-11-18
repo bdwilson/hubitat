@@ -39,7 +39,7 @@ For anything not in HPM (marked ➖ in the tables), open the package's folder, t
 
 | Package | Type | Key Features | HPM | Docs | Community |
 | --- | --- | --- | :---: | --- | --- |
-| **Volvo Connect** | ☁️ Cloud | Lock/unlock • battery, fuel & range • charging status with start/stop/limit-reached notifications and finish-time estimate • doors, windows, tyres, odometer • GPS location • engine/climate/honk commands (🧪 extended features are untested — they need Volvo API approval) | 📦 | [Docs](Volvo) | — |
+| **Volvo Connect** | ☁️ Cloud | Lock/unlock • battery, fuel & range • charging status with start/stop/limit-reached notifications and finish-time estimate • doors, windows, tyres, odometer • GPS location • engine/climate/honk commands (🧪 extended features are untested — they need Volvo API approval) | 📦 | [Docs](Volvo) | [💬](https://community.hubitat.com/t/release-volvo-connect-native-volvo-integration-oauth2-no-external-server/167561) |
 
 ## 🏊 Pool, Water & Irrigation
 
@@ -95,4 +95,4 @@ For anything not in HPM (marked ➖ in the tables), open the package's folder, t
 ## Notes
 
 - **Tuya Zigbee Valve** has a `packageManifest.json` but is not yet listed in `repository.json`, so it won't appear in HPM's keyword search until it is; install it from its folder in the meantime.
-- Packages without a Community thread yet (**Scrypted Connect**, **Volvo Connect**, **Toggle API**) will be linked here once a release thread exists.
+- Packages without a Community thread yet (**Scrypted Connect**, **Toggle API**) will be linked here once a release thread exists.

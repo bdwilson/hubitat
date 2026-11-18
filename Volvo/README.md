@@ -1,5 +1,7 @@
 # Volvo Connect — Hubitat Integration
 
+Support / discussion: [Hubitat Community thread](https://community.hubitat.com/t/release-volvo-connect-native-volvo-integration-oauth2-no-external-server/167561)
+
 Native Hubitat integration for Volvo vehicles via the [Volvo Connected Vehicle API](https://developer.volvocars.com). No external servers or proxies required.
 
 > ⚠️ **Not all features are verified.** The author's Volvo developer app has **not received full approval** for the extended set of scopes. Lock/unlock, battery/charging and the charging notifications are tested against a real vehicle. Everything marked 🧪 below is **implemented from Volvo's API documentation but untested** — on the author's account those calls return `403 Forbidden`. See [API Approval](#️-api-approval--tested-vs-untested-features).
@@ -211,6 +213,10 @@ Configure notification devices under **Notifications** on the auth page after se
 **Re-authorization** — If your refresh token expires or becomes invalid, click **Re-authorize** on the app's auth page. The Redirect URI does not change, so no portal changes are needed.
 
 ---
+
+## Support
+
+Questions, bug reports and feedback (especially if you have extended Volvo approval and can test the 🧪 features): [Hubitat Community thread](https://community.hubitat.com/t/release-volvo-connect-native-volvo-integration-oauth2-no-external-server/167561).
 
 ## License
 
