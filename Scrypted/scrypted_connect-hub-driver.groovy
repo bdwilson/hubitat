@@ -14,7 +14,7 @@ metadata {
         name: "Scrypted Connect Hub",
         namespace: "brianwilson-hubitat",
         author: "Brian Wilson",
-        importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/scrypted-connect/Scrypted/scrypted_connect-hub-driver.groovy"
+        importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/Scrypted/scrypted_connect-hub-driver.groovy"
     ) {
         capability "Switch"
         capability "Refresh"

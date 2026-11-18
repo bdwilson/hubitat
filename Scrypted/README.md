@@ -1,5 +1,7 @@
 # Scrypted Connect for Hubitat
 
+Support / discussion: [Hubitat Community release thread](https://community.hubitat.com/t/release-scrypted-connect-scrypted-nvr-detections-and-notification-muting/167560)
+
 Connects [Scrypted NVR](https://scrypted.app) to Hubitat:
 
 1. **Virtual motion sensors for verified detections.** Each selected camera gets a Hubitat
@@ -52,7 +54,7 @@ Scrypted                                         Hubitat
 1. In Scrypted, open **Plugins → Scripts** and click **+** to create a new script. Name it
    *Scrypted Connect*.
 2. Replace its contents with
-   [scrypted_connect-bridge.ts](https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/scrypted-connect/Scrypted/scrypted_connect-bridge.ts)
+   [scrypted_connect-bridge.ts](https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/Scrypted/scrypted_connect-bridge.ts)
    and click **Save**. Use **Save**, not **Run**: Scrypted only stores a script on Save,
    and Run on an unsaved script fails with `"undefined" is not valid JSON`.
 3. The script's console prints two lines you need for Hubitat:
@@ -72,13 +74,13 @@ too if you want Motion Disablers.
 **Option B: manual install.**
 
 * **Drivers Code → New Driver**, paste and save each of:
-  * [Scrypted Connect Hub](https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/scrypted-connect/Scrypted/scrypted_connect-hub-driver.groovy)
-  * [Scrypted Connect Camera](https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/scrypted-connect/Scrypted/scrypted_connect-camera-driver.groovy)
+  * [Scrypted Connect Hub](https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/Scrypted/scrypted_connect-hub-driver.groovy)
+  * [Scrypted Connect Camera](https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/Scrypted/scrypted_connect-camera-driver.groovy)
 * **Apps Code → New App**, paste and save each of:
-  * [Scrypted Connect](https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/scrypted-connect/Scrypted/scrypted_connect-app.groovy)
+  * [Scrypted Connect](https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/Scrypted/scrypted_connect-app.groovy)
     — then click **OAuth → Enable OAuth in App → Update**. This is required: Scrypted
     delivers detections to the app's OAuth endpoint.
-  * [Scrypted Connect Child - Motion Disabler](https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/scrypted-connect/Scrypted/scrypted_connect-motion-disabler-child-app.groovy) (optional)
+  * [Scrypted Connect Child - Motion Disabler](https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/Scrypted/scrypted_connect-motion-disabler-child-app.groovy) (optional)
 
 ### 3. Hubitat: configure the app
 
@@ -206,3 +208,9 @@ How it interacts with other muting:
 * **Motion never goes active:** confirm Scrypted NVR object detection is enabled on the
   camera and that the selected types match what it detects (a camera's own AI may report
   `people`/`dog_cat`; those count as person/animal).
+
+## Support
+
+Questions, bug reports and feature requests: the
+[Hubitat Community release thread](https://community.hubitat.com/t/release-scrypted-connect-scrypted-nvr-detections-and-notification-muting/167560).
+Pull requests are welcome.

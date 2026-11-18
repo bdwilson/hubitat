@@ -16,7 +16,7 @@ metadata {
         name: "Scrypted Connect Camera",
         namespace: "brianwilson-hubitat",
         author: "Brian Wilson",
-        importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/scrypted-connect/Scrypted/scrypted_connect-camera-driver.groovy"
+        importUrl: "https://raw.githubusercontent.com/bdwilson/hubitat/refs/heads/master/Scrypted/scrypted_connect-camera-driver.groovy"
     ) {
         capability "Motion Sensor"
         capability "Switch"
