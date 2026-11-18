@@ -119,7 +119,7 @@ should already be raw URLs per the rule above, and now need to point at
 ### 4. Populate/update the root `README.md` home page
 
 The root `README.md` is the home page listing every integration in the repo
-(grouped tables: Package, Type, Key Features, HPM, Docs, Community). Treat
+(grouped tables: Package, Type, Key Features, HPM, Docs, Community, Updated). Treat
 it as part of the check-in, same as `importUrl` and the manifest — not an
 optional follow-up:
 
@@ -135,6 +135,16 @@ optional follow-up:
   the bottom if it was listed there).
 - Keep the row's Key Features in step with the integration's own
   `<Dir>/README.md` — don't let the two drift apart.
+- **`Updated` column (every commit, not just releases):** any commit that
+  changes files under `<Dir>/` (code, manifest or README) also sets that
+  row's `Updated` cell to the commit's date, `YYYY-MM-DD`. Like `importUrl`,
+  this is a standing rule — do it in the same commit, without being asked.
+  A new integration's row starts with the date of the commit that adds it.
+  If a cell looks stale, the source of truth is the last non-merge commit
+  touching the folder:
+  `git log -1 --no-merges --format=%as -- <Dir>`. Changes outside
+  `<Dir>/` (e.g. a `repository.json` entry or a home page row edit alone)
+  don't count as an update.
 
 ### Before opening the PR
 
