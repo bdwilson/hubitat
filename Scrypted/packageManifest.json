@@ -4,7 +4,7 @@
   "version": "0.3.0",
   "minimumHEVersion": "2.2.0",
   "documentationLink": "https://github.com/bdwilson/hubitat/tree/master/Scrypted",
-  "communityLink": "",
+  "communityLink": "https://community.hubitat.com/t/release-scrypted-connect-scrypted-nvr-detections-and-notification-muting/167560",
   "dateReleased": "2026-11-09",
   "releaseNotes": "First release. Virtual motion sensors for Scrypted NVR verified detections (person, vehicle, animal, package), timed or indefinite muting of Scrypted's own notifications per camera or for all cameras while recording continues, Motion Disabler child apps, and Home / Away muting by Hubitat mode with per-day sleep-time exceptions. Muting also covers the Advanced Notifier plugin's per-camera switch (Auto / NVR only / Advanced Notifier only / Both). Camera mute/unmute events say what caused them (which Motion Disabler and trigger, Home / Away, a switch or command). Requires the Scrypted-side bridge script (see documentation).",
   "apps": [
