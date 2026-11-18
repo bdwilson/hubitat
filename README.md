@@ -23,7 +23,7 @@ For anything not in HPM (marked ➖ in the tables), open the package's folder, t
 | **Honeywell Vista Envisalink TPI** | 🌐 Local | Native Hubitat support for Honeywell Vista/Envisalink alarm systems — no external server needed | 📦 | [Docs](Envisalink) | [💬](https://community.hubitat.com/t/native-honeywell-vista-envisalink-tpi-alarm-driver/164482) |
 | **Honeywell Security** | 🔌 Bridge | Honeywell Vista/Envisalink alarm integration via an external node-proxy server | 📦 | [Docs](Honeywell) | [💬](https://community.hubitat.com/t/release-envisalink-app-driver-for-vista-ademco-honeywell-alarm-via-smartthings-nodeproxy/9726) |
 | **Camect Connect** | 🌐 Local | Sync HSM and virtual motion devices with your Camect NVR | 📦 | [Docs](Camect/README.md) | [💬](https://community.hubitat.com/t/release-camect-connect/43837) |
-| **Scrypted Connect** | 🔌 Bridge | Virtual motion sensors for Scrypted NVR verified detections • per-camera and Home/Away muting of Scrypted's own notifications (needs a Scrypted bridge script) | 📦 | [Docs](Scrypted) | — |
+| **Scrypted Connect** | 🔌 Bridge | Virtual motion sensors for Scrypted NVR verified detections (person, vehicle, animal, package) • timed or indefinite muting of Scrypted's own notifications per camera or all cameras, recording continues • Motion Disablers • Home/Away muting with sleep-time exceptions • also mutes Advanced Notifier • mute events say what caused them (needs a Scrypted bridge script) | 📦 | [Docs](Scrypted) | [💬](https://community.hubitat.com/t/release-scrypted-connect-scrypted-nvr-detections-and-notification-muting/167560) |
 | **Smart Mailbox** | 🌐 Local | Get notified when you receive mail in your mailbox | 📦 | [Docs](SmartMailbox) | [💬](https://community.hubitat.com/t/release-smart-mailbox/11402) |
 
 ## 📍 Presence & Location
@@ -95,4 +95,4 @@ For anything not in HPM (marked ➖ in the tables), open the package's folder, t
 ## Notes
 
 - **Tuya Zigbee Valve** has a `packageManifest.json` but is not yet listed in `repository.json`, so it won't appear in HPM's keyword search until it is; install it from its folder in the meantime.
-- Packages without a Community thread yet (**Scrypted Connect**, **Toggle API**) will be linked here once a release thread exists.
+- **Toggle API** doesn't have a Community thread yet; it will be linked here once a release thread exists.
